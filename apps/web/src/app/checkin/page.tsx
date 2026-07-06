@@ -5,7 +5,7 @@
 
 import { Grade, IAttendance, IMember } from '@letscok/shared-types';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { GradeBadge, Toast } from '@/components/badges';
 import { api, ApiError } from '@/lib/api';
 import { saveMemberId } from '@/lib/member';
@@ -175,10 +175,32 @@ function RegisterPanel({
   onBack: () => void;
 }) {
   const [name, setName] = useState('');
-  const [birthDate, setBirthDate] = useState('');
+  const [birthInput, setBirthInput] = useState(''); // 화면 표시용 (자동 하이픈)
   const [grade, setGrade] = useState<Grade | null>(null);
   const [isGuest, setIsGuest] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 캘린더 피커는 연도 이동이 불편해서(1997년까지 수백 번 클릭) 숫자 8자리 직접 입력 방식
+  const digits = birthInput.replace(/\D/g, '');
+  const birthDate = useMemo(() => {
+    if (digits.length !== 8) return '';
+    const year = Number(digits.slice(0, 4));
+    const month = Number(digits.slice(4, 6));
+    const day = Number(digits.slice(6, 8));
+    const currentYear = new Date().getFullYear();
+    if (year < 1930 || year > currentYear) return '';
+    if (month < 1 || month > 12 || day < 1 || day > 31) return '';
+    return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+  }, [digits]);
+
+  const handleBirthChange = (raw: string) => {
+    const only = raw.replace(/\D/g, '').slice(0, 8);
+    // 4자리(년)·6자리(월) 지나면 하이픈 자동 삽입
+    let formatted = only;
+    if (only.length > 6) formatted = `${only.slice(0, 4)}-${only.slice(4, 6)}-${only.slice(6)}`;
+    else if (only.length > 4) formatted = `${only.slice(0, 4)}-${only.slice(4)}`;
+    setBirthInput(formatted);
+  };
 
   const submit = async () => {
     if (!name.trim() || !birthDate || !grade || busy) return;
@@ -208,11 +230,16 @@ function RegisterPanel({
             생년월일 <span className="text-faint">— 동명이인 구분에 쓰여요</span>
           </p>
           <input
-            type="date"
-            value={birthDate}
-            onChange={(e) => setBirthDate(e.target.value)}
-            className="h-14 w-full rounded-xl border border-line bg-panel px-5 text-lg text-ink outline-none focus:border-court [color-scheme:dark]"
+            type="text"
+            inputMode="numeric"
+            value={birthInput}
+            onChange={(e) => handleBirthChange(e.target.value)}
+            placeholder="8자리 숫자 (예: 19970312)"
+            className="h-14 w-full rounded-xl border border-line bg-panel px-5 text-lg outline-none focus:border-court"
           />
+          {digits.length === 8 && !birthDate && (
+            <p className="mt-1 text-xs text-coral">날짜가 올바르지 않아요</p>
+          )}
         </div>
         <div>
           <p className="mb-2 text-sm text-dim">급수</p>
