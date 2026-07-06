@@ -6,6 +6,7 @@ import { GamesModule } from './games/games.module';
 import { HealthController } from './health/health.controller';
 import { MembersModule } from './members/members.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { RealtimeModule } from './realtime/realtime.module';
 import { SessionsModule } from './sessions/sessions.module';
 
 @Module({
@@ -14,6 +15,7 @@ import { SessionsModule } from './sessions/sessions.module';
     // isGlobal: 모든 모듈에서 ConfigModule 재import 없이 ConfigService 주입 가능
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
+    RealtimeModule,
     MembersModule,
     SessionsModule,
     AttendancesModule,

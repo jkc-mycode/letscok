@@ -7,6 +7,7 @@ import {
 import { IGame } from '@letscok/shared-types';
 import { toGameResponse } from '../common/mappers/entity.mappers';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { SessionsService } from '../sessions/sessions.service';
 import { AssignGameDto, CreateGameDto, UpdateGameOrderDto } from './dto/game.dtos';
 
@@ -20,6 +21,7 @@ export class GamesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sessionsService: SessionsService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   // 조합 생성: 대기(CHECKED_IN) 4명 → QUEUED 게임 + 4명 MATCHED
@@ -68,6 +70,7 @@ export class GamesService {
       });
       return created;
     });
+    this.realtime.broadcastSnapshot(sessionId);
     return toGameResponse(game);
   }
 
@@ -109,6 +112,7 @@ export class GamesService {
         include: GAME_INCLUDE,
       });
     });
+    this.realtime.broadcastSnapshot(game.sessionId);
     return toGameResponse(assigned);
   }
 
@@ -139,6 +143,7 @@ export class GamesService {
         include: GAME_INCLUDE,
       });
     });
+    this.realtime.broadcastSnapshot(game.sessionId);
     return toGameResponse(finished);
   }
 
@@ -168,6 +173,7 @@ export class GamesService {
         include: GAME_INCLUDE,
       });
     });
+    this.realtime.broadcastSnapshot(game.sessionId);
     return toGameResponse(canceled);
   }
 
@@ -182,6 +188,7 @@ export class GamesService {
       data: { queueOrder: dto.queueOrder },
       include: GAME_INCLUDE,
     });
+    this.realtime.broadcastSnapshot(game.sessionId);
     return toGameResponse(updated);
   }
 

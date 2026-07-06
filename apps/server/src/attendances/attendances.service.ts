@@ -6,6 +6,7 @@ import {
 import { IAttendance } from '@letscok/shared-types';
 import { toAttendanceResponse } from '../common/mappers/entity.mappers';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { SessionsService } from '../sessions/sessions.service';
 import { CheckInDto } from './dto/check-in.dto';
 
@@ -14,6 +15,7 @@ export class AttendancesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sessionsService: SessionsService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   async checkIn(sessionId: string, dto: CheckInDto): Promise<IAttendance> {
@@ -37,6 +39,7 @@ export class AttendancesService {
         data: { sessionId, memberId: dto.memberId },
         include: { member: true },
       });
+      this.realtime.broadcastSnapshot(sessionId);
       return toAttendanceResponse(attendance);
     }
 
@@ -48,6 +51,7 @@ export class AttendancesService {
         data: { status: 'CHECKED_IN', waitingSince: new Date(), leftAt: null },
         include: { member: true },
       });
+      this.realtime.broadcastSnapshot(sessionId);
       return toAttendanceResponse(reentered);
     }
 
@@ -76,6 +80,7 @@ export class AttendancesService {
       data: { status: 'LEFT', leftAt: new Date() },
       include: { member: true },
     });
+    this.realtime.broadcastSnapshot(attendance.sessionId);
     return toAttendanceResponse(left);
   }
 }

@@ -146,12 +146,24 @@ export interface IApiResponse<T> {
   data: T;
 }
 
-// ===== Socket.IO 이벤트명 =====
+// ===== Socket.IO 이벤트 =====
 
+// 서버 → 클라이언트: 어떤 변경이든 전체 스냅샷을 다시 쏜다
+// (소모임 규모라 이벤트별 부분 머지 대신 setState(snapshot) 한 번으로 단순화,
+//  재연결 복구와 동일 경로가 되어 상태 불일치 여지가 없음)
 export const SocketEvents = {
-  ATTENDANCE_UPDATED: 'attendance.updated',
-  GAME_UPDATED: 'game.updated',
-  COURT_UPDATED: 'court.updated',
-  SESSION_CLOSED: 'session.closed',
+  SNAPSHOT_UPDATED: 'snapshot.updated', // payload: ISessionSnapshot
+  SESSION_CLOSED: 'session.closed', // payload: { sessionId: string }
 } as const;
 export type SocketEvent = (typeof SocketEvents)[keyof typeof SocketEvents];
+
+// 클라이언트 → 서버: 세션 룸 입장
+export const SocketClientEvents = {
+  JOIN_SESSION: 'session.join', // payload: IJoinSessionPayload
+} as const;
+export type SocketClientEvent =
+  (typeof SocketClientEvents)[keyof typeof SocketClientEvents];
+
+export interface IJoinSessionPayload {
+  sessionId: string;
+}

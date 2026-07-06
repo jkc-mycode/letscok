@@ -1,3 +1,6 @@
+// dotenv를 가장 먼저 로드 — 게이트웨이 데코레이터(CORS)처럼 모듈 import 시점에
+// 평가되는 코드가 env를 읽으므로 ConfigModule(부팅 후 로드)보다 앞서야 한다
+import 'dotenv/config';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';

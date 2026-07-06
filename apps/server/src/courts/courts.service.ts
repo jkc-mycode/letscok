@@ -6,6 +6,7 @@ import {
 import { ICourt } from '@letscok/shared-types';
 import { toCourtResponse } from '../common/mappers/entity.mappers';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { SessionsService } from '../sessions/sessions.service';
 import { CreateCourtDto } from './dto/create-court.dto';
 
@@ -14,6 +15,7 @@ export class CourtsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sessionsService: SessionsService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   async register(sessionId: string, dto: CreateCourtDto): Promise<ICourt> {
@@ -32,12 +34,14 @@ export class CourtsService {
         where: { id: existing.id },
         data: { deletedAt: null, status: 'IDLE' },
       });
+      this.realtime.broadcastSnapshot(sessionId);
       return toCourtResponse(restored);
     }
 
     const court = await this.prisma.court.create({
       data: { sessionId, courtNo: dto.courtNo },
     });
+    this.realtime.broadcastSnapshot(sessionId);
     return toCourtResponse(court);
   }
 
@@ -58,6 +62,7 @@ export class CourtsService {
       where: { id },
       data: { deletedAt: new Date() },
     });
+    this.realtime.broadcastSnapshot(court.sessionId);
     return toCourtResponse(removed);
   }
 }
