@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AttendancesModule } from './attendances/attendances.module';
+import { CourtsModule } from './courts/courts.module';
+import { GamesModule } from './games/games.module';
 import { HealthController } from './health/health.controller';
 import { MembersModule } from './members/members.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -15,7 +17,9 @@ import { SessionsModule } from './sessions/sessions.module';
     MembersModule,
     SessionsModule,
     AttendancesModule,
-    // 다음 단계: CourtsModule, GamesModule, 실시간(Socket.IO) 게이트웨이
+    CourtsModule,
+    GamesModule,
+    // 다음 단계: 실시간(Socket.IO) 게이트웨이
   ],
   controllers: [HealthController],
 })

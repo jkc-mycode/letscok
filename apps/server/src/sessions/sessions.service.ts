@@ -71,7 +71,7 @@ export class SessionsService {
     // 스냅샷 구성 요소를 한 번에 조회 (순차 대기 없이 병렬)
     const [courts, attendances, games] = await Promise.all([
       this.prisma.court.findMany({
-        where: { sessionId: session.id },
+        where: { sessionId: session.id, deletedAt: null }, // 해제된 코트는 보드에서 제외
         orderBy: { courtNo: 'asc' },
       }),
       this.prisma.attendance.findMany({

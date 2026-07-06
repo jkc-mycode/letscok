@@ -82,6 +82,7 @@ model Court {
   courtNo   Int
   status    CourtStatus @default(IDLE)
   createdAt DateTime    @default(now())
+  deletedAt DateTime? // soft-delete — 하드 삭제하면 이 코트에서 끝난 게임의 FK가 깨짐. 같은 번호 재등록 시 복구
 
   session Session @relation(fields: [sessionId], references: [id])
   games   Game[]
