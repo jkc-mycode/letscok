@@ -23,6 +23,15 @@ export function GradeBadge({ grade }: { grade: Grade }) {
   );
 }
 
+// 본인 표시 칩 — 모임원 화면에서 어느 구역에 있든 내 이름을 한눈에 찾도록
+export function MeChip() {
+  return (
+    <span className="inline-flex shrink-0 items-center rounded bg-court px-1.5 py-0.5 text-[10px] font-bold text-bg">
+      나
+    </span>
+  );
+}
+
 // 게임 참여 4인 그리드 — 관제판·모임원 화면 공용 (highlightMemberId = 본인 강조)
 export function PlayerGrid({
   game,
@@ -36,16 +45,14 @@ export function PlayerGrid({
       {game.players?.map((player) => {
         const member = player.attendance?.member;
         if (!member) return null;
+        const isMe = member.id === highlightMemberId;
         return (
           <div key={player.id} className="flex items-center gap-1.5 text-sm">
             <GradeBadge grade={member.grade} />
-            <span
-              className={`truncate font-medium ${
-                member.id === highlightMemberId ? 'font-bold text-court' : ''
-              }`}
-            >
+            <span className={`truncate font-medium ${isMe ? 'font-bold text-court' : ''}`}>
               {member.name}
             </span>
+            {isMe && <MeChip />}
             {member.isGuest && <span className="text-[10px] text-sky">G</span>}
           </div>
         );

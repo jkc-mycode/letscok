@@ -7,7 +7,7 @@ import { IAttendance } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { GradeBadge, PlayerGrid } from '@/components/badges';
+import { GradeBadge, MeChip, PlayerGrid } from '@/components/badges';
 import { MotionCard } from '@/components/motion-card';
 import { getMemberId } from '@/lib/member';
 import {
@@ -121,11 +121,12 @@ export default function MyStatusPage() {
                 isMe ? 'border-court bg-court/10' : 'border-line bg-panel2'
               }`}
             >
-            <GradeBadge grade={member.grade} />
-            <span className={`font-medium ${isMe ? 'font-bold text-court' : ''}`}>
-              {member.name}
-            </span>
-            {member.isGuest && <span className="text-[10px] text-sky">게스트</span>}
+              <GradeBadge grade={member.grade} />
+              <span className={`font-medium ${isMe ? 'font-bold text-court' : ''}`}>
+                {member.name}
+              </span>
+              {isMe && <MeChip />}
+              {member.isGuest && <span className="text-[10px] text-sky">게스트</span>}
               <span className="tabular ml-auto font-mono text-xs text-dim">
                 {attendance.gamesPlayed}게임 · {formatWaitingMinutes(attendance.waitingSince, now)}
               </span>
