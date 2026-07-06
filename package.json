@@ -1,0 +1,12 @@
+{
+  "name": "letscok",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev:server": "pnpm --filter @letscok/server start:dev",
+    "dev:web": "pnpm --filter @letscok/web dev",
+    "build:shared": "pnpm --filter @letscok/shared-types build",
+    "build:server": "pnpm --filter @letscok/server build",
+    "build:web": "pnpm --filter @letscok/web build"
+  }
+}
