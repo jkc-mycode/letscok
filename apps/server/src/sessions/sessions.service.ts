@@ -46,16 +46,37 @@ export class SessionsService {
     return toSessionResponse(session);
   }
 
+  // 모임 종료 = 그날 운영 마감 — 보드를 통째로 정리한다
+  // 실수 종료 대비: 같은 날 재시작하면 세션이 재개되고, 재체크인 시 기존 출석 행으로
+  // 복귀(gamesPlayed 보존)하므로 여기서 전부 정리해도 안전
   async close(id: string): Promise<ISession> {
     const session = await this.prisma.session.findUnique({ where: { id } });
     if (!session || session.status !== 'OPEN') {
       throw new NotFoundException('진행 중인 모임이 아닙니다.');
     }
-    // TODO(운영 화면 붙일 때): PLAYING 게임이 남아 있으면 종료를 막거나 일괄 정리
-    const closed = await this.prisma.session.update({
-      where: { id },
-      data: { status: 'CLOSED', closedAt: new Date() },
-    });
+
+    const now = new Date();
+    const [, , , closed] = await this.prisma.$transaction([
+      // 미완료 게임은 집계 없이 해체 (FINISHED가 아니므로 게임 수 영향 없음)
+      this.prisma.game.updateMany({
+        where: { sessionId: id, status: { in: ['QUEUED', 'PLAYING'] } },
+        data: { status: 'CANCELED', queueOrder: null },
+      }),
+      // 남아 있는 인원 전원 퇴장 처리
+      this.prisma.attendance.updateMany({
+        where: { sessionId: id, status: { not: 'LEFT' } },
+        data: { status: 'LEFT', leftAt: now },
+      }),
+      // 코트 전부 해제 (재시작 시 다시 등록 — 같은 번호면 기존 행 복구됨)
+      this.prisma.court.updateMany({
+        where: { sessionId: id, deletedAt: null },
+        data: { status: 'IDLE', deletedAt: now },
+      }),
+      this.prisma.session.update({
+        where: { id },
+        data: { status: 'CLOSED', closedAt: now },
+      }),
+    ]);
     this.realtime.broadcastSessionClosed(id);
     return toSessionResponse(closed);
   }
