@@ -203,12 +203,17 @@ function RegisterPanel({
           placeholder="이름"
           className="h-14 rounded-xl border border-line bg-panel px-5 text-lg outline-none focus:border-court"
         />
-        <input
-          type="date"
-          value={birthDate}
-          onChange={(e) => setBirthDate(e.target.value)}
-          className="h-14 rounded-xl border border-line bg-panel px-5 text-lg text-ink outline-none focus:border-court [color-scheme:dark]"
-        />
+        <div>
+          <p className="mb-2 text-sm text-dim">
+            생년월일 <span className="text-faint">— 동명이인 구분에 쓰여요</span>
+          </p>
+          <input
+            type="date"
+            value={birthDate}
+            onChange={(e) => setBirthDate(e.target.value)}
+            className="h-14 w-full rounded-xl border border-line bg-panel px-5 text-lg text-ink outline-none focus:border-court [color-scheme:dark]"
+          />
+        </div>
         <div>
           <p className="mb-2 text-sm text-dim">급수</p>
           <div className="grid grid-cols-6 gap-2">
