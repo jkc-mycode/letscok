@@ -2,6 +2,7 @@
   "name": "letscok",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.22.0",
   "scripts": {
     "dev:server": "pnpm --filter @letscok/server start:dev",
     "dev:web": "pnpm --filter @letscok/web dev",
