@@ -80,7 +80,7 @@ export default function CheckinPage() {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-6 p-6">
+    <main className="fade-in mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-6 p-6">
       {children}
     </main>
   );

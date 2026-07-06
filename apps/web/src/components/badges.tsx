@@ -1,4 +1,7 @@
+'use client';
+
 import { Grade, IGame } from '@letscok/shared-types';
+import { motion } from 'motion/react';
 
 // 급수 배지 색 — 고수(A)일수록 따뜻한 색 (관제판·모임원 화면 공용)
 const GRADE_STYLE: Record<Grade, string> = {
@@ -53,8 +56,13 @@ export function PlayerGrid({
 
 export function Toast({ message }: { message: string }) {
   return (
-    <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-coral/40 bg-panel px-5 py-3 text-sm text-coral shadow-lg">
+    <motion.div
+      // 가로 중앙 정렬도 motion transform으로 — tailwind translate 클래스는 motion이 덮어써서 못 씀
+      initial={{ opacity: 0, y: 16, x: '-50%' }}
+      animate={{ opacity: 1, y: 0, x: '-50%' }}
+      className="fixed bottom-6 left-1/2 z-50 rounded-xl border border-coral/40 bg-panel px-5 py-3 text-sm text-coral shadow-lg"
+    >
       {message}
-    </div>
+    </motion.div>
   );
 }

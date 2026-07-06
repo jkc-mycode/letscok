@@ -4,9 +4,11 @@
 // 상단에 내 상태 한 줄 + 아래 3구역(게임 중/대기 조합/대기 인원), 내 이름은 초록 강조
 
 import { IAttendance } from '@letscok/shared-types';
+import { AnimatePresence } from 'motion/react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { GradeBadge, PlayerGrid } from '@/components/badges';
+import { MotionCard } from '@/components/motion-card';
 import { getMemberId } from '@/lib/member';
 import {
   formatElapsed,
@@ -70,61 +72,67 @@ export default function MyStatusPage() {
       {/* 게임 중 — 관제판과 동일 정보, 버튼만 없음 */}
       <SectionTitle accent="text-court" title="게임 중" count={playingByCourt.size} />
       {courts.length === 0 && <Empty>등록된 코트가 없어요</Empty>}
-      {courts.map((court) => {
-        const game = playingByCourt.get(court.id);
-        return game ? (
-          <div key={court.id} className="rounded-xl border border-court/40 bg-panel2 p-4">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-court">{court.courtNo}번 코트</span>
-              <span className="tabular font-mono text-xl font-semibold text-court">
-                {game.startedAt ? formatElapsed(game.startedAt, now) : '--:--'}
-              </span>
-            </div>
-            <PlayerGrid game={game} highlightMemberId={memberId} />
-          </div>
-        ) : (
-          <div key={court.id} className="rounded-xl border border-dashed border-line p-4">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-dim">{court.courtNo}번 코트</span>
-              <span className="text-xs text-faint">비어 있음</span>
-            </div>
-          </div>
-        );
-      })}
+      <AnimatePresence initial={false}>
+        {courts.map((court) => {
+          const game = playingByCourt.get(court.id);
+          return game ? (
+            <MotionCard key={court.id} className="rounded-xl border border-court/40 bg-panel2 p-4">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-court">{court.courtNo}번 코트</span>
+                <span className="tabular font-mono text-xl font-semibold text-court">
+                  {game.startedAt ? formatElapsed(game.startedAt, now) : '--:--'}
+                </span>
+              </div>
+              <PlayerGrid game={game} highlightMemberId={memberId} />
+            </MotionCard>
+          ) : (
+            <MotionCard key={court.id} className="rounded-xl border border-dashed border-line p-4">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-dim">{court.courtNo}번 코트</span>
+                <span className="text-xs text-faint">비어 있음</span>
+              </div>
+            </MotionCard>
+          );
+        })}
+      </AnimatePresence>
 
       <SectionTitle accent="text-amber" title="대기 조합" count={queuedGames.length} />
       {queuedGames.length === 0 && <Empty>아직 짜인 게임이 없어요</Empty>}
-      {queuedGames.map((game, index) => (
-        <div key={game.id} className="rounded-xl border border-amber/30 bg-panel2 p-4">
-          <span className="font-bold text-amber">다음 게임 {index + 1}</span>
-          <PlayerGrid game={game} highlightMemberId={memberId} />
-        </div>
-      ))}
+      <AnimatePresence initial={false}>
+        {queuedGames.map((game, index) => (
+          <MotionCard key={game.id} className="rounded-xl border border-amber/30 bg-panel2 p-4">
+            <span className="font-bold text-amber">다음 게임 {index + 1}</span>
+            <PlayerGrid game={game} highlightMemberId={memberId} />
+          </MotionCard>
+        ))}
+      </AnimatePresence>
 
       <SectionTitle accent="text-ink" title="대기 인원" count={waiting.length} />
       {waiting.length === 0 && <Empty>대기 인원이 없어요</Empty>}
-      {waiting.map((attendance) => {
-        const member = attendance.member;
-        if (!member) return null;
-        const isMe = member.id === memberId;
-        return (
-          <div
-            key={attendance.id}
-            className={`flex items-center gap-2 rounded-xl border p-3 ${
-              isMe ? 'border-court bg-court/10' : 'border-line bg-panel2'
-            }`}
-          >
+      <AnimatePresence initial={false}>
+        {waiting.map((attendance) => {
+          const member = attendance.member;
+          if (!member) return null;
+          const isMe = member.id === memberId;
+          return (
+            <MotionCard
+              key={attendance.id}
+              className={`flex items-center gap-2 rounded-xl border p-3 ${
+                isMe ? 'border-court bg-court/10' : 'border-line bg-panel2'
+              }`}
+            >
             <GradeBadge grade={member.grade} />
             <span className={`font-medium ${isMe ? 'font-bold text-court' : ''}`}>
               {member.name}
             </span>
             {member.isGuest && <span className="text-[10px] text-sky">게스트</span>}
-            <span className="tabular ml-auto font-mono text-xs text-dim">
-              {attendance.gamesPlayed}게임 · {formatWaitingMinutes(attendance.waitingSince, now)}
-            </span>
-          </div>
-        );
-      })}
+              <span className="tabular ml-auto font-mono text-xs text-dim">
+                {attendance.gamesPlayed}게임 · {formatWaitingMinutes(attendance.waitingSince, now)}
+              </span>
+            </MotionCard>
+          );
+        })}
+      </AnimatePresence>
     </Shell>
   );
 }
@@ -158,7 +166,7 @@ function MyBanner({
 
   return (
     <header
-      className={`sticky top-0 z-10 flex items-center gap-2 rounded-xl border p-3 backdrop-blur ${statusClass}`}
+      className={`sticky top-0 z-10 flex items-center gap-2 rounded-xl border p-3 backdrop-blur transition-colors duration-300 ${statusClass}`}
     >
       {member && <GradeBadge grade={member.grade} />}
       <span className="font-bold">{member?.name}</span>
@@ -193,7 +201,7 @@ function Empty({ children }: { children: React.ReactNode }) {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-2 p-4">
+    <main className="fade-in mx-auto flex min-h-dvh w-full max-w-md flex-col gap-2 p-4">
       {children}
     </main>
   );

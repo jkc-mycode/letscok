@@ -6,8 +6,10 @@ import {
   IGame,
   ISessionSnapshot,
 } from '@letscok/shared-types';
+import { AnimatePresence } from 'motion/react';
 import { useEffect, useMemo, useState } from 'react';
 import { GradeBadge, PlayerGrid, Toast } from '@/components/badges';
+import { MotionCard } from '@/components/motion-card';
 import { api, ApiError, clearPasscode, getPasscode, savePasscode } from '@/lib/api';
 import {
   formatElapsed,
@@ -56,7 +58,7 @@ function LoginGate({ onSuccess }: { onSuccess: () => void }) {
   };
 
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center gap-8 p-6">
+    <main className="fade-in flex min-h-dvh flex-col items-center justify-center gap-8 p-6">
       <div className="text-center">
         <p className="text-sm font-medium tracking-[0.3em] text-court">LETSCOK</p>
         <h1 className="mt-2 text-4xl font-bold">렛츠콕 관제판</h1>
@@ -134,7 +136,7 @@ function StartScreen({
   toast: string | null;
 }) {
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center gap-8">
+    <main className="fade-in flex min-h-dvh flex-col items-center justify-center gap-8">
       <div className="text-center">
         <p className="text-sm font-medium tracking-[0.3em] text-court">LETSCOK</p>
         <h1 className="mt-2 text-4xl font-bold">아직 모임 전이에요</h1>
@@ -223,7 +225,7 @@ function BoardBody({
   };
 
   return (
-    <main className="flex h-dvh flex-col p-4">
+    <main className="fade-in flex h-dvh flex-col p-4">
       {/* 헤더 */}
       <header className="flex items-center gap-4 pb-3">
         <h1 className="text-xl font-bold">
@@ -261,44 +263,50 @@ function BoardBody({
       <div className="grid min-h-0 flex-1 grid-cols-[1.15fr_1fr_1fr] gap-3">
         <Zone title="게임 중" accent="text-court" count={playingByCourt.size}>
           {courts.length === 0 && <Empty>코트 관리에서 사용할 코트를 등록해주세요</Empty>}
-          {courts.map((court) => (
-            <CourtCard
-              key={court.id}
-              court={court}
-              game={playingByCourt.get(court.id)}
-              now={now}
-              run={run}
-            />
-          ))}
+          <AnimatePresence initial={false}>
+            {courts.map((court) => (
+              <CourtCard
+                key={court.id}
+                court={court}
+                game={playingByCourt.get(court.id)}
+                now={now}
+                run={run}
+              />
+            ))}
+          </AnimatePresence>
         </Zone>
 
         <Zone title="대기 조합" accent="text-amber" count={queuedGames.length}>
           {queuedGames.length === 0 && <Empty>대기 인원에서 4명을 골라 조합을 만들어주세요</Empty>}
-          {queuedGames.map((game, index) => (
-            <QueueCard
-              key={game.id}
-              game={game}
-              order={index + 1}
-              neighborUp={queuedGames[index - 1]}
-              neighborDown={queuedGames[index + 1]}
-              idleCourts={idleCourts}
-              run={run}
-            />
-          ))}
+          <AnimatePresence initial={false}>
+            {queuedGames.map((game, index) => (
+              <QueueCard
+                key={game.id}
+                game={game}
+                order={index + 1}
+                neighborUp={queuedGames[index - 1]}
+                neighborDown={queuedGames[index + 1]}
+                idleCourts={idleCourts}
+                run={run}
+              />
+            ))}
+          </AnimatePresence>
         </Zone>
 
         <Zone title="대기 인원" accent="text-ink" count={waiting.length}>
           {waiting.length === 0 && <Empty>체크인한 대기 인원이 없어요</Empty>}
-          {waiting.map((attendance) => (
-            <WaitingRow
-              key={attendance.id}
-              attendance={attendance}
-              now={now}
-              selected={selected.has(attendance.id)}
-              onToggle={() => toggleSelect(attendance.id)}
-              run={run}
-            />
-          ))}
+          <AnimatePresence initial={false}>
+            {waiting.map((attendance) => (
+              <WaitingRow
+                key={attendance.id}
+                attendance={attendance}
+                now={now}
+                selected={selected.has(attendance.id)}
+                onToggle={() => toggleSelect(attendance.id)}
+                run={run}
+              />
+            ))}
+          </AnimatePresence>
           {leftCount > 0 && (
             <p className="pt-2 text-center text-xs text-faint">퇴장 {leftCount}명</p>
           )}
@@ -434,16 +442,16 @@ function CourtCard({
 }) {
   if (!game) {
     return (
-      <div className="rounded-xl border border-dashed border-line p-4">
+      <MotionCard className="rounded-xl border border-dashed border-line p-4">
         <div className="flex items-center justify-between">
           <span className="font-bold text-dim">{court.courtNo}번 코트</span>
           <span className="text-xs text-faint">비어 있음 — 대기 조합에서 배정</span>
         </div>
-      </div>
+      </MotionCard>
     );
   }
   return (
-    <div className="rounded-xl border border-court/40 bg-panel2 p-4">
+    <MotionCard className="rounded-xl border border-court/40 bg-panel2 p-4">
       <div className="flex items-center justify-between">
         <span className="font-bold text-court">{court.courtNo}번 코트</span>
         <span className="tabular font-mono text-2xl font-semibold text-court">
@@ -473,7 +481,7 @@ function CourtCard({
           취소
         </button>
       </div>
-    </div>
+    </MotionCard>
   );
 }
 
@@ -514,7 +522,7 @@ function QueueCard({
   };
 
   return (
-    <div className="rounded-xl border border-amber/30 bg-panel2 p-4">
+    <MotionCard className="rounded-xl border border-amber/30 bg-panel2 p-4">
       <div className="flex items-center justify-between">
         <span className="font-bold text-amber">다음 게임 {order}</span>
         <div className="flex gap-1">
@@ -575,7 +583,7 @@ function QueueCard({
           해체
         </button>
       </div>
-    </div>
+    </MotionCard>
   );
 }
 
@@ -597,7 +605,7 @@ function WaitingRow({
   const member = attendance.member;
   if (!member) return null;
   return (
-    <div
+    <MotionCard
       onClick={onToggle}
       className={`flex cursor-pointer items-center gap-2 rounded-xl border p-3 transition-colors ${
         selected ? 'border-amber bg-amber/10' : 'border-line bg-panel2'
@@ -621,6 +629,6 @@ function WaitingRow({
       >
         ✕
       </button>
-    </div>
+    </MotionCard>
   );
 }
