@@ -1,13 +1,13 @@
 'use client';
 
 import {
-  Grade,
   IAttendance,
   ICourt,
   IGame,
   ISessionSnapshot,
 } from '@letscok/shared-types';
 import { useEffect, useMemo, useState } from 'react';
+import { GradeBadge, PlayerGrid, Toast } from '@/components/badges';
 import { api, ApiError, clearPasscode, getPasscode, savePasscode } from '@/lib/api';
 import {
   formatElapsed,
@@ -15,26 +15,6 @@ import {
   useNow,
   useSnapshot,
 } from '@/lib/use-snapshot';
-
-// 급수 배지 색 — 고수(A)일수록 따뜻한 색
-const GRADE_STYLE: Record<Grade, string> = {
-  A: 'bg-coral/20 text-coral',
-  B: 'bg-amber/20 text-amber',
-  C: 'bg-[#ffd76e]/15 text-[#ffd76e]',
-  D: 'bg-court/15 text-court',
-  E: 'bg-sky/15 text-sky',
-  F: 'bg-[#b7a8ff]/15 text-[#b7a8ff]',
-};
-
-function GradeBadge({ grade }: { grade: Grade }) {
-  return (
-    <span
-      className={`inline-flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold ${GRADE_STYLE[grade]}`}
-    >
-      {grade}
-    </span>
-  );
-}
 
 // ===== 페이지 루트: 패스코드 게이트 → 보드 =====
 
@@ -374,14 +354,6 @@ function Empty({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Toast({ message }: { message: string }) {
-  return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-xl border border-coral/40 bg-panel px-5 py-3 text-sm text-coral shadow-lg">
-      {message}
-    </div>
-  );
-}
-
 // ===== 코트 관리 =====
 
 function CourtsManager({
@@ -494,24 +466,6 @@ function CourtCard({
           취소
         </button>
       </div>
-    </div>
-  );
-}
-
-function PlayerGrid({ game }: { game: IGame }) {
-  return (
-    <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5">
-      {game.players?.map((player) => {
-        const member = player.attendance?.member;
-        if (!member) return null;
-        return (
-          <div key={player.id} className="flex items-center gap-1.5 text-sm">
-            <GradeBadge grade={member.grade} />
-            <span className="truncate font-medium">{member.name}</span>
-            {member.isGuest && <span className="text-[10px] text-sky">G</span>}
-          </div>
-        );
-      })}
     </div>
   );
 }

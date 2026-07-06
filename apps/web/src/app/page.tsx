@@ -15,9 +15,12 @@ export default function HomePage() {
         >
           운영진 관제판
         </Link>
-        <span className="flex h-14 items-center rounded-xl border border-line px-8 text-dim">
-          모임원 체크인 (준비 중)
-        </span>
+        <Link
+          href="/checkin"
+          className="flex h-14 items-center rounded-xl border border-court px-8 font-bold text-court"
+        >
+          모임원 체크인
+        </Link>
       </div>
     </main>
   );
