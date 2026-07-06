@@ -459,8 +459,15 @@ function CourtCard({
           게임 종료
         </button>
         <button
+          onClick={() => void run(() => api(`/games/${game.id}/unassign`, { method: 'PATCH', admin: true }))}
+          title="조합 유지한 채 대기 조합 맨 뒤로 (게임 수 미집계)"
+          className="h-11 rounded-lg border border-amber/40 px-3 text-sm text-amber"
+        >
+          대기로
+        </button>
+        <button
           onClick={() => void run(() => api(`/games/${game.id}/cancel`, { method: 'PATCH', admin: true }))}
-          title="잘못 시작한 게임 취소 (게임 수 미집계)"
+          title="잘못 시작한 게임 취소 — 조합까지 해체 (게임 수 미집계)"
           className="h-11 rounded-lg border border-line px-3 text-sm text-dim"
         >
           취소

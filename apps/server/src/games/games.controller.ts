@@ -38,6 +38,12 @@ export class GamesController {
     return { success: true, data: await this.gamesService.finish(id) };
   }
 
+  // 게임 중 → 대기 조합 복귀 (조합 유지, 게임 수 미집계)
+  @Patch('games/:id/unassign')
+  async unassign(@Param('id') id: string): Promise<IApiResponse<IGame>> {
+    return { success: true, data: await this.gamesService.unassign(id) };
+  }
+
   @Patch('games/:id/cancel')
   async cancel(@Param('id') id: string): Promise<IApiResponse<IGame>> {
     return { success: true, data: await this.gamesService.cancel(id) };

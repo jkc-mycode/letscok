@@ -147,6 +147,44 @@ export class GamesService {
     return toGameResponse(finished);
   }
 
+  // 배정 취소: 조합은 유지한 채 게임 중 → 대기 조합(큐 맨 뒤)으로 되돌린다
+  // (코트 오배정·순서 미루기용 — cancel과 달리 4인 조합이 풀리지 않음)
+  async unassign(id: string): Promise<IGame> {
+    const game = await this.findGameOrThrow(id);
+    if (game.status !== 'PLAYING') {
+      throw new ConflictException('진행 중인 게임만 대기 조합으로 되돌릴 수 있습니다.');
+    }
+
+    const attendanceIds = game.players.map((player) => player.attendanceId);
+    const unassigned = await this.prisma.$transaction(async (tx) => {
+      await tx.court.update({
+        where: { id: game.courtId as string },
+        data: { status: 'IDLE' },
+      });
+      await tx.attendance.updateMany({
+        where: { id: { in: attendanceIds } },
+        data: { status: 'MATCHED' },
+      });
+      const lastQueued = await tx.game.findFirst({
+        where: { sessionId: game.sessionId, status: 'QUEUED' },
+        orderBy: { queueOrder: 'desc' },
+        select: { queueOrder: true },
+      });
+      return tx.game.update({
+        where: { id },
+        data: {
+          status: 'QUEUED',
+          courtId: null,
+          startedAt: null, // 다시 배정되면 타이머는 새로 시작
+          queueOrder: (lastQueued?.queueOrder ?? 0) + 1,
+        },
+        include: GAME_INCLUDE,
+      });
+    });
+    this.realtime.broadcastSnapshot(game.sessionId);
+    return toGameResponse(unassigned);
+  }
+
   // 조합 해체: 잘못 짠 조합(QUEUED)이나 잘못 시작한 게임(PLAYING)을 되돌린다
   // finish와 달리 게임 횟수를 올리지 않고, 대기 시간도 원래 것을 유지한다
   async cancel(id: string): Promise<IGame> {
