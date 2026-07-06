@@ -1,5 +1,18 @@
 import type { Metadata } from 'next';
+import { IBM_Plex_Mono, IBM_Plex_Sans_KR } from 'next/font/google';
 import './globals.css';
+
+// 계기판 느낌의 산업적 서체 조합 — 본문 Plex Sans KR, 타이머/숫자 Plex Mono
+const plexKr = IBM_Plex_Sans_KR({
+  weight: ['400', '500', '700'],
+  subsets: ['latin'],
+  variable: '--font-plex-kr',
+});
+const plexMono = IBM_Plex_Mono({
+  weight: ['400', '600'],
+  subsets: ['latin'],
+  variable: '--font-plex-mono',
+});
 
 export const metadata: Metadata = {
   title: '렛츠콕',
@@ -12,8 +25,8 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ko">
-      <body className="min-h-dvh antialiased">{children}</body>
+    <html lang="ko" className={`${plexKr.variable} ${plexMono.variable}`}>
+      <body className="court-bg min-h-dvh font-sans antialiased">{children}</body>
     </html>
   );
 }

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AttendancesModule } from './attendances/attendances.module';
+import { AuthController } from './auth/auth.controller';
 import { CourtsModule } from './courts/courts.module';
 import { GamesModule } from './games/games.module';
 import { HealthController } from './health/health.controller';
@@ -23,6 +24,6 @@ import { SessionsModule } from './sessions/sessions.module';
     GamesModule,
     // 다음 단계: 실시간(Socket.IO) 게이트웨이
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, AuthController],
 })
 export class AppModule {}

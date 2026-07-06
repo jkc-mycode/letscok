@@ -1,1 +1,41 @@
 @import 'tailwindcss';
+
+/* 코트 관제판 테마 — 어두운 그린 틴트 배경 + 코트 그린/앰버 상태 색 */
+@theme {
+  --font-sans: var(--font-plex-kr), 'Apple SD Gothic Neo', sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  --color-bg: #0c1310;
+  --color-panel: #121b16;
+  --color-panel2: #18241d;
+  --color-line: #223028;
+  --color-ink: #eaf3ed;
+  --color-dim: #8ba496;
+  --color-faint: #5d7367;
+  --color-court: #3ecf7a; /* 코트 그린 — 게임 중 */
+  --color-amber: #ffb224; /* 대기 조합 */
+  --color-coral: #ff6b57; /* 경고·해체 */
+  --color-sky: #6db8ff; /* 게스트 */
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-ink);
+}
+
+/* 배드민턴 코트 라인 모티프 — 화면 전체에 아주 옅게 깔리는 배경 */
+.court-bg {
+  background-image:
+    radial-gradient(ellipse 120% 90% at 50% -20%, rgba(62, 207, 122, 0.07), transparent 60%),
+    linear-gradient(to right, rgba(62, 207, 122, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(62, 207, 122, 0.05) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    160px 160px,
+    160px 160px;
+}
+
+/* 타이머 숫자 정렬 — 자릿수가 바뀌어도 흔들리지 않게 */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
