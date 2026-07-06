@@ -9,7 +9,9 @@ export default defineConfig({
     path: 'prisma/migrations',
   },
   // Prisma 7부터 연결 URL은 스키마 파일이 아니라 여기서 설정
+  // 마이그레이션은 pooled(PgBouncer) 연결에서 advisory lock이 막혀 P1002가 나므로
+  // DIRECT_DATABASE_URL(비-pooler)이 있으면 그걸 우선 사용 — 런타임(prisma.service)은 계속 pooled
   datasource: {
-    url: env('DATABASE_URL'),
+    url: process.env.DIRECT_DATABASE_URL ?? env('DATABASE_URL'),
   },
 });
