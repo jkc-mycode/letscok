@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AttendancesModule } from './attendances/attendances.module';
 import { HealthController } from './health/health.controller';
+import { MembersModule } from './members/members.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { SessionsModule } from './sessions/sessions.module';
 
 @Module({
   imports: [
@@ -9,7 +12,10 @@ import { PrismaModule } from './prisma/prisma.module';
     // isGlobal: 모든 모듈에서 ConfigModule 재import 없이 ConfigService 주입 가능
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
-    // 앞으로 기능 모듈(members, sessions, courts, games...)이 여기에 추가된다
+    MembersModule,
+    SessionsModule,
+    AttendancesModule,
+    // 다음 단계: CourtsModule, GamesModule, 실시간(Socket.IO) 게이트웨이
   ],
   controllers: [HealthController],
 })
