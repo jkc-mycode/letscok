@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { IGame } from '@letscok/shared-types';
+import { Prisma } from '../generated/prisma/client';
 import { toGameResponse } from '../common/mappers/entity.mappers';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -24,7 +25,9 @@ export class GamesService {
     private readonly realtime: RealtimeService,
   ) {}
 
-  // 조합 생성: 대기(CHECKED_IN) 4명 → QUEUED 게임 + 4명 MATCHED
+  // 조합 생성: 4명 → QUEUED 게임. 중복 대기 허용 정책 —
+  // 한 사람이 여러 QUEUED 게임에 동시에 들어갈 수 있고(다음다음 게임 미리 짜기),
+  // 게임 중(PLAYING)인 사람도 미리 넣을 수 있다. 퇴장(LEFT)한 사람만 불가
   async create(sessionId: string, dto: CreateGameDto): Promise<IGame> {
     await this.sessionsService.findOpenSessionOrThrow(sessionId);
 
@@ -33,14 +36,11 @@ export class GamesService {
       throw new BadRequestException('같은 모임원이 중복 선택되었습니다.');
     }
 
-    // 4명 전원이 이 세션의 "미배정 대기" 상태인지 검증
-    const waitingCount = await this.prisma.attendance.count({
-      where: { id: { in: uniqueIds }, sessionId, status: 'CHECKED_IN' },
+    const activeCount = await this.prisma.attendance.count({
+      where: { id: { in: uniqueIds }, sessionId, status: { not: 'LEFT' } },
     });
-    if (waitingCount !== 4) {
-      throw new ConflictException(
-        '대기 중이 아닌 모임원이 포함되어 있습니다. 대기 인원에서만 조합해주세요.',
-      );
+    if (activeCount !== 4) {
+      throw new ConflictException('퇴장했거나 이 모임에 없는 모임원이 포함되어 있습니다.');
     }
 
     const game = await this.prisma.$transaction(async (tx) => {
@@ -64,8 +64,9 @@ export class GamesService {
         include: GAME_INCLUDE,
       });
 
+      // 미배정 대기자만 MATCHED로 승격 — 이미 MATCHED(다른 조합)·PLAYING인 사람은 그대로
       await tx.attendance.updateMany({
-        where: { id: { in: uniqueIds } },
+        where: { id: { in: uniqueIds }, status: 'CHECKED_IN' },
         data: { status: 'MATCHED' },
       });
       return created;
@@ -89,6 +90,16 @@ export class GamesService {
     }
     if (court.status !== 'IDLE') {
       throw new ConflictException('이미 게임이 진행 중인 코트입니다.');
+    }
+
+    // 중복 대기 정책상 다른 코트에서 게임 중인 사람이 이 조합에 있을 수 있다 — PLAYING은 동시에 한 곳만
+    const busyNames = game.players
+      .filter((player) => player.attendance.status === 'PLAYING')
+      .map((player) => player.attendance.member.name);
+    if (busyNames.length > 0) {
+      throw new ConflictException(
+        `아직 게임 중인 모임원이 있습니다: ${busyNames.join(', ')}. 해당 게임 종료 후 배정해주세요.`,
+      );
     }
 
     const attendanceIds = game.players.map((player) => player.attendanceId);
@@ -129,14 +140,25 @@ export class GamesService {
         where: { id: game.courtId as string }, // PLAYING 게임은 항상 코트를 갖는다
         data: { status: 'IDLE' },
       });
+      // 전원 공통: 방금 뛰었으므로 대기 시간 리셋(대기 목록 맨 뒤) + 게임 횟수 +1
       await tx.attendance.updateMany({
         where: { id: { in: attendanceIds } },
-        data: {
-          status: 'CHECKED_IN',
-          waitingSince: new Date(), // 대기 시간 새로 시작 = 대기 목록 맨 뒤
-          gamesPlayed: { increment: 1 },
-        },
+        data: { waitingSince: new Date(), gamesPlayed: { increment: 1 } },
       });
+      // 중복 대기 허용 — 다른 QUEUED 조합에 남아있으면 MATCHED 유지, 아니면 대기 복귀
+      const buckets = await this.splitByRemainingActiveGames(tx, attendanceIds, id);
+      if (buckets.matched.length > 0) {
+        await tx.attendance.updateMany({
+          where: { id: { in: buckets.matched } },
+          data: { status: 'MATCHED' },
+        });
+      }
+      if (buckets.waiting.length > 0) {
+        await tx.attendance.updateMany({
+          where: { id: { in: buckets.waiting } },
+          data: { status: 'CHECKED_IN' },
+        });
+      }
       return tx.game.update({
         where: { id },
         data: { status: 'FINISHED', endedAt: new Date() },
@@ -201,10 +223,21 @@ export class GamesService {
           data: { status: 'IDLE' },
         });
       }
-      await tx.attendance.updateMany({
-        where: { id: { in: attendanceIds } },
-        data: { status: 'CHECKED_IN' },
-      });
+      // 중복 대기 허용 — 이 게임만 해체하고, 각자의 상태는 남은 활성 게임 기준으로 재계산
+      // (다른 코트에서 PLAYING 중이면 건드리지 않고, 다른 QUEUED 조합에 있으면 MATCHED 유지)
+      const buckets = await this.splitByRemainingActiveGames(tx, attendanceIds, id);
+      if (buckets.matched.length > 0) {
+        await tx.attendance.updateMany({
+          where: { id: { in: buckets.matched } },
+          data: { status: 'MATCHED' },
+        });
+      }
+      if (buckets.waiting.length > 0) {
+        await tx.attendance.updateMany({
+          where: { id: { in: buckets.waiting } },
+          data: { status: 'CHECKED_IN' },
+        });
+      }
       return tx.game.update({
         where: { id },
         data: { status: 'CANCELED', queueOrder: null },
@@ -228,6 +261,34 @@ export class GamesService {
     });
     this.realtime.broadcastSnapshot(game.sessionId);
     return toGameResponse(updated);
+  }
+
+  // 특정 게임에서 빠지는 인원들의 다음 상태를 "남은 활성 게임" 기준으로 분류한다
+  // playing: 다른 코트에서 게임 중(상태 변경 금지) / matched: 다른 QUEUED 조합 잔존 / waiting: 완전히 자유
+  private async splitByRemainingActiveGames(
+    tx: Prisma.TransactionClient,
+    attendanceIds: string[],
+    excludeGameId: string,
+  ): Promise<{ playing: string[]; matched: string[]; waiting: string[] }> {
+    const remaining = await tx.gamePlayer.findMany({
+      where: {
+        attendanceId: { in: attendanceIds },
+        gameId: { not: excludeGameId },
+        game: { status: { in: ['QUEUED', 'PLAYING'] } },
+      },
+      select: { attendanceId: true, game: { select: { status: true } } },
+    });
+
+    const playingSet = new Set<string>();
+    const queuedSet = new Set<string>();
+    for (const row of remaining) {
+      (row.game.status === 'PLAYING' ? playingSet : queuedSet).add(row.attendanceId);
+    }
+    return {
+      playing: attendanceIds.filter((id) => playingSet.has(id)),
+      matched: attendanceIds.filter((id) => !playingSet.has(id) && queuedSet.has(id)),
+      waiting: attendanceIds.filter((id) => !playingSet.has(id) && !queuedSet.has(id)),
+    };
   }
 
   private async findGameOrThrow(id: string) {
