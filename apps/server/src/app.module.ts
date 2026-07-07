@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
 import { AttendancesModule } from './attendances/attendances.module';
 import { AuthController } from './auth/auth.controller';
 import { CourtsModule } from './courts/courts.module';
@@ -14,6 +15,7 @@ import { SessionsModule } from './sessions/sessions.module';
 
 @Module({
   imports: [
+    SentryModule.forRoot(), // 에러 수집 — 초기화 자체는 src/instrument.ts (DSN 없으면 비활성)
     // .env를 읽어 process.env에 채우는 담당 (Prisma CLI 쪽은 prisma.config.ts의 dotenv가 별도 담당)
     // isGlobal: 모든 모듈에서 ConfigModule 재import 없이 ConfigService 주입 가능
     ConfigModule.forRoot({ isGlobal: true }),
@@ -30,6 +32,10 @@ import { SessionsModule } from './sessions/sessions.module';
     // 다음 단계: 실시간(Socket.IO) 게이트웨이
   ],
   controllers: [HealthController, AuthController],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }], // 모든 HTTP 요청에 rate limit 적용
+  providers: [
+    // 예상 밖 예외(500대)만 Sentry로 보고 — HttpException(우리의 4xx 정상 흐름)은 미전송
+    { provide: APP_FILTER, useClass: SentryGlobalFilter },
+    { provide: APP_GUARD, useClass: ThrottlerGuard }, // 모든 HTTP 요청에 rate limit 적용
+  ],
 })
 export class AppModule {}

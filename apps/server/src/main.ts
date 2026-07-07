@@ -1,6 +1,8 @@
 // dotenv를 가장 먼저 로드 — 게이트웨이 데코레이터(CORS)처럼 모듈 import 시점에
 // 평가되는 코드가 env를 읽으므로 ConfigModule(부팅 후 로드)보다 앞서야 한다
 import 'dotenv/config';
+// Sentry는 dotenv 직후·나머지 전부보다 먼저 (자동 계측이 모듈 로드에 후킹되므로)
+import './instrument';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';

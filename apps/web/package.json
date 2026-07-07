@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@letscok/shared-types": "workspace:*",
+    "@sentry/nextjs": "^10.63.0",
     "motion": "^12.42.2",
     "next": "^15.3.0",
     "react": "^19.0.0",
