@@ -6,6 +6,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { IApiResponse, IMember } from '@letscok/shared-types';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { MembersService } from './members.service';
@@ -15,7 +16,9 @@ import { MembersService } from './members.service';
 export class MembersController {
   constructor(private readonly membersService: MembersService) {}
 
+  // 등록은 전역 제한보다 엄격하게 — 스크립트로 가짜 회원을 쏟아붓는 것 방지
   @Post()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   async create(@Body() dto: CreateMemberDto): Promise<IApiResponse<IMember>> {
     return { success: true, data: await this.membersService.create(dto) };
   }

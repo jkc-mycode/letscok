@@ -3,14 +3,23 @@
 import 'dotenv/config';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Render의 리버스 프록시 뒤에서 실제 클라이언트 IP를 읽기 위함 —
+  // 없으면 rate limit이 프록시 IP 기준으로 묶여 전체 사용자가 제한을 공유하게 된다
+  app.set('trust proxy', 1);
+
+  // 표준 보안 헤더 (클릭재킹·MIME 스니핑 등 기본 방어)
+  app.use(helmet());
 
   // 브라우저(Vercel의 웹)가 다른 오리진인 백엔드(Render)로 요청할 수 있게 CORS 허용
-  // 허용 목록은 환경변수로 관리 — 로컬은 localhost:3000, 배포 후엔 실제 도메인을 콤마로 추가
-  const corsOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:3000')
+  // 허용 목록은 환경변수로 관리 — 로컬은 localhost:3001, 배포 후엔 실제 도메인을 콤마로 추가
+  const corsOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:3001')
     .split(',')
     .map((origin) => origin.trim());
   app.enableCors({ origin: corsOrigins, credentials: true });
