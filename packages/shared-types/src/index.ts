@@ -131,6 +131,34 @@ export interface IAdminLoginDto {
   passcode: string;
 }
 
+// ===== 게임 추천 (GET /sessions/:id/game-recommendations) =====
+
+// 후보 성격 — 클라이언트가 한국어 라벨로 표시 (공정성/새 조합/믹스)
+export const RecommendationKind = {
+  FAIRNESS: 'FAIRNESS', // 가장 오래 기다린 사람 우선
+  FRESH: 'FRESH', // 오늘 안 만난 사람 위주
+  MIX: 'MIX', // 상위권 중 무작위
+} as const;
+export type RecommendationKind =
+  (typeof RecommendationKind)[keyof typeof RecommendationKind];
+
+export interface IRecommendedPlayer {
+  attendanceId: string;
+  memberId: string;
+  name: string;
+  grade: Grade;
+  isGuest: boolean;
+  gamesPlayed: number;
+  waitingMinutes: number; // 요청 시점 기준 대기 분
+  borrowedFrom: 'QUEUED' | 'PLAYING' | null; // null = 미배정 대기에서 선발, 그 외 = 차용 인원
+}
+
+export interface IGameRecommendation {
+  kind: RecommendationKind;
+  players: IRecommendedPlayer[]; // 4명
+  repeatPairCount: number; // 4명 중 오늘 이미 같은 게임을 뛴 쌍의 수 (참고 표시용)
+}
+
 // ===== 실시간 세션 스냅샷 (GET /sessions/current, 재연결 시 재조회) =====
 
 export interface ISessionSnapshot {

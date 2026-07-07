@@ -1,21 +1,37 @@
 import {
   Body,
   Controller,
+  Get,
   Param,
   Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { IApiResponse, IGame } from '@letscok/shared-types';
+import { IApiResponse, IGame, IGameRecommendation } from '@letscok/shared-types';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { AssignGameDto, CreateGameDto, UpdateGameOrderDto } from './dto/game.dtos';
 import { GamesService } from './games.service';
+import { RecommendationsService } from './recommendations.service';
 
 // 조합·배정·종료·해체·순서 변경은 전부 운영진 작업
 @Controller()
 @UseGuards(AdminGuard)
 export class GamesController {
-  constructor(private readonly gamesService: GamesService) {}
+  constructor(
+    private readonly gamesService: GamesService,
+    private readonly recommendationsService: RecommendationsService,
+  ) {}
+
+  // 다음 게임 후보 조합 추천 — 계산만, 대기 추가는 기존 게임 생성 API 재사용
+  @Get('sessions/:sessionId/game-recommendations')
+  async recommend(
+    @Param('sessionId') sessionId: string,
+  ): Promise<IApiResponse<IGameRecommendation[]>> {
+    return {
+      success: true,
+      data: await this.recommendationsService.recommend(sessionId),
+    };
+  }
 
   @Post('sessions/:sessionId/games')
   async create(
