@@ -178,6 +178,7 @@ function RegisterPanel({
   const [birthInput, setBirthInput] = useState(''); // 화면 표시용 (자동 하이픈)
   const [grade, setGrade] = useState<Grade | null>(null);
   const [isGuest, setIsGuest] = useState(false);
+  const [consent, setConsent] = useState(false); // 개인정보 수집 동의 — 서버도 필수 검증
   const [error, setError] = useState<string | null>(null);
 
   // 캘린더 피커는 연도 이동이 불편해서(1997년까지 수백 번 클릭) 숫자 8자리 직접 입력 방식
@@ -203,12 +204,12 @@ function RegisterPanel({
   };
 
   const submit = async () => {
-    if (!name.trim() || !birthDate || !grade || busy) return;
+    if (!name.trim() || !birthDate || !grade || !consent || busy) return;
     setError(null);
     try {
       const member = await api<IMember>('/members', {
         method: 'POST',
-        body: { name: name.trim(), birthDate, grade, isGuest },
+        body: { name: name.trim(), birthDate, grade, isGuest, consent },
       });
       await onDone(member); // 등록 즉시 체크인까지
     } catch (e) {
@@ -268,9 +269,32 @@ function RegisterPanel({
         </button>
       </div>
 
+      {/* 개인정보 수집 동의 — 친목단체라 법적 의무는 아니나 모임원 신뢰용으로 명시 */}
+      <button
+        onClick={() => setConsent((v) => !v)}
+        className={`rounded-xl border p-4 text-left ${
+          consent ? 'border-court bg-court/10' : 'border-line bg-panel'
+        }`}
+      >
+        <span className="flex items-center gap-2 text-sm font-medium">
+          <span
+            className={`flex h-5 w-5 items-center justify-center rounded border text-xs ${
+              consent ? 'border-court bg-court text-bg' : 'border-line text-transparent'
+            }`}
+          >
+            ✓
+          </span>
+          개인정보 수집·이용에 동의합니다
+        </span>
+        <span className="mt-2 block pl-7 text-xs leading-relaxed text-dim">
+          수집 항목: 이름, 생년월일, 급수 · 목적: 모임 출석·게임 배정 관리, 동명이인 구분 ·
+          보관: 모임 운영 기간 (삭제 요청 시 운영진이 지체 없이 삭제)
+        </span>
+      </button>
+
       <button
         onClick={() => void submit()}
-        disabled={!name.trim() || !birthDate || !grade || busy}
+        disabled={!name.trim() || !birthDate || !grade || !consent || busy}
         className="h-14 rounded-xl bg-court text-lg font-bold text-bg disabled:bg-panel2 disabled:text-faint"
       >
         등록하고 체크인

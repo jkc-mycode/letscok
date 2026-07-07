@@ -29,6 +29,7 @@ export class MembersService {
         birthDate: new Date(dto.birthDate),
         grade: dto.grade,
         isGuest: dto.isGuest,
+        consentedAt: new Date(), // DTO에서 consent=true 검증 통과한 시각을 동의 이력으로 기록
       },
     });
     return toMemberResponse(member);

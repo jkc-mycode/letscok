@@ -104,6 +104,7 @@ export interface ICreateMemberDto {
   birthDate: string; // YYYY-MM-DD
   grade: Grade;
   isGuest: boolean;
+  consent: boolean; // 개인정보 수집·이용 동의 (true여야 등록 가능, 서버가 동의 시각 기록)
 }
 
 export interface ICheckInDto {

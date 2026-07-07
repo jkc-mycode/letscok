@@ -1,5 +1,5 @@
 import { Grade, ICreateMemberDto } from '@letscok/shared-types';
-import { IsBoolean, IsIn, IsString, Length, Matches } from 'class-validator';
+import { Equals, IsBoolean, IsIn, IsString, Length, Matches } from 'class-validator';
 
 export class CreateMemberDto implements ICreateMemberDto {
   @IsString({ message: '이름을 입력해주세요.' })
@@ -16,4 +16,7 @@ export class CreateMemberDto implements ICreateMemberDto {
 
   @IsBoolean({ message: '게스트 여부를 선택해주세요.' })
   isGuest: boolean;
+
+  @Equals(true, { message: '개인정보 수집·이용에 동의해주세요.' })
+  consent: boolean;
 }

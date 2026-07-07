@@ -47,11 +47,12 @@ model Member {
   id        String    @id @default(cuid())
   name      String
   birthDate DateTime  @db.Date // 동명이인 구분용으로 검색 결과에 노출
-  grade     Grade
-  isGuest   Boolean   @default(false)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime? // soft-delete
+  grade       Grade
+  isGuest     Boolean   @default(false)
+  consentedAt DateTime? // 개인정보 수집 동의 시각 — 등록 시 기록 (도입 전 기존 데이터는 null)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime? // soft-delete
 
   attendances Attendance[]
 
