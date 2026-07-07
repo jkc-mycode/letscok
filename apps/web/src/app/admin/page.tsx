@@ -4,10 +4,12 @@ import {
   IAttendance,
   ICourt,
   IGame,
+  IGameRecommendation,
   ISessionSnapshot,
+  RecommendationKind,
 } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { GradeBadge, PlayerGrid, Toast } from '@/components/badges';
 import { MotionCard } from '@/components/motion-card';
 import { api, ApiError, clearPasscode, getPasscode, savePasscode } from '@/lib/api';
@@ -171,6 +173,7 @@ function BoardBody({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [courtsOpen, setCourtsOpen] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
+  const [recommendOpen, setRecommendOpen] = useState(false);
 
   const { session, courts, attendances, games } = snapshot;
 
@@ -322,11 +325,18 @@ function BoardBody({
             <p className="pt-2 text-center text-xs text-faint">퇴장 {leftCount}명</p>
           )}
           {/* 조합 만들기 바 */}
-          <div className="sticky bottom-0 mt-auto pt-2">
+          <div className="sticky bottom-0 mt-auto flex gap-2 pt-2">
+            <button
+              onClick={() => setRecommendOpen(true)}
+              disabled={busy}
+              className="h-14 rounded-xl border border-court/40 px-4 text-base font-bold text-court disabled:opacity-50"
+            >
+              게임 추천
+            </button>
             <button
               onClick={() => void createGame()}
               disabled={selected.size !== 4 || busy}
-              className="h-14 w-full rounded-xl bg-amber text-base font-bold text-bg disabled:bg-panel2 disabled:text-faint"
+              className="h-14 flex-1 rounded-xl bg-amber text-base font-bold text-bg disabled:bg-panel2 disabled:text-faint"
             >
               조합 만들기 ({selected.size}/4)
             </button>
@@ -334,8 +344,159 @@ function BoardBody({
         </Zone>
       </div>
 
+      {recommendOpen && (
+        <RecommendModal
+          sessionId={session.id}
+          run={run}
+          busy={busy}
+          onClose={() => setRecommendOpen(false)}
+        />
+      )}
       {toast && <Toast message={toast} />}
     </main>
+  );
+}
+
+// ===== 게임 추천 모달 =====
+
+// 후보 성격별 표시 — 서버의 RecommendationKind와 1:1
+const KIND_META: Record<
+  RecommendationKind,
+  { label: string; desc: string; text: string; border: string }
+> = {
+  FAIRNESS: { label: '공정성', desc: '오래 기다린 사람부터', text: 'text-court', border: 'border-court/40' },
+  FRESH: { label: '새 조합', desc: '오늘 안 만난 사람 위주', text: 'text-sky', border: 'border-sky/40' },
+  MIX: { label: '믹스', desc: '상위 조합에서 살짝 섞음', text: 'text-amber', border: 'border-amber/40' },
+};
+
+function RecommendModal({
+  sessionId,
+  run,
+  busy,
+  onClose,
+}: {
+  sessionId: string;
+  run: (a: () => Promise<unknown>) => Promise<void>;
+  busy: boolean;
+  onClose: () => void;
+}) {
+  const [candidates, setCandidates] = useState<IGameRecommendation[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setCandidates(null);
+    setError(null);
+    try {
+      setCandidates(
+        await api<IGameRecommendation[]>(`/sessions/${sessionId}/game-recommendations`, {
+          admin: true,
+        }),
+      );
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '추천을 불러오지 못했습니다.');
+    }
+  }, [sessionId]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // 추천은 참고용 초안 — 대기 추가는 기존 게임 생성 API 그대로
+  const addToQueue = (rec: IGameRecommendation) =>
+    run(async () => {
+      await api(`/sessions/${sessionId}/games`, {
+        method: 'POST',
+        admin: true,
+        body: { attendanceIds: rec.players.map((p) => p.attendanceId) },
+      });
+      onClose();
+    });
+
+  return (
+    <div
+      onClick={onClose}
+      className="fade-in fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="flex max-h-[85dvh] w-full max-w-3xl flex-col rounded-2xl border border-line bg-panel p-5"
+      >
+        <div className="flex items-center gap-3 pb-3">
+          <h2 className="text-lg font-bold text-court">게임 추천</h2>
+          <p className="text-xs text-faint">참고용이에요 — 넣을지는 운영진 마음!</p>
+          <div className="ml-auto flex gap-2">
+            <button
+              onClick={() => void load()}
+              className="h-9 rounded-lg border border-line px-3 text-sm text-dim"
+            >
+              다시 추천
+            </button>
+            <button
+              onClick={onClose}
+              className="h-9 rounded-lg border border-line px-3 text-sm text-dim"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {error && <p className="py-10 text-center text-sm text-coral">{error}</p>}
+          {!error && candidates === null && (
+            <p className="py-10 text-center text-sm text-dim">추천 계산 중...</p>
+          )}
+          {candidates?.length === 0 && (
+            <p className="py-10 text-center text-sm text-faint">
+              추천할 미배정 대기 인원이 없어요
+            </p>
+          )}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {candidates?.map((rec) => {
+              const meta = KIND_META[rec.kind];
+              return (
+                <div
+                  key={rec.kind}
+                  className={`flex flex-col rounded-xl border bg-panel2 p-4 ${meta.border}`}
+                >
+                  <div className="flex items-baseline gap-2">
+                    <span className={`font-bold ${meta.text}`}>{meta.label}</span>
+                    <span className="text-[11px] text-faint">{meta.desc}</span>
+                  </div>
+                  <div className="mt-3 flex flex-col gap-2">
+                    {rec.players.map((player) => (
+                      <div key={player.attendanceId} className="flex items-center gap-1.5 text-sm">
+                        <GradeBadge grade={player.grade} />
+                        <span className="truncate font-medium">{player.name}</span>
+                        {player.isGuest && <span className="text-[10px] text-sky">G</span>}
+                        {player.borrowedFrom && (
+                          <span className="shrink-0 rounded bg-court/15 px-1 py-0.5 text-[10px] font-medium text-court">
+                            {player.borrowedFrom === 'PLAYING' ? '게임 중' : '대기 조합'}
+                          </span>
+                        )}
+                        <span className="tabular ml-auto shrink-0 font-mono text-[11px] text-dim">
+                          {player.gamesPlayed}게임 · {player.waitingMinutes}분
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {rec.repeatPairCount > 0 && (
+                    <p className="mt-2 text-[11px] text-faint">
+                      오늘 같이 뛴 쌍 {rec.repeatPairCount}개 포함
+                    </p>
+                  )}
+                  <button
+                    onClick={() => void addToQueue(rec)}
+                    disabled={busy}
+                    className="mt-3 h-11 rounded-lg bg-court text-sm font-bold text-bg disabled:opacity-50"
+                  >
+                    대기에 추가
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
