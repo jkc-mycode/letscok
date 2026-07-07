@@ -33,12 +33,15 @@ export function MeChip() {
 }
 
 // 게임 참여 4인 그리드 — 관제판·모임원 화면 공용 (highlightMemberId = 본인 강조)
+// overlapIds = 여러 대기 조합에 겹쳐 들어간 인원 (중복 대기 허용 정책 표시용)
 export function PlayerGrid({
   game,
   highlightMemberId,
+  overlapIds,
 }: {
   game: IGame;
   highlightMemberId?: string | null;
+  overlapIds?: Set<string>;
 }) {
   return (
     <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5">
@@ -46,6 +49,8 @@ export function PlayerGrid({
         const member = player.attendance?.member;
         if (!member) return null;
         const isMe = member.id === highlightMemberId;
+        // 대기 조합 카드에 있는데 본인은 다른 코트에서 게임 중 = 미리 짜둔 조합의 차용 인원
+        const isBusy = game.status === 'QUEUED' && player.attendance?.status === 'PLAYING';
         return (
           <div key={player.id} className="flex items-center gap-1.5 text-sm">
             <GradeBadge grade={member.grade} />
@@ -54,6 +59,19 @@ export function PlayerGrid({
             </span>
             {isMe && <MeChip />}
             {member.isGuest && <span className="text-[10px] text-sky">G</span>}
+            {isBusy && (
+              <span className="shrink-0 rounded bg-court/15 px-1 py-0.5 text-[10px] font-medium text-court">
+                게임 중
+              </span>
+            )}
+            {!isBusy && overlapIds?.has(player.attendanceId) && (
+              <span
+                title="다른 대기 조합에도 포함"
+                className="shrink-0 rounded bg-amber/15 px-1 py-0.5 text-[10px] font-medium text-amber"
+              >
+                겹침
+              </span>
+            )}
           </div>
         );
       })}

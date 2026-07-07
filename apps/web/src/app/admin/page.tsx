@@ -193,6 +193,16 @@ function BoardBody({
     () => attendances.filter((a) => a.status === 'CHECKED_IN'),
     [attendances],
   );
+  // 중복 대기 허용 — 두 개 이상의 대기 조합에 들어간 인원 (카드에 "겹침" 표시)
+  const overlapIds = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const game of queuedGames) {
+      for (const player of game.players ?? []) {
+        counts.set(player.attendanceId, (counts.get(player.attendanceId) ?? 0) + 1);
+      }
+    }
+    return new Set([...counts].filter(([, count]) => count >= 2).map(([id]) => id));
+  }, [queuedGames]);
   const leftCount = attendances.filter((a) => a.status === 'LEFT').length;
   const presentCount = attendances.length - leftCount;
 
@@ -287,6 +297,7 @@ function BoardBody({
                 neighborUp={queuedGames[index - 1]}
                 neighborDown={queuedGames[index + 1]}
                 idleCourts={idleCourts}
+                overlapIds={overlapIds}
                 run={run}
               />
             ))}
@@ -493,6 +504,7 @@ function QueueCard({
   neighborUp,
   neighborDown,
   idleCourts,
+  overlapIds,
   run,
 }: {
   game: IGame;
@@ -500,9 +512,16 @@ function QueueCard({
   neighborUp?: IGame;
   neighborDown?: IGame;
   idleCourts: ICourt[];
+  overlapIds: Set<string>;
   run: (a: () => Promise<unknown>) => Promise<void>;
 }) {
   const [assignOpen, setAssignOpen] = useState(false);
+
+  // 미리 짜둔 조합엔 아직 게임 중인 인원이 있을 수 있다 — 전원이 자유로워질 때까지 배정 불가
+  const busyNames = (game.players ?? [])
+    .filter((player) => player.attendance?.status === 'PLAYING')
+    .map((player) => player.attendance?.member?.name)
+    .filter(Boolean);
 
   // 순서 변경 = 이웃 조합과 queueOrder 맞교환
   const swapWith = (neighbor?: IGame) => {
@@ -542,9 +561,13 @@ function QueueCard({
           </button>
         </div>
       </div>
-      <PlayerGrid game={game} />
+      <PlayerGrid game={game} overlapIds={overlapIds} />
       <div className="mt-3 flex gap-2">
-        {assignOpen ? (
+        {busyNames.length > 0 ? (
+          <span className="flex h-11 flex-1 items-center justify-center rounded-lg border border-dashed border-line px-2 text-center text-xs text-faint">
+            {busyNames.join(', ')} 게임 종료 후 배정 가능
+          </span>
+        ) : assignOpen ? (
           idleCourts.length > 0 ? (
             idleCourts.map((court) => (
               <button

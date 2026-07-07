@@ -64,6 +64,16 @@ export default function MyStatusPage() {
   );
   const queuedGames = games.filter((g) => g.status === 'QUEUED');
   const waiting = attendances.filter((a) => a.status === 'CHECKED_IN');
+  // 여러 대기 조합에 겹쳐 들어간 인원 표시 (관제판과 동일 기준)
+  const overlapCounts = new Map<string, number>();
+  for (const game of queuedGames) {
+    for (const player of game.players ?? []) {
+      overlapCounts.set(player.attendanceId, (overlapCounts.get(player.attendanceId) ?? 0) + 1);
+    }
+  }
+  const overlapIds = new Set(
+    [...overlapCounts].filter(([, count]) => count >= 2).map(([id]) => id),
+  );
 
   return (
     <Shell>
@@ -102,7 +112,7 @@ export default function MyStatusPage() {
         {queuedGames.map((game, index) => (
           <MotionCard key={game.id} className="rounded-xl border border-amber/30 bg-panel2 p-4">
             <span className="font-bold text-amber">다음 게임 {index + 1}</span>
-            <PlayerGrid game={game} highlightMemberId={memberId} />
+            <PlayerGrid game={game} highlightMemberId={memberId} overlapIds={overlapIds} />
           </MotionCard>
         ))}
       </AnimatePresence>
