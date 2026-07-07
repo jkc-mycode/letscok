@@ -307,7 +307,29 @@ function BoardBody({
           </AnimatePresence>
         </Zone>
 
-        <Zone title="대기 인원" accent="text-ink" count={waiting.length}>
+        <Zone
+          title="대기 인원"
+          accent="text-ink"
+          count={waiting.length}
+          footer={
+            <>
+              <button
+                onClick={() => setRecommendOpen(true)}
+                disabled={busy}
+                className="h-14 rounded-xl border border-court/40 px-4 text-base font-bold text-court disabled:opacity-50"
+              >
+                게임 추천
+              </button>
+              <button
+                onClick={() => void createGame()}
+                disabled={selected.size !== 4 || busy}
+                className="h-14 flex-1 rounded-xl bg-amber text-base font-bold text-bg disabled:bg-panel2 disabled:text-faint"
+              >
+                조합 만들기 ({selected.size}/4)
+              </button>
+            </>
+          }
+        >
           {waiting.length === 0 && <Empty>체크인한 대기 인원이 없어요</Empty>}
           <AnimatePresence initial={false}>
             {waiting.map((attendance) => (
@@ -324,23 +346,6 @@ function BoardBody({
           {leftCount > 0 && (
             <p className="pt-2 text-center text-xs text-faint">퇴장 {leftCount}명</p>
           )}
-          {/* 조합 만들기 바 */}
-          <div className="sticky bottom-0 mt-auto flex gap-2 pt-2">
-            <button
-              onClick={() => setRecommendOpen(true)}
-              disabled={busy}
-              className="h-14 rounded-xl border border-court/40 px-4 text-base font-bold text-court disabled:opacity-50"
-            >
-              게임 추천
-            </button>
-            <button
-              onClick={() => void createGame()}
-              disabled={selected.size !== 4 || busy}
-              className="h-14 flex-1 rounded-xl bg-amber text-base font-bold text-bg disabled:bg-panel2 disabled:text-faint"
-            >
-              조합 만들기 ({selected.size}/4)
-            </button>
-          </div>
         </Zone>
       </div>
 
@@ -507,11 +512,13 @@ function Zone({
   accent,
   count,
   children,
+  footer,
 }: {
   title: string;
   accent: string;
   count: number;
   children: React.ReactNode;
+  footer?: React.ReactNode; // 스크롤 영역 밖 하단 고정 바 (목록이 밑으로 비치지 않음)
 }) {
   return (
     <section className="flex min-h-0 flex-col rounded-2xl border border-line bg-panel/70">
@@ -522,6 +529,7 @@ function Zone({
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3">
         {children}
       </div>
+      {footer && <div className="flex gap-2 p-3">{footer}</div>}
     </section>
   );
 }

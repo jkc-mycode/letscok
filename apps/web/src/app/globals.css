@@ -35,6 +35,26 @@ body {
     160px 160px;
 }
 
+/* 스크롤바 — 기본 흰색 스크롤바가 다크 테마에서 튀어서 얇은 톤온톤으로 통일 */
+* {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: var(--color-line) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-line);
+  border-radius: 3px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-faint);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 /* 타이머 숫자 정렬 — 자릿수가 바뀌어도 흔들리지 않게 */
 .tabular {
   font-variant-numeric: tabular-nums;
