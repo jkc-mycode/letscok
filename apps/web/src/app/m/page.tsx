@@ -77,6 +77,13 @@ export default function MyStatusPage() {
 
   return (
     <Shell>
+      {/* 로고 = 홈 링크 (스크롤하면 아래 sticky 배너가 상단을 대체) */}
+      <Link
+        href="/"
+        className="self-center text-[11px] font-medium tracking-[0.3em] text-court/70 transition-opacity hover:opacity-70"
+      >
+        LETSCOK
+      </Link>
       <MyBanner me={me} waiting={waiting} now={now} />
 
       {/* 게임 중 — 관제판과 동일 정보, 버튼만 없음 */}
@@ -222,7 +229,12 @@ function Shell({ children }: { children: React.ReactNode }) {
 function Centered({ title, desc }: { title: string; desc: string }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
-      <p className="text-xs font-medium tracking-[0.3em] text-court">LETSCOK</p>
+      <Link
+        href="/"
+        className="text-xs font-medium tracking-[0.3em] text-court transition-opacity hover:opacity-70"
+      >
+        LETSCOK
+      </Link>
       <h1 className="text-2xl font-bold">{title}</h1>
       <p className="text-dim">{desc}</p>
     </div>

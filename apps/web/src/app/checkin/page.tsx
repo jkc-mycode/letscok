@@ -4,6 +4,7 @@
 // 체크인 성공 시 memberId를 저장하고 내 상태 화면(/m)으로 이동
 
 import { Gender, Grade, IAttendance, IMember } from '@letscok/shared-types';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { GenderMarker, GradeBadge, Toast } from '@/components/badges';
@@ -61,7 +62,12 @@ export default function CheckinPage() {
   return (
     <Shell>
       <header className="text-center">
-        <p className="text-xs font-medium tracking-[0.3em] text-court">LETSCOK</p>
+        <Link
+          href="/"
+          className="inline-block text-xs font-medium tracking-[0.3em] text-court transition-opacity hover:opacity-70"
+        >
+          LETSCOK
+        </Link>
         <h1 className="mt-1 text-2xl font-bold">
           {mode === 'search' ? '이름으로 체크인' : '처음 오셨네요!'}
         </h1>

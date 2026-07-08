@@ -9,6 +9,7 @@ import {
   RecommendationKind,
 } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { GenderMarker, GradeBadge, PlayerGrid, Toast } from '@/components/badges';
 import { MotionCard } from '@/components/motion-card';
@@ -62,7 +63,12 @@ function LoginGate({ onSuccess }: { onSuccess: () => void }) {
   return (
     <main className="fade-in flex min-h-dvh flex-col items-center justify-center gap-8 p-6">
       <div className="text-center">
-        <p className="text-sm font-medium tracking-[0.3em] text-court">LETSCOK</p>
+        <Link
+          href="/"
+          className="inline-block text-sm font-medium tracking-[0.3em] text-court transition-opacity hover:opacity-70"
+        >
+          LETSCOK
+        </Link>
         <h1 className="mt-2 text-4xl font-bold">렛츠콕 관제판</h1>
         <p className="mt-2 text-dim">운영진 패스코드를 입력해주세요</p>
       </div>
@@ -140,7 +146,12 @@ function StartScreen({
   return (
     <main className="fade-in flex min-h-dvh flex-col items-center justify-center gap-8">
       <div className="text-center">
-        <p className="text-sm font-medium tracking-[0.3em] text-court">LETSCOK</p>
+        <Link
+          href="/"
+          className="inline-block text-sm font-medium tracking-[0.3em] text-court transition-opacity hover:opacity-70"
+        >
+          LETSCOK
+        </Link>
         <h1 className="mt-2 text-4xl font-bold">아직 모임 전이에요</h1>
         <p className="mt-2 text-dim">모임을 시작하면 체크인을 받을 수 있어요</p>
       </div>
@@ -241,9 +252,11 @@ function BoardBody({
     <main className="fade-in flex h-dvh flex-col p-4">
       {/* 헤더 */}
       <header className="flex items-center gap-4 pb-3">
-        <h1 className="text-xl font-bold">
-          렛츠콕 <span className="text-court">관제판</span>
-        </h1>
+        <Link href="/" className="transition-opacity hover:opacity-70" title="홈으로">
+          <h1 className="text-xl font-bold">
+            렛츠콕 <span className="text-court">관제판</span>
+          </h1>
+        </Link>
         <p className="text-sm text-dim">
           {session.date} · 출석 {presentCount}명
         </p>
