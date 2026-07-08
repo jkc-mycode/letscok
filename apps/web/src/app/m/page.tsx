@@ -7,7 +7,7 @@ import { IAttendance } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { GradeBadge, MeChip, PlayerGrid } from '@/components/badges';
+import { GenderMarker, GradeBadge, MeChip, PlayerGrid } from '@/components/badges';
 import { MotionCard } from '@/components/motion-card';
 import { getMemberId } from '@/lib/member';
 import {
@@ -135,6 +135,7 @@ export default function MyStatusPage() {
               <span className={`font-medium ${isMe ? 'font-bold text-court' : ''}`}>
                 {member.name}
               </span>
+              <GenderMarker gender={member.gender} />
               {isMe && <MeChip />}
               {member.isGuest && <span className="text-[10px] text-sky">게스트</span>}
               <span className="tabular ml-auto font-mono text-xs text-dim">

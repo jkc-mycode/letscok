@@ -15,7 +15,8 @@
   --color-court: #3ecf7a; /* 코트 그린 — 게임 중 */
   --color-amber: #ffb224; /* 대기 조합 */
   --color-coral: #ff6b57; /* 경고·해체 */
-  --color-sky: #6db8ff; /* 게스트 */
+  --color-sky: #6db8ff; /* 게스트·남성(♂) */
+  --color-pink: #ff8fab; /* 여성(♀) */
 }
 
 body {

@@ -1,6 +1,6 @@
 'use client';
 
-import { Grade, IGame } from '@letscok/shared-types';
+import { Gender, Grade, IGame } from '@letscok/shared-types';
 import { motion } from 'motion/react';
 
 // 급수 배지 색 — 고수(A)일수록 따뜻한 색 (관제판·모임원 화면 공용)
@@ -19,6 +19,20 @@ export function GradeBadge({ grade }: { grade: Grade }) {
       className={`inline-flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold ${GRADE_STYLE[grade]}`}
     >
       {grade}
+    </span>
+  );
+}
+
+// 성별 마커 — 남성 ♂(파랑)·여성 ♀(분홍). 미지정(null)은 표시하지 않음
+// (복식 종목 판단용 — 이름 옆 어디서든 공용)
+export function GenderMarker({ gender }: { gender: Gender | null }) {
+  if (!gender) return null;
+  return (
+    <span
+      className={`shrink-0 text-xs ${gender === 'MALE' ? 'text-sky' : 'text-pink'}`}
+      title={gender === 'MALE' ? '남성' : '여성'}
+    >
+      {gender === 'MALE' ? '♂' : '♀'}
     </span>
   );
 }
@@ -57,6 +71,7 @@ export function PlayerGrid({
             <span className={`truncate font-medium ${isMe ? 'font-bold text-court' : ''}`}>
               {member.name}
             </span>
+            <GenderMarker gender={member.gender} />
             {isMe && <MeChip />}
             {member.isGuest && <span className="text-[10px] text-sky">G</span>}
             {isBusy && (

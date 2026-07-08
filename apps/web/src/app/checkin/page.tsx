@@ -3,10 +3,10 @@
 // QR 스캔 진입점 — 이름 검색으로 본인 선택 후 체크인, 처음이면 등록
 // 체크인 성공 시 memberId를 저장하고 내 상태 화면(/m)으로 이동
 
-import { Grade, IAttendance, IMember } from '@letscok/shared-types';
+import { Gender, Grade, IAttendance, IMember } from '@letscok/shared-types';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { GradeBadge, Toast } from '@/components/badges';
+import { GenderMarker, GradeBadge, Toast } from '@/components/badges';
 import { api, ApiError } from '@/lib/api';
 import { saveMemberId } from '@/lib/member';
 import { useSnapshot } from '@/lib/use-snapshot';
@@ -139,6 +139,7 @@ function SearchPanel({
           >
             <GradeBadge grade={member.grade} />
             <span className="font-medium">{member.name}</span>
+            <GenderMarker gender={member.gender} />
             {member.isGuest && <span className="text-[10px] text-sky">게스트</span>}
             {/* 동명이인 구분용 생년월일 노출 */}
             <span className="ml-auto text-sm text-dim">{member.birthDate}</span>
@@ -177,6 +178,7 @@ function RegisterPanel({
   const [name, setName] = useState('');
   const [birthInput, setBirthInput] = useState(''); // 화면 표시용 (자동 하이픈)
   const [grade, setGrade] = useState<Grade | null>(null);
+  const [gender, setGender] = useState<Gender | null>(null); // 복식 종목용 — 필수
   const [isGuest, setIsGuest] = useState(false);
   const [consent, setConsent] = useState(false); // 개인정보 수집 동의 — 서버도 필수 검증
   const [error, setError] = useState<string | null>(null);
@@ -204,12 +206,12 @@ function RegisterPanel({
   };
 
   const submit = async () => {
-    if (!name.trim() || !birthDate || !grade || !consent || busy) return;
+    if (!name.trim() || !birthDate || !grade || !gender || !consent || busy) return;
     setError(null);
     try {
       const member = await api<IMember>('/members', {
         method: 'POST',
-        body: { name: name.trim(), birthDate, grade, isGuest, consent },
+        body: { name: name.trim(), birthDate, grade, gender, isGuest, consent },
       });
       await onDone(member); // 등록 즉시 체크인까지
     } catch (e) {
@@ -258,6 +260,27 @@ function RegisterPanel({
             ))}
           </div>
         </div>
+        <div>
+          <p className="mb-2 text-sm text-dim">성별 <span className="text-faint">— 복식 조 편성에 쓰여요</span></p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => setGender('MALE')}
+              className={`h-12 rounded-xl border font-bold ${
+                gender === 'MALE' ? 'border-sky bg-sky/15 text-sky' : 'border-line bg-panel text-dim'
+              }`}
+            >
+              ♂ 남
+            </button>
+            <button
+              onClick={() => setGender('FEMALE')}
+              className={`h-12 rounded-xl border font-bold ${
+                gender === 'FEMALE' ? 'border-pink bg-pink/15 text-pink' : 'border-line bg-panel text-dim'
+              }`}
+            >
+              ♀ 여
+            </button>
+          </div>
+        </div>
         <button
           onClick={() => setIsGuest((v) => !v)}
           className={`flex h-14 items-center justify-between rounded-xl border px-5 ${
@@ -287,14 +310,14 @@ function RegisterPanel({
           개인정보 수집·이용에 동의합니다
         </span>
         <span className="mt-2 block pl-7 text-xs leading-relaxed text-dim">
-          수집 항목: 이름, 생년월일, 급수 · 목적: 모임 출석·게임 배정 관리, 동명이인 구분 ·
+          수집 항목: 이름, 생년월일, 급수, 성별 · 목적: 모임 출석·게임 배정 관리, 동명이인 구분 ·
           보관: 모임 운영 기간 (삭제 요청 시 운영진이 지체 없이 삭제)
         </span>
       </button>
 
       <button
         onClick={() => void submit()}
-        disabled={!name.trim() || !birthDate || !grade || !consent || busy}
+        disabled={!name.trim() || !birthDate || !grade || !gender || !consent || busy}
         className="h-14 rounded-xl bg-court text-lg font-bold text-bg disabled:bg-panel2 disabled:text-faint"
       >
         등록하고 체크인

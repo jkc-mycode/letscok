@@ -10,7 +10,7 @@ import {
 } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { GradeBadge, PlayerGrid, Toast } from '@/components/badges';
+import { GenderMarker, GradeBadge, PlayerGrid, Toast } from '@/components/badges';
 import { MotionCard } from '@/components/motion-card';
 import { api, ApiError, clearPasscode, getPasscode, savePasscode } from '@/lib/api';
 import {
@@ -462,15 +462,20 @@ function RecommendModal({
                   key={rec.kind}
                   className={`flex flex-col rounded-xl border bg-panel2 p-4 ${meta.border}`}
                 >
-                  <div className="flex items-baseline gap-2">
-                    <span className={`font-bold ${meta.text}`}>{meta.label}</span>
-                    <span className="text-[11px] text-faint">{meta.desc}</span>
+                  {/* 종류 라벨 + 성별 구성(혼복/남복/여복/혼성 N:N)을 한 줄, 설명은 아래 줄 */}
+                  <div className="flex items-center gap-2">
+                    <span className={`shrink-0 font-bold ${meta.text}`}>{meta.label}</span>
+                    <span className="ml-auto shrink-0 rounded bg-panel px-1.5 py-0.5 text-[10px] font-medium text-dim">
+                      {rec.genderLabel}
+                    </span>
                   </div>
+                  <span className="mt-0.5 text-[11px] text-faint">{meta.desc}</span>
                   <div className="mt-3 flex flex-col gap-2">
                     {rec.players.map((player) => (
                       <div key={player.attendanceId} className="flex items-center gap-1.5 text-sm">
                         <GradeBadge grade={player.grade} />
                         <span className="truncate font-medium">{player.name}</span>
+                        <GenderMarker gender={player.gender} />
                         {player.isGuest && <span className="text-[10px] text-sky">G</span>}
                         {player.borrowedFrom && (
                           <span className="shrink-0 rounded bg-court/15 px-1 py-0.5 text-[10px] font-medium text-court">
@@ -805,6 +810,7 @@ function WaitingRow({
     >
       <GradeBadge grade={member.grade} />
       <span className="font-medium">{member.name}</span>
+      <GenderMarker gender={member.gender} />
       {member.isGuest && <span className="text-[10px] text-sky">게스트</span>}
       <span className="tabular ml-auto font-mono text-xs text-dim">
         {attendance.gamesPlayed}게임 · {formatWaitingMinutes(attendance.waitingSince, now)}
