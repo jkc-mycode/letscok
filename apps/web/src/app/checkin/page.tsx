@@ -5,8 +5,8 @@
 
 import { Gender, Grade, IAttendance, IMember } from '@letscok/shared-types';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { GenderMarker, GradeBadge, Toast } from '@/components/badges';
 import { api, ApiError } from '@/lib/api';
 import { saveMemberId } from '@/lib/member';
@@ -14,8 +14,21 @@ import { useSnapshot } from '@/lib/use-snapshot';
 
 const GRADES: Grade[] = ['A', 'B', 'C', 'D', 'E', 'F'];
 
+// useSearchParams는 Suspense 경계 안에서만 안전 (App Router 프리렌더 대응)
 export default function CheckinPage() {
+  return (
+    <Suspense
+      fallback={<Shell><p className="text-center text-dim">불러오는 중...</p></Shell>}
+    >
+      <CheckinInner />
+    </Suspense>
+  );
+}
+
+function CheckinInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const code = searchParams.get('c'); // 현장 QR이 실어준 오늘 코드 — 체크인 요청에 그대로 전달
   const { snapshot, noSession, loading } = useSnapshot();
   const [mode, setMode] = useState<'search' | 'register'>('search');
   const [toast, setToast] = useState<string | null>(null);
@@ -27,7 +40,7 @@ export default function CheckinPage() {
     try {
       await api<IAttendance>(`/sessions/${snapshot.session.id}/attendances`, {
         method: 'POST',
-        body: { memberId: member.id },
+        body: { memberId: member.id, code },
       });
       saveMemberId(member.id);
       router.replace('/m');
@@ -72,6 +85,13 @@ export default function CheckinPage() {
           {mode === 'search' ? '이름으로 체크인' : '처음 오셨네요!'}
         </h1>
       </header>
+
+      {/* 코드 없이 진입(바 URL·지난 QR) — 현장 QR로 유도. 체크인 시 서버도 403으로 막음 */}
+      {!code && (
+        <div className="rounded-xl border border-amber/40 bg-amber/10 p-3 text-center text-sm text-amber">
+          현장의 <b>오늘 QR</b>을 스캔해 들어와주세요
+        </div>
+      )}
 
       {mode === 'search' ? (
         <SearchPanel busy={busy} onSelect={checkIn} onRegister={() => setMode('register')} />
