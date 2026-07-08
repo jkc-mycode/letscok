@@ -118,6 +118,12 @@ export interface ICreateMemberDto {
 
 export interface ICheckInDto {
   memberId: string;
+  code?: string; // 현장 체크인 코드(QR ?c=) — 세션에 코드가 있으면 서버가 대조, 불일치·누락 시 거부
+}
+
+// 진행 중 세션의 현장 체크인 코드 (운영진 전용 조회 — QR 렌더용). 공개 스냅샷엔 절대 미포함
+export interface ICheckInCodeResponse {
+  code: string | null;
 }
 
 export interface ICreateCourtDto {

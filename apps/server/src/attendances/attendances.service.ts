@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -19,7 +20,13 @@ export class AttendancesService {
   ) {}
 
   async checkIn(sessionId: string, dto: CheckInDto): Promise<IAttendance> {
-    await this.sessionsService.findOpenSessionOrThrow(sessionId);
+    const session = await this.sessionsService.findOpenSessionOrThrow(sessionId);
+
+    // 현장 코드 대조 — 세션에 코드가 있으면 QR로 받은 code가 일치해야 통과
+    // (코드 없는 레거시 세션은 grandfather로 통과 — 배포 시 진행 중이던 세션이 안 깨지게)
+    if (session.checkInCode && dto.code !== session.checkInCode) {
+      throw new ForbiddenException('현장 QR을 스캔해 체크인해주세요.');
+    }
 
     const member = await this.prisma.member.findFirst({
       where: { id: dto.memberId, deletedAt: null },

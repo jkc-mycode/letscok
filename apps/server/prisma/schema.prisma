@@ -68,11 +68,12 @@ model Member {
 
 // 모임 1회 (하루) — 동시 진행 세션 없음, 항상 최대 1개 OPEN (세션 시작 API에서 보장)
 model Session {
-  id       String        @id @default(cuid())
-  date     DateTime      @db.Date
-  status   SessionStatus @default(OPEN)
-  openedAt DateTime      @default(now())
-  closedAt DateTime?
+  id          String        @id @default(cuid())
+  date        DateTime      @db.Date
+  status      SessionStatus @default(OPEN)
+  checkInCode String? // 현장 체크인 코드 — 세션 생성 시 발급. 공개 응답엔 절대 미노출(운영진 전용 조회)
+  openedAt    DateTime      @default(now())
+  closedAt    DateTime?
 
   courts      Court[]
   attendances Attendance[]

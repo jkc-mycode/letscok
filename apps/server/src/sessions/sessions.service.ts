@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { ISession, ISessionSnapshot } from '@letscok/shared-types';
 import { toSessionResponse } from '../common/mappers/entity.mappers';
+import { generateCheckInCode } from '../common/utils/code.util';
 import { todayKst } from '../common/utils/date.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -27,6 +28,7 @@ export class SessionsService {
 
     // 같은 날 종료했던 세션이 있으면 새로 만들지 않고 재개
     // (실수로 종료한 경우 출석·게임 횟수가 초기화되지 않도록)
+    // 코드는 재발급하지 않음 — 현장에 이미 띄운 QR·이미 체크인한 인원과의 연속성 유지
     const today = todayKst();
     const closedToday = await this.prisma.session.findFirst({
       where: { date: today, status: 'CLOSED' },
@@ -34,14 +36,19 @@ export class SessionsService {
     if (closedToday) {
       const reopened = await this.prisma.session.update({
         where: { id: closedToday.id },
-        data: { status: 'OPEN', closedAt: null },
+        data: {
+          status: 'OPEN',
+          closedAt: null,
+          // 과거(코드 도입 전) 세션을 재개하면 코드가 없으므로 이때 보충 발급
+          ...(closedToday.checkInCode ? {} : { checkInCode: generateCheckInCode() }),
+        },
       });
       this.realtime.broadcastSnapshot(reopened.id); // 종료 화면을 보던 클라이언트 복귀용
       return toSessionResponse(reopened);
     }
 
     const session = await this.prisma.session.create({
-      data: { date: today },
+      data: { date: today, checkInCode: generateCheckInCode() },
     });
     return toSessionResponse(session);
   }
@@ -90,6 +97,19 @@ export class SessionsService {
       throw new NotFoundException('아직 모임이 시작되지 않았습니다.');
     }
     return this.realtime.buildSnapshot(session.id);
+  }
+
+  // 운영진 전용 — 진행 중 세션의 현장 체크인 코드 (QR 렌더용)
+  // 공개 스냅샷엔 코드를 안 싣기 때문에 코드가 필요한 관제판은 이 경로로만 얻는다
+  async getCurrentCheckInCode(): Promise<string | null> {
+    const session = await this.prisma.session.findFirst({
+      where: { status: 'OPEN' },
+      select: { checkInCode: true },
+    });
+    if (!session) {
+      throw new NotFoundException('아직 모임이 시작되지 않았습니다.');
+    }
+    return session.checkInCode;
   }
 
   // 다른 모듈(체크인 등)에서 "진행 중 세션" 존재 검증용
