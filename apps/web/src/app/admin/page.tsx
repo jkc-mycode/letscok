@@ -2,6 +2,7 @@
 
 import {
   IAttendance,
+  ICheckInCodeResponse,
   ICourt,
   IGame,
   IGameRecommendation,
@@ -10,6 +11,7 @@ import {
 } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
 import Link from 'next/link';
+import { QRCodeSVG } from 'qrcode.react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { GenderMarker, GradeBadge, PlayerGrid, Toast } from '@/components/badges';
@@ -188,6 +190,7 @@ function BoardBody({
   const [courtsOpen, setCourtsOpen] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
   const [recommendOpen, setRecommendOpen] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
 
   const { session, courts, attendances, games } = snapshot;
 
@@ -269,6 +272,12 @@ function BoardBody({
           {session.date} · 출석 {presentCount}명
         </p>
         <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setQrOpen(true)}
+            className="h-10 rounded-lg border border-court/50 px-4 text-sm font-medium text-court"
+          >
+            체크인 QR
+          </button>
           <button
             onClick={() => setCourtsOpen((v) => !v)}
             className={`h-10 rounded-lg border px-4 text-sm font-medium ${
@@ -378,6 +387,7 @@ function BoardBody({
           onClose={() => setRecommendOpen(false)}
         />
       )}
+      {qrOpen && <CheckInQrModal onClose={() => setQrOpen(false)} />}
       {toast && <Toast message={toast} />}
     </main>
   );
@@ -526,6 +536,62 @@ function RecommendModal({
             })}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ===== 체크인 QR 모달 =====
+
+// 현장에 띄우는 오늘의 체크인 QR — 코드는 운영진 전용 엔드포인트에서 취득(공개 스냅샷엔 없음)
+// QR은 스캔되려면 밝은 배경이 필요해 다크 테마여도 흰 카드 위에 그린다
+function CheckInQrModal({ onClose }: { onClose: () => void }) {
+  const [code, setCode] = useState<string | null | undefined>(undefined); // undefined=로딩, null=코드없음
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api<ICheckInCodeResponse>('/sessions/current/checkin-code', { admin: true })
+      .then((d) => setCode(d.code))
+      .catch((e) => setError(e instanceof ApiError ? e.message : '코드를 불러오지 못했습니다.'));
+  }, []);
+
+  // 절대 URL — 모임원 폰이 접속할 주소라 현재 배포 도메인 기준
+  const url = code ? `${window.location.origin}/checkin?c=${code}` : '';
+
+  return (
+    <div
+      onClick={onClose}
+      className="fade-in fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="flex w-full max-w-sm flex-col items-center gap-4 rounded-2xl border border-line bg-panel p-6 text-center"
+      >
+        <div className="flex w-full items-center">
+          <h2 className="text-lg font-bold text-court">체크인 QR</h2>
+          <button
+            onClick={onClose}
+            className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
+          >
+            닫기
+          </button>
+        </div>
+
+        {error && <p className="py-8 text-sm text-coral">{error}</p>}
+        {code === undefined && !error && <p className="py-8 text-sm text-dim">불러오는 중...</p>}
+        {code === null && <p className="py-8 text-sm text-faint">이 모임엔 코드가 없어요(구 버전 세션)</p>}
+        {code && (
+          <>
+            <div className="rounded-xl bg-white p-4">
+              <QRCodeSVG value={url} size={240} level="M" />
+            </div>
+            <div>
+              <p className="text-xs text-dim">현장 입구에 띄워두세요 · 스캔하면 체크인</p>
+              <p className="tabular mt-1 font-mono text-3xl font-bold tracking-[0.2em]">{code}</p>
+              <p className="mt-1 text-xs text-faint">카메라가 안 되면 이 코드를 불러주세요</p>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

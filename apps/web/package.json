@@ -12,6 +12,7 @@
     "@sentry/nextjs": "^10.63.0",
     "motion": "^12.42.2",
     "next": "^15.3.0",
+    "qrcode.react": "^4.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "socket.io-client": "^4.8.0"
