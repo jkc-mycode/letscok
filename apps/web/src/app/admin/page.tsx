@@ -10,6 +10,7 @@ import {
 } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { GenderMarker, GradeBadge, PlayerGrid, Toast } from '@/components/badges';
 import { MotionCard } from '@/components/motion-card';
@@ -33,7 +34,8 @@ export default function AdminPage() {
 
   if (authed === null) return null;
   return authed ? (
-    <Board onLogout={() => setAuthed(false)} />
+    // 잠금 = 저장된 패스코드까지 삭제해야 새로고침으로 재입장되지 않는 진짜 로그아웃
+    <Board onLogout={() => { clearPasscode(); setAuthed(false); }} />
   ) : (
     <LoginGate onSuccess={() => setAuthed(true)} />
   );
@@ -181,6 +183,7 @@ function BoardBody({
   onLogout: () => void;
 }) {
   const now = useNow();
+  const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [courtsOpen, setCourtsOpen] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
@@ -245,7 +248,12 @@ function BoardBody({
       setTimeout(() => setConfirmClose(false), 4000); // 4초 내 재탭 시 종료
       return;
     }
-    void run(() => api(`/sessions/${session.id}/close`, { method: 'PATCH', admin: true }));
+    // 모임 종료 = 그날 운영 끝 → 패스코드 삭제 후 홈으로 (잠금은 게이트에 머무는 것과 다름)
+    void run(async () => {
+      await api(`/sessions/${session.id}/close`, { method: 'PATCH', admin: true });
+      clearPasscode();
+      router.push('/');
+    });
   };
 
   return (
