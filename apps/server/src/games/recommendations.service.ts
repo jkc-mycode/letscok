@@ -165,6 +165,7 @@ export class RecommendationsService {
   }
 }
 
+// 두 사람의 쌍을 순서 무관하게 하나의 키로 — (A,B)와 (B,A)를 같은 쌍으로 집계하기 위함
 function pairKey(a: string, b: string): string {
   return a < b ? `${a}:${b}` : `${b}:${a}`;
 }
@@ -204,6 +205,8 @@ function genderLabel(players: Pooled[]): string {
   return `혼성 ${m}:${f}`; // 3:1 등 어정쩡한 구성
 }
 
+// 출석 → 추천 카드에 뿌릴 인원 정보. borrowedFrom으로 미배정 선발/차용을 구분해
+// 프론트가 "게임 중"·"대기 조합" 배지를 붙인다 (CHECKED_IN이면 순수 대기 = null)
 function toRecommendedPlayer(attendance: Pooled, now: number): IRecommendedPlayer {
   return {
     attendanceId: attendance.id,

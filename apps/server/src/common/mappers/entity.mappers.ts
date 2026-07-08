@@ -19,6 +19,7 @@ import { toDateString } from '../utils/date.util';
 // Prisma 엔티티 → 공유 타입 응답 변환 모음
 // Date는 전부 ISO 문자열로 정규화 — 클라이언트가 타임존 계산(경과 시간 타이머)에 그대로 사용
 
+// 회원 원장 → 응답. gender는 미지정(도입 전 회원)이면 null 그대로 내려간다
 export function toMemberResponse(member: Member): IMember {
   return {
     id: member.id,
@@ -31,6 +32,7 @@ export function toMemberResponse(member: Member): IMember {
   };
 }
 
+// 세션 → 응답. date는 날짜만(YYYY-MM-DD), opened/closedAt은 시각까지 ISO로
 export function toSessionResponse(session: Session): ISession {
   return {
     id: session.id,
@@ -41,6 +43,7 @@ export function toSessionResponse(session: Session): ISession {
   };
 }
 
+// 코트 → 응답. deletedAt(soft-delete)은 응답에서 제외 — 보드엔 살아있는 코트만 노출
 export function toCourtResponse(court: Court): ICourt {
   return {
     id: court.id,
@@ -50,6 +53,7 @@ export function toCourtResponse(court: Court): ICourt {
   };
 }
 
+// 출석 → 응답. member는 관계까지 include한 조회(스냅샷·검색)일 때만 실려 오므로 선택적으로 매핑
 export function toAttendanceResponse(
   attendance: Attendance & { member?: Member },
 ): IAttendance {
@@ -66,6 +70,7 @@ export function toAttendanceResponse(
   };
 }
 
+// 게임 → 응답. players·attendance·member는 include 깊이에 따라 선택적 — 있을 때만 중첩 매핑
 export function toGameResponse(
   game: Game & { players?: (GamePlayer & { attendance?: Attendance & { member?: Member } })[] },
 ): IGame {
