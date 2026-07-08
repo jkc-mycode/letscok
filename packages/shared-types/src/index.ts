@@ -167,6 +167,7 @@ export interface IGameRecommendation {
   kind: RecommendationKind;
   players: IRecommendedPlayer[]; // 4명
   repeatPairCount: number; // 4명 중 오늘 이미 같은 게임을 뛴 쌍의 수 (참고 표시용)
+  genderLabel: string; // 성별 구성 라벨 (남복/여복/혼복/혼성 N:N/성별 미정 포함)
 }
 
 // ===== 실시간 세션 스냅샷 (GET /sessions/current, 재연결 시 재조회) =====

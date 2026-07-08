@@ -18,6 +18,7 @@ const W_GAMES = 15; // 오늘 게임 1회당 감점 (적게 뛴 사람 우선)
 const W_REPEAT = 20; // 오늘 함께 뛴 쌍 1회당 감점 (다양성)
 const W_GRADE = 30; // 급수 간격이 3을 초과하는 만큼 감점 (극단 조합만 회피)
 const W_BORROW = 25; // 차용 인원 1명당 감점 (미배정 대기 인원이 항상 우선)
+const W_GENDER = 30; // 표준 복식(남복·여복·혼복)으로 안 떨어지는 성별 구성 감점 (금지 아닌 선호)
 
 const GRADE_ORDER = ['A', 'B', 'C', 'D', 'E', 'F'];
 const POOL_CAP = 30; // 전수 탐색 상한 — C(30,4)=27,405 조합
@@ -104,11 +105,13 @@ export class RecommendationsService {
         }
       }
       const gradeExcess = Math.max(0, Math.max(...grades) - Math.min(...grades) - 3);
+      const genderPenalty = isCleanGenderComposition(players) ? 0 : W_GENDER;
       const base =
         waitSum * W_WAIT -
         gamesSum * W_GAMES -
         gradeExcess * W_GRADE -
-        borrowed * W_BORROW;
+        borrowed * W_BORROW -
+        genderPenalty;
       return {
         players,
         repeatPairs,
@@ -134,6 +137,7 @@ export class RecommendationsService {
       results.push({
         kind,
         repeatPairCount: candidate.repeatPairs,
+        genderLabel: genderLabel(candidate.players),
         players: candidate.players.map((p) => toRecommendedPlayer(p, now)),
       });
     };
@@ -167,6 +171,37 @@ function pairKey(a: string, b: string): string {
 
 function waitingMinutes(since: Date, now: number): number {
   return Math.max(0, Math.floor((now - since.getTime()) / 60_000));
+}
+
+// 4인이 표준 복식(남복 4:0 / 여복 0:4 / 혼복 2:2)으로 떨어지는지.
+// 미지정(null)은 와일드카드 — 어느 쪽으로도 채울 수 있다고 보고 판정한다
+function isCleanGenderComposition(players: Pooled[]): boolean {
+  let m = 0;
+  let f = 0;
+  for (const p of players) {
+    if (p.member.gender === 'MALE') m++;
+    else if (p.member.gender === 'FEMALE') f++;
+    // null(미지정)은 카운트하지 않음 = 와일드카드
+  }
+  // 목표 남성 수 T(0=여복·2=혼복·4=남복) 중 하나라도 미지정으로 채워 달성 가능하면 clean
+  return [0, 2, 4].some((t) => m <= t && f <= 4 - t);
+}
+
+// 모달 표시용 성별 구성 라벨 — 알려진 성별만으로 판정
+function genderLabel(players: Pooled[]): string {
+  let m = 0;
+  let f = 0;
+  let u = 0;
+  for (const p of players) {
+    if (p.member.gender === 'MALE') m++;
+    else if (p.member.gender === 'FEMALE') f++;
+    else u++;
+  }
+  if (u > 0) return '성별 미정 포함';
+  if (m === 4) return '남복';
+  if (f === 4) return '여복';
+  if (m === 2 && f === 2) return '혼복';
+  return `혼성 ${m}:${f}`; // 3:1 등 어정쩡한 구성
 }
 
 function toRecommendedPlayer(attendance: Pooled, now: number): IRecommendedPlayer {
