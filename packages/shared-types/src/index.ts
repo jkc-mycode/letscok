@@ -12,6 +12,13 @@ export const Grade = {
 } as const;
 export type Grade = (typeof Grade)[keyof typeof Grade];
 
+// 복식 종목 구성용 성별 — null(미지정)은 추천 시 와일드카드로 처리
+export const Gender = {
+  MALE: 'MALE',
+  FEMALE: 'FEMALE',
+} as const;
+export type Gender = (typeof Gender)[keyof typeof Gender];
+
 export const SessionStatus = {
   OPEN: 'OPEN',
   CLOSED: 'CLOSED',
@@ -47,6 +54,7 @@ export interface IMember {
   name: string;
   birthDate: string; // YYYY-MM-DD (동명이인 구분용 노출)
   grade: Grade;
+  gender: Gender | null; // null = 미지정 (도입 전 기존 회원)
   isGuest: boolean;
   createdAt: string;
 }
@@ -103,6 +111,7 @@ export interface ICreateMemberDto {
   name: string;
   birthDate: string; // YYYY-MM-DD
   grade: Grade;
+  gender: Gender; // 신규 등록은 필수 (남/여)
   isGuest: boolean;
   consent: boolean; // 개인정보 수집·이용 동의 (true여야 등록 가능, 서버가 동의 시각 기록)
 }
@@ -147,6 +156,7 @@ export interface IRecommendedPlayer {
   memberId: string;
   name: string;
   grade: Grade;
+  gender: Gender | null; // 모달 마커 표시용
   isGuest: boolean;
   gamesPlayed: number;
   waitingMinutes: number; // 요청 시점 기준 대기 분

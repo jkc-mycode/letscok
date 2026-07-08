@@ -25,6 +25,7 @@ export function toMemberResponse(member: Member): IMember {
     name: member.name,
     birthDate: toDateString(member.birthDate),
     grade: member.grade,
+    gender: member.gender,
     isGuest: member.isGuest,
     createdAt: member.createdAt.toISOString(),
   };

@@ -175,6 +175,7 @@ function toRecommendedPlayer(attendance: Pooled, now: number): IRecommendedPlaye
     memberId: attendance.memberId,
     name: attendance.member.name,
     grade: attendance.member.grade,
+    gender: attendance.member.gender,
     isGuest: attendance.member.isGuest,
     gamesPlayed: attendance.gamesPlayed,
     waitingMinutes: waitingMinutes(attendance.waitingSince, now),

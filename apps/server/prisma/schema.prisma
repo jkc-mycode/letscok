@@ -18,6 +18,11 @@ enum Grade {
   F
 }
 
+enum Gender {
+  MALE
+  FEMALE
+}
+
 enum SessionStatus {
   OPEN
   CLOSED
@@ -48,6 +53,7 @@ model Member {
   name      String
   birthDate DateTime  @db.Date // 동명이인 구분용으로 검색 결과에 노출
   grade       Grade
+  gender      Gender? // 복식 종목(남복/여복/혼복) 구성용 — 기존 회원은 null(미지정), 신규 등록은 필수
   isGuest     Boolean   @default(false)
   consentedAt DateTime? // 개인정보 수집 동의 시각 — 등록 시 기록 (도입 전 기존 데이터는 null)
   createdAt   DateTime  @default(now())

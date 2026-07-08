@@ -1,4 +1,4 @@
-import { Grade, ICreateMemberDto } from '@letscok/shared-types';
+import { Gender, Grade, ICreateMemberDto } from '@letscok/shared-types';
 import { Equals, IsBoolean, IsIn, IsString, Length, Matches } from 'class-validator';
 
 export class CreateMemberDto implements ICreateMemberDto {
@@ -13,6 +13,9 @@ export class CreateMemberDto implements ICreateMemberDto {
 
   @IsIn(Object.values(Grade), { message: '급수는 A~F 중 하나여야 합니다.' })
   grade: Grade;
+
+  @IsIn(Object.values(Gender), { message: '성별을 선택해주세요.' })
+  gender: Gender;
 
   @IsBoolean({ message: '게스트 여부를 선택해주세요.' })
   isGuest: boolean;
