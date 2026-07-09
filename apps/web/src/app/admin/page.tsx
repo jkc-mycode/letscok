@@ -214,6 +214,12 @@ function BoardBody({
     () => attendances.filter((a) => a.status === 'CHECKED_IN'),
     [attendances],
   );
+  // 게임 중 포함 토글 — 잔여 인원을 게임 중/조합에 든 사람과 미리 조합할 때 켠다
+  const [includeBusy, setIncludeBusy] = useState(false);
+  const busyList = useMemo(
+    () => attendances.filter((a) => a.status === 'PLAYING' || a.status === 'MATCHED'),
+    [attendances],
+  );
   // 중복 대기 허용 — 두 개 이상의 대기 조합에 들어간 인원 (카드에 "겹침" 표시)
   const overlapIds = useMemo(() => {
     const counts = new Map<string, number>();
@@ -349,6 +355,27 @@ function BoardBody({
           title="대기 인원"
           accent="text-ink"
           count={waiting.length}
+          headerExtra={
+            busyList.length > 0 && (
+              <button
+                onClick={() => {
+                  setIncludeBusy((on) => {
+                    // 끌 때 게임 중/조합 인원이 선택에 남아 보이지 않게 되는 것 방지
+                    if (on) {
+                      const waitingIds = new Set(waiting.map((a) => a.id));
+                      setSelected((prev) => new Set([...prev].filter((id) => waitingIds.has(id))));
+                    }
+                    return !on;
+                  });
+                }}
+                className={`ml-auto h-7 rounded-lg border px-2.5 text-xs font-medium ${
+                  includeBusy ? 'border-court text-court' : 'border-line text-faint'
+                }`}
+              >
+                게임 중 포함
+              </button>
+            )
+          }
           footer={
             <>
               <button
@@ -381,6 +408,26 @@ function BoardBody({
               />
             ))}
           </AnimatePresence>
+          {includeBusy && busyList.length > 0 && (
+            <>
+              <p className="pt-2 pb-1 text-center text-[11px] text-faint">
+                게임 중 · 조합에 든 인원 — 미리 조합에 넣을 수 있어요
+              </p>
+              <AnimatePresence initial={false}>
+                {busyList.map((attendance) => (
+                  <WaitingRow
+                    key={attendance.id}
+                    attendance={attendance}
+                    now={now}
+                    selected={selected.has(attendance.id)}
+                    onToggle={() => toggleSelect(attendance.id)}
+                    run={run}
+                    busyStatus={attendance.status === 'PLAYING' ? 'PLAYING' : 'MATCHED'}
+                  />
+                ))}
+              </AnimatePresence>
+            </>
+          )}
           {leftCount > 0 && (
             <p className="pt-2 text-center text-xs text-faint">퇴장 {leftCount}명</p>
           )}
@@ -636,6 +683,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
     title: '겹침 · 게임 중 배지',
     items: [
       '한 사람이 여러 대기 조합에 들어갈 수 있어요 (잔여 인원을 미리 조합할 때 유용) — 두 곳 이상이면 "겹침" 배지.',
+      '대기 인원의 [게임 중 포함] 토글을 켜면 게임 중·조합에 든 사람도 직접 골라 조합을 만들 수 있어요.',
       '조합에 게임 중인 사람이 있으면 그 게임이 끝날 때까지 코트 배정이 잠겨요.',
     ],
   },
@@ -695,18 +743,21 @@ function Zone({
   count,
   children,
   footer,
+  headerExtra,
 }: {
   title: string;
   accent: string;
   count: number;
   children: React.ReactNode;
   footer?: React.ReactNode; // 스크롤 영역 밖 하단 고정 바 (목록이 밑으로 비치지 않음)
+  headerExtra?: React.ReactNode; // 제목 오른쪽 컨트롤 (예: 게임 중 포함 토글)
 }) {
   return (
     <section className="flex min-h-0 flex-col rounded-2xl border border-line bg-panel/70">
-      <h2 className={`flex items-baseline gap-2 px-4 pt-3 pb-2 text-sm font-bold ${accent}`}>
+      <h2 className={`flex items-center gap-2 px-4 pt-3 pb-2 text-sm font-bold ${accent}`}>
         {title}
         <span className="tabular font-mono text-xs text-faint">{count}</span>
+        {headerExtra}
       </h2>
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3">
         {children}
@@ -969,12 +1020,14 @@ function WaitingRow({
   selected,
   onToggle,
   run,
+  busyStatus,
 }: {
   attendance: IAttendance;
   now: number;
   selected: boolean;
   onToggle: () => void;
   run: (a: () => Promise<unknown>) => Promise<void>;
+  busyStatus?: 'PLAYING' | 'MATCHED'; // 게임 중 포함 토글로 노출된 행 — 흐리게 + 상태 칩, 퇴장 버튼 없음
 }) {
   const member = attendance.member;
   if (!member) return null;
@@ -983,27 +1036,38 @@ function WaitingRow({
       onClick={onToggle}
       className={`flex cursor-pointer items-center gap-2 rounded-xl border p-3 transition-colors ${
         selected ? 'border-amber bg-amber/10' : 'border-line bg-panel2'
-      }`}
+      } ${busyStatus && !selected ? 'opacity-60' : ''}`}
     >
       <GradeBadge grade={member.grade} />
       <span className="font-medium">{member.name}</span>
       <GenderMarker gender={member.gender} />
       {member.isGuest && <span className="text-[10px] text-sky">게스트</span>}
+      {busyStatus && (
+        <span
+          className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+            busyStatus === 'PLAYING' ? 'bg-court/15 text-court' : 'bg-amber/15 text-amber'
+          }`}
+        >
+          {busyStatus === 'PLAYING' ? '게임 중' : '대기 조합'}
+        </span>
+      )}
       <span className="tabular ml-auto font-mono text-xs text-dim">
         {attendance.gamesPlayed}게임 · {formatWaitingMinutes(attendance.waitingSince, now)}
       </span>
-      <button
-        onClick={(e) => {
-          e.stopPropagation(); // 행 선택 토글과 분리
-          void run(() =>
-            api(`/attendances/${attendance.id}/leave`, { method: 'PATCH', admin: true }),
-          );
-        }}
-        title="퇴장 처리"
-        className="h-8 w-8 rounded-lg text-faint hover:text-coral"
-      >
-        ✕
-      </button>
+      {!busyStatus && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation(); // 행 선택 토글과 분리
+            void run(() =>
+              api(`/attendances/${attendance.id}/leave`, { method: 'PATCH', admin: true }),
+            );
+          }}
+          title="퇴장 처리"
+          className="h-8 w-8 rounded-lg text-faint hover:text-coral"
+        >
+          ✕
+        </button>
+      )}
     </MotionCard>
   );
 }
