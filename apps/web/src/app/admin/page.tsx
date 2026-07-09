@@ -14,9 +14,10 @@ import Link from 'next/link';
 import { QRCodeSVG } from 'qrcode.react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { LoginGate } from '@/components/admin-gate';
 import { GenderMarker, GradeBadge, PlayerGrid, Toast } from '@/components/badges';
 import { MotionCard } from '@/components/motion-card';
-import { api, ApiError, clearPasscode, getPasscode, savePasscode } from '@/lib/api';
+import { api, ApiError, clearPasscode, getPasscode } from '@/lib/api';
 import {
   formatElapsed,
   formatWaitingMinutes,
@@ -39,62 +40,7 @@ export default function AdminPage() {
     // 잠금 = 저장된 패스코드까지 삭제해야 새로고침으로 재입장되지 않는 진짜 로그아웃
     <Board onLogout={() => { clearPasscode(); setAuthed(false); }} />
   ) : (
-    <LoginGate onSuccess={() => setAuthed(true)} />
-  );
-}
-
-function LoginGate({ onSuccess }: { onSuccess: () => void }) {
-  const [passcode, setPasscode] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const submit = async () => {
-    if (!passcode || busy) return;
-    setBusy(true);
-    setError(null);
-    savePasscode(passcode); // api()가 저장된 값을 헤더로 보내므로 먼저 저장 후 검증
-    try {
-      await api('/auth/admin/verify', { method: 'POST', admin: true });
-      onSuccess();
-    } catch (e) {
-      clearPasscode();
-      setError(e instanceof ApiError ? e.message : '연결에 실패했습니다.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <main className="fade-in flex min-h-dvh flex-col items-center justify-center gap-8 p-6">
-      <div className="text-center">
-        <Link
-          href="/"
-          className="inline-block text-sm font-medium tracking-[0.3em] text-court transition-opacity hover:opacity-70"
-        >
-          LETSCOK
-        </Link>
-        <h1 className="mt-2 text-4xl font-bold">렛츠콕 관제판</h1>
-        <p className="mt-2 text-dim">운영진 패스코드를 입력해주세요</p>
-      </div>
-      <div className="flex w-full max-w-sm flex-col gap-3">
-        <input
-          type="password"
-          value={passcode}
-          onChange={(e) => setPasscode(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && void submit()}
-          placeholder="패스코드"
-          className="h-14 rounded-xl border border-line bg-panel px-5 text-lg outline-none focus:border-court"
-        />
-        <button
-          onClick={() => void submit()}
-          disabled={busy}
-          className="h-14 rounded-xl bg-court text-lg font-bold text-bg disabled:opacity-50"
-        >
-          {busy ? '확인 중...' : '입장'}
-        </button>
-        {error && <p className="text-center text-sm text-coral">{error}</p>}
-      </div>
-    </main>
+    <LoginGate title="렛츠콕 관제판" onSuccess={() => setAuthed(true)} />
   );
 }
 
