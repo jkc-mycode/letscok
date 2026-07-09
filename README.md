@@ -1,5 +1,7 @@
 # 렛츠콕 (letscok) 🏸
 
+[![CI](https://github.com/jkc-mycode/letscok/actions/workflows/ci.yml/badge.svg)](https://github.com/jkc-mycode/letscok/actions/workflows/ci.yml)
+
 배드민턴 소모임의 **보드+자석 게임 배정**을 디지털화한 실시간 코트 관리 서비스.
 운영진은 태블릿 관제판에서 4명씩 코트에 배정하고, 모임원은 폰에서 자기 차례를 실시간으로 확인한다.
 
