@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: 서버 테스트 + 빌드 검증
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: letscok
+          POSTGRES_PASSWORD: letscok
+          POSTGRES_DB: letscok_test
+        ports:
+          - 5432:5432
+        # 준비되기 전에 테스트가 붙지 않도록 헬스체크로 대기
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql://letscok:letscok@localhost:5432/letscok_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 루트 package.json의 packageManager 필드로 pnpm 버전 자동 결정
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 의존성 설치 (shared-types는 prepare 훅으로 빌드됨)
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma 클라이언트 생성 (생성물이 git 제외라 CI에서 재생성 필요)
+        run: pnpm --filter @letscok/server exec prisma generate
+
+      - name: 상태 전이 통합 테스트
+        run: pnpm --filter @letscok/server test
+
+      - name: 서버 빌드
+        run: pnpm --filter @letscok/server build
+
+      - name: 웹 타입 체크
+        run: pnpm --filter @letscok/web exec tsc --noEmit
