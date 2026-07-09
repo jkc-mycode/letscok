@@ -28,6 +28,8 @@ jobs:
 
     env:
       TEST_DATABASE_URL: postgresql://letscok:letscok@localhost:5432/letscok_test
+      # prisma.config.ts가 로드 시점에 DATABASE_URL을 요구함 (CI엔 .env가 없어 여기서 주입)
+      DATABASE_URL: postgresql://letscok:letscok@localhost:5432/letscok_test
 
     steps:
       - uses: actions/checkout@v4
