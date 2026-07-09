@@ -182,6 +182,65 @@ export interface IGameRecommendation {
   genderLabel: string; // 성별 구성 라벨 (남복/여복/혼복/혼성 N:N/성별 미정 포함)
 }
 
+// ===== 히스토리/전적 (GET /history/*, 운영진 전용) =====
+
+// 지난 모임 목록의 한 줄 — 생년월일 등 이 화면에 불필요한 개인정보는 어디에도 안 내려간다
+export interface IHistorySessionSummary {
+  id: string;
+  date: string; // YYYY-MM-DD
+  attendeeCount: number;
+  finishedGameCount: number; // FINISHED만 집계 (CANCELED 제외)
+}
+
+export interface IHistorySessionListResponse {
+  sessions: IHistorySessionSummary[];
+  total: number; // 페이지네이션용 전체 CLOSED 세션 수
+  page: number;
+  limit: number;
+}
+
+export interface IHistoryAttendee {
+  memberId: string;
+  name: string;
+  grade: Grade;
+  gender: Gender | null;
+  isGuest: boolean;
+  gamesPlayed: number; // 그날 뛴 게임 수
+}
+
+export interface IHistoryGame {
+  id: string;
+  courtNo: number | null; // 해제(soft-delete)된 코트여도 번호는 표시
+  startedAt: string | null;
+  endedAt: string | null;
+  playerNames: string[]; // 4인
+}
+
+export interface IHistorySessionDetail {
+  session: IHistorySessionSummary;
+  attendees: IHistoryAttendee[]; // 그날 많이 뛴 순
+  games: IHistoryGame[]; // 시작 시각 순
+}
+
+export interface IHistoryPartner {
+  memberId: string;
+  name: string;
+  gamesTogether: number; // 같은 게임(FINISHED)에서 함께 뛴 횟수
+}
+
+export interface IHistoryMemberStats {
+  memberId: string;
+  name: string;
+  grade: Grade;
+  gender: Gender | null;
+  isGuest: boolean;
+  totalSessions: number; // 총 출석 (체크인한 모임 수)
+  totalGames: number; // 총 게임 수 (세션별 gamesPlayed 합)
+  lastAttendedDate: string | null; // 최근 출석일
+  topPartners: IHistoryPartner[]; // 함께 뛴 top 5
+  recentSessions: { date: string; gamesPlayed: number }[]; // 최근 모임별 게임 수
+}
+
 // ===== 실시간 세션 스냅샷 (GET /sessions/current, 재연결 시 재조회) =====
 
 export interface ISessionSnapshot {

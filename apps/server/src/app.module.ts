@@ -8,6 +8,7 @@ import { AuthController } from './auth/auth.controller';
 import { CourtsModule } from './courts/courts.module';
 import { GamesModule } from './games/games.module';
 import { HealthController } from './health/health.controller';
+import { HistoryModule } from './history/history.module';
 import { MembersModule } from './members/members.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RealtimeModule } from './realtime/realtime.module';
@@ -29,7 +30,7 @@ import { SessionsModule } from './sessions/sessions.module';
     AttendancesModule,
     CourtsModule,
     GamesModule,
-    // 다음 단계: 실시간(Socket.IO) 게이트웨이
+    HistoryModule,
   ],
   controllers: [HealthController, AuthController],
   providers: [
