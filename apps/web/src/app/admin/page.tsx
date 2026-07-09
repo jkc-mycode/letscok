@@ -191,6 +191,7 @@ function BoardBody({
   const [confirmClose, setConfirmClose] = useState(false);
   const [recommendOpen, setRecommendOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const { session, courts, attendances, games } = snapshot;
 
@@ -297,6 +298,13 @@ function BoardBody({
           <button onClick={onLogout} className="h-10 px-2 text-sm text-faint">
             잠금
           </button>
+          <button
+            onClick={() => setHelpOpen(true)}
+            title="도움말"
+            className="h-10 w-10 rounded-lg border border-line text-sm font-bold text-dim"
+          >
+            ?
+          </button>
         </div>
       </header>
 
@@ -388,6 +396,7 @@ function BoardBody({
         />
       )}
       {qrOpen && <CheckInQrModal onClose={() => setQrOpen(false)} />}
+      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
       {toast && <Toast message={toast} />}
     </main>
   );
@@ -592,6 +601,87 @@ function CheckInQrModal({ onClose }: { onClose: () => void }) {
             </div>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ===== 도움말 모달 =====
+
+// 정적 안내문 — 운영진 교체 시 구두 설명 없이 관제판을 넘길 수 있게 핵심 개념만 요약
+const HELP_SECTIONS: { title: string; items: string[] }[] = [
+  {
+    title: '기본 흐름',
+    items: [
+      '대기 인원에서 4명 선택 → [조합 만들기] → 대기 조합에서 [코트 배정] → 끝나면 [게임 종료].',
+      '[게임 종료]만 게임 수 +1 · 대기시간 리셋. [대기로]는 조합을 유지한 채 뒤로, [취소]·[해체]는 없던 일로 (둘 다 미집계).',
+    ],
+  },
+  {
+    title: '체크인 QR',
+    items: [
+      '모임원은 현장 QR을 스캔해야만 체크인돼요 (코드 없는 주소는 차단).',
+      '[체크인 QR] 모달을 입구 화면에 띄워두세요. 코드는 모임마다 새로 발급되고 그날 내내 같아요.',
+      '카메라가 안 되는 폰은 모달 하단 6자리 코드를 불러주세요.',
+    ],
+  },
+  {
+    title: '게임 추천',
+    items: [
+      '[게임 추천]은 참고용 초안 3종 — 공정성(오래 기다린 순) / 새 조합(오늘 안 만난 사람) / 믹스.',
+      '대기시간·게임 수·함께 뛴 조합·성별 구성(남복/여복/혼복)을 점수로 계산해요. 넣을지는 운영진 마음!',
+    ],
+  },
+  {
+    title: '겹침 · 게임 중 배지',
+    items: [
+      '한 사람이 여러 대기 조합에 들어갈 수 있어요 (잔여 인원을 미리 조합할 때 유용) — 두 곳 이상이면 "겹침" 배지.',
+      '조합에 게임 중인 사람이 있으면 그 게임이 끝날 때까지 코트 배정이 잠겨요.',
+    ],
+  },
+  {
+    title: '잠금 vs 모임 종료',
+    items: [
+      '[잠금] = 관제판 로그아웃만. 모임은 그대로 유지돼요.',
+      '[모임 종료] = 그날 마감 — 진행 중 게임 정리 · 전원 퇴장 · 코트 해제 후 로그아웃돼요. 두 번 눌러야 실행.',
+    ],
+  },
+];
+
+function HelpModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      onClick={onClose}
+      className="fade-in fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="flex max-h-[85dvh] w-full max-w-lg flex-col rounded-2xl border border-line bg-panel p-5"
+      >
+        <div className="flex items-center pb-3">
+          <h2 className="text-lg font-bold text-court">관제판 도움말</h2>
+          <button
+            onClick={onClose}
+            className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
+          >
+            닫기
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+          {HELP_SECTIONS.map((section) => (
+            <section key={section.title}>
+              <h3 className="text-sm font-bold text-amber">{section.title}</h3>
+              <ul className="mt-1.5 space-y-1.5">
+                {section.items.map((item) => (
+                  <li key={item} className="flex gap-2 text-sm leading-relaxed text-dim">
+                    <span className="shrink-0 text-faint">·</span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
       </div>
     </div>
   );
