@@ -192,6 +192,7 @@ function BoardBody({
   const [recommendOpen, setRecommendOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [replaceGameId, setReplaceGameId] = useState<string | null>(null); // 선수 교체 대상 게임
 
   const { session, courts, attendances, games } = snapshot;
 
@@ -230,6 +231,14 @@ function BoardBody({
     }
     return new Set([...counts].filter(([, count]) => count >= 2).map(([id]) => id));
   }, [queuedGames]);
+  // 모달이 열린 동안에도 실시간 스냅샷을 따라가도록 id로 파생 — 게임이 끝나/해체되면 자동으로 닫힘
+  const replaceTarget = useMemo(
+    () =>
+      games.find(
+        (g) => g.id === replaceGameId && (g.status === 'PLAYING' || g.status === 'QUEUED'),
+      ) ?? null,
+    [games, replaceGameId],
+  );
   const leftCount = attendances.filter((a) => a.status === 'LEFT').length;
   const presentCount = attendances.length - leftCount;
 
@@ -328,6 +337,7 @@ function BoardBody({
                 game={playingByCourt.get(court.id)}
                 now={now}
                 run={run}
+                onReplace={(g) => setReplaceGameId(g.id)}
               />
             ))}
           </AnimatePresence>
@@ -346,6 +356,7 @@ function BoardBody({
                 idleCourts={idleCourts}
                 overlapIds={overlapIds}
                 run={run}
+                onReplace={(g) => setReplaceGameId(g.id)}
               />
             ))}
           </AnimatePresence>
@@ -444,6 +455,15 @@ function BoardBody({
       )}
       {qrOpen && <CheckInQrModal onClose={() => setQrOpen(false)} />}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
+      {replaceTarget && (
+        <ReplacePlayerModal
+          game={replaceTarget}
+          attendances={attendances}
+          run={run}
+          busy={busy}
+          onClose={() => setReplaceGameId(null)}
+        />
+      )}
       {toast && <Toast message={toast} />}
     </main>
   );
@@ -653,6 +673,140 @@ function CheckInQrModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ===== 선수 교체 모달 =====
+
+// 부상·급한 일로 게임 중/대기 조합에서 한 명만 바꾼다 — 게임을 갈아엎지 않아 타이머·큐 순서 유지
+function ReplacePlayerModal({
+  game,
+  attendances,
+  run,
+  busy,
+  onClose,
+}: {
+  game: IGame;
+  attendances: IAttendance[];
+  run: (a: () => Promise<unknown>) => Promise<void>;
+  busy: boolean;
+  onClose: () => void;
+}) {
+  const [outId, setOutId] = useState<string | null>(null);
+  const [inId, setInId] = useState<string | null>(null);
+
+  const isPlaying = game.status === 'PLAYING';
+  const playerIds = new Set((game.players ?? []).map((p) => p.attendanceId));
+  // 후보: 퇴장·이 게임 인원 제외. 게임 중 게임엔 다른 코트에서 뛰는 사람 투입 불가(PLAYING 동시 한 곳만)
+  const candidates = attendances.filter(
+    (a) => a.status !== 'LEFT' && !playerIds.has(a.id) && !(isPlaying && a.status === 'PLAYING'),
+  );
+
+  const submit = () =>
+    run(async () => {
+      await api(`/games/${game.id}/players`, {
+        method: 'PATCH',
+        admin: true,
+        body: { outAttendanceId: outId, inAttendanceId: inId },
+      });
+      onClose();
+    });
+
+  return (
+    <div
+      onClick={onClose}
+      className="fade-in fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-2xl border border-line bg-panel p-5"
+      >
+        <div className="flex items-center pb-3">
+          <h2 className="text-lg font-bold text-court">선수 교체</h2>
+          <p className="ml-3 text-xs text-faint">
+            {isPlaying ? '타이머는 그대로 이어져요' : '조합 순서는 그대로 유지돼요'}
+          </p>
+          <button
+            onClick={onClose}
+            className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
+          >
+            닫기
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <h3 className="pb-1.5 text-sm font-bold text-coral">빠질 사람</h3>
+          <div className="grid grid-cols-2 gap-2">
+            {(game.players ?? []).map((player) => {
+              const member = player.attendance?.member;
+              if (!member) return null;
+              return (
+                <button
+                  key={player.attendanceId}
+                  onClick={() => setOutId(player.attendanceId)}
+                  className={`flex items-center gap-1.5 rounded-xl border p-3 text-sm ${
+                    outId === player.attendanceId
+                      ? 'border-coral bg-coral/10'
+                      : 'border-line bg-panel2'
+                  }`}
+                >
+                  <GradeBadge grade={member.grade} />
+                  <span className="truncate font-medium">{member.name}</span>
+                  <GenderMarker gender={member.gender} />
+                </button>
+              );
+            })}
+          </div>
+
+          <h3 className="pt-4 pb-1.5 text-sm font-bold text-court">들어올 사람</h3>
+          {candidates.length === 0 && (
+            <p className="py-6 text-center text-sm text-faint">교체 투입할 수 있는 인원이 없어요</p>
+          )}
+          <div className="flex flex-col gap-2">
+            {candidates.map((attendance) => {
+              const member = attendance.member;
+              if (!member) return null;
+              return (
+                <button
+                  key={attendance.id}
+                  onClick={() => setInId(attendance.id)}
+                  className={`flex items-center gap-1.5 rounded-xl border p-3 text-sm ${
+                    inId === attendance.id ? 'border-court bg-court/10' : 'border-line bg-panel2'
+                  }`}
+                >
+                  <GradeBadge grade={member.grade} />
+                  <span className="truncate font-medium">{member.name}</span>
+                  <GenderMarker gender={member.gender} />
+                  {member.isGuest && <span className="text-[10px] text-sky">G</span>}
+                  {attendance.status !== 'CHECKED_IN' && (
+                    <span
+                      className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                        attendance.status === 'PLAYING'
+                          ? 'bg-court/15 text-court'
+                          : 'bg-amber/15 text-amber'
+                      }`}
+                    >
+                      {attendance.status === 'PLAYING' ? '게임 중' : '대기 조합'}
+                    </span>
+                  )}
+                  <span className="tabular ml-auto shrink-0 font-mono text-[11px] text-dim">
+                    {attendance.gamesPlayed}게임
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <button
+          onClick={() => void submit()}
+          disabled={!outId || !inId || busy}
+          className="mt-4 h-12 rounded-xl bg-court text-base font-bold text-bg disabled:bg-panel2 disabled:text-faint"
+        >
+          교체하기
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ===== 도움말 모달 =====
 
 // 정적 안내문 — 운영진 교체 시 구두 설명 없이 관제판을 넘길 수 있게 핵심 개념만 요약
@@ -662,6 +816,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
     items: [
       '대기 인원에서 4명 선택 → [조합 만들기] → 대기 조합에서 [코트 배정] → 끝나면 [게임 종료].',
       '[게임 종료]만 게임 수 +1 · 대기시간 리셋. [대기로]는 조합을 유지한 채 뒤로, [취소]·[해체]는 없던 일로 (둘 다 미집계).',
+      '부상·급한 일로 한 명만 바꿀 땐 [교체] — 게임을 갈아엎지 않아 타이머·순서가 유지돼요. 빠진 사람은 대기 인원으로 돌아와요.',
     ],
   },
   {
@@ -847,11 +1002,13 @@ function CourtCard({
   game,
   now,
   run,
+  onReplace,
 }: {
   court: ICourt;
   game?: IGame;
   now: number;
   run: (a: () => Promise<unknown>) => Promise<void>;
+  onReplace: (game: IGame) => void;
 }) {
   if (!game) {
     return (
@@ -887,6 +1044,13 @@ function CourtCard({
           대기로
         </button>
         <button
+          onClick={() => onReplace(game)}
+          title="부상·급한 일로 한 명만 바꾸기 (타이머 유지)"
+          className="h-11 rounded-lg border border-line px-3 text-sm text-dim"
+        >
+          교체
+        </button>
+        <button
           onClick={() => void run(() => api(`/games/${game.id}/cancel`, { method: 'PATCH', admin: true }))}
           title="잘못 시작한 게임 취소 — 조합까지 해체 (게임 수 미집계)"
           className="h-11 rounded-lg border border-line px-3 text-sm text-dim"
@@ -908,6 +1072,7 @@ function QueueCard({
   idleCourts,
   overlapIds,
   run,
+  onReplace,
 }: {
   game: IGame;
   order: number;
@@ -916,6 +1081,7 @@ function QueueCard({
   idleCourts: ICourt[];
   overlapIds: Set<string>;
   run: (a: () => Promise<unknown>) => Promise<void>;
+  onReplace: (game: IGame) => void;
 }) {
   const [assignOpen, setAssignOpen] = useState(false);
 
@@ -1001,6 +1167,13 @@ function QueueCard({
             코트 배정
           </button>
         )}
+        <button
+          onClick={() => onReplace(game)}
+          title="조합에서 한 명만 바꾸기 (순서 유지)"
+          className="h-11 rounded-lg border border-line px-3 text-sm text-dim"
+        >
+          교체
+        </button>
         <button
           onClick={() => void run(() => api(`/games/${game.id}/cancel`, { method: 'PATCH', admin: true }))}
           className="h-11 rounded-lg border border-line px-3 text-sm text-dim"
