@@ -10,7 +10,12 @@ import { toGameResponse } from '../common/mappers/entity.mappers';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { SessionsService } from '../sessions/sessions.service';
-import { AssignGameDto, CreateGameDto, UpdateGameOrderDto } from './dto/game.dtos';
+import {
+  AssignGameDto,
+  CreateGameDto,
+  ReplaceGamePlayerDto,
+  UpdateGameOrderDto,
+} from './dto/game.dtos';
 
 // 게임 조회 시 항상 플레이어+회원까지 포함 (보드 렌더링 단위)
 const GAME_INCLUDE = {
@@ -246,6 +251,71 @@ export class GamesService {
     });
     this.realtime.broadcastSnapshot(game.sessionId);
     return toGameResponse(canceled);
+  }
+
+  // 선수 교체: 부상·급한 일로 게임 중(PLAYING)이나 대기 조합(QUEUED)에서 한 명만 바꾼다
+  // 게임을 갈아엎지 않으므로 타이머·큐 순서가 유지된다. 빠진 사람은 대기 복귀(대기 시간 보존)
+  async replacePlayer(id: string, dto: ReplaceGamePlayerDto): Promise<IGame> {
+    const game = await this.findGameOrThrow(id);
+    if (game.status !== 'QUEUED' && game.status !== 'PLAYING') {
+      throw new ConflictException('이미 종료되었거나 해체된 게임입니다.');
+    }
+    if (dto.outAttendanceId === dto.inAttendanceId) {
+      throw new BadRequestException('같은 모임원으로는 교체할 수 없습니다.');
+    }
+    if (!game.players.some((player) => player.attendanceId === dto.outAttendanceId)) {
+      throw new ConflictException('빠질 모임원이 이 게임에 없습니다.');
+    }
+    if (game.players.some((player) => player.attendanceId === dto.inAttendanceId)) {
+      throw new ConflictException('이미 이 게임에 있는 모임원입니다.');
+    }
+
+    const incoming = await this.prisma.attendance.findFirst({
+      where: { id: dto.inAttendanceId, sessionId: game.sessionId, status: { not: 'LEFT' } },
+    });
+    if (!incoming) {
+      throw new ConflictException('퇴장했거나 이 모임에 없는 모임원입니다.');
+    }
+    // PLAYING은 동시에 한 곳만 — 게임 중인 게임엔 다른 코트에서 뛰는 중인 사람 투입 불가
+    // (QUEUED 조합엔 중복 대기 정책상 게임 중인 사람도 미리 넣을 수 있다)
+    if (game.status === 'PLAYING' && incoming.status === 'PLAYING') {
+      throw new ConflictException('이미 다른 코트에서 게임 중인 모임원입니다.');
+    }
+
+    const replaced = await this.prisma.$transaction(async (tx) => {
+      await tx.gamePlayer.deleteMany({
+        where: { gameId: id, attendanceId: dto.outAttendanceId },
+      });
+      await tx.gamePlayer.create({
+        data: { gameId: id, attendanceId: dto.inAttendanceId },
+      });
+
+      // 들어오는 사람: 게임 중 게임이면 즉시 PLAYING, 대기 조합이면 미배정자만 MATCHED 승격
+      if (game.status === 'PLAYING') {
+        await tx.attendance.update({
+          where: { id: dto.inAttendanceId },
+          data: { status: 'PLAYING' },
+        });
+      } else if (incoming.status === 'CHECKED_IN') {
+        await tx.attendance.update({
+          where: { id: dto.inAttendanceId },
+          data: { status: 'MATCHED' },
+        });
+      }
+
+      // 빠지는 사람: 남은 활성 게임 기준으로 상태 재계산 (대기 시간은 보존 — 오래 기다린 이력 유지)
+      const buckets = await this.splitByRemainingActiveGames(tx, [dto.outAttendanceId], id);
+      if (buckets.matched.length > 0 || buckets.waiting.length > 0) {
+        await tx.attendance.update({
+          where: { id: dto.outAttendanceId },
+          data: { status: buckets.matched.length > 0 ? 'MATCHED' : 'CHECKED_IN' },
+        });
+      }
+
+      return tx.game.findUniqueOrThrow({ where: { id }, include: GAME_INCLUDE });
+    });
+    this.realtime.broadcastSnapshot(game.sessionId);
+    return toGameResponse(replaced);
   }
 
   // 대기 조합 순서 변경 — 클라이언트가 계산한 목표 순서를 그대로 반영

@@ -142,6 +142,12 @@ export interface IUpdateGameOrderDto {
   queueOrder: number;
 }
 
+// 선수 교체 (게임 중·대기 조합 공용) — 부상·급한 일로 한 명만 바꿀 때
+export interface IReplaceGamePlayerDto {
+  outAttendanceId: string; // 빠지는 사람 (이 게임의 플레이어)
+  inAttendanceId: string; // 들어오는 사람
+}
+
 export interface IAdminLoginDto {
   passcode: string;
 }

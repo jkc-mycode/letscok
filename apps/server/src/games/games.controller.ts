@@ -9,7 +9,12 @@ import {
 } from '@nestjs/common';
 import { IApiResponse, IGame, IGameRecommendation } from '@letscok/shared-types';
 import { AdminGuard } from '../common/guards/admin.guard';
-import { AssignGameDto, CreateGameDto, UpdateGameOrderDto } from './dto/game.dtos';
+import {
+  AssignGameDto,
+  CreateGameDto,
+  ReplaceGamePlayerDto,
+  UpdateGameOrderDto,
+} from './dto/game.dtos';
 import { GamesService } from './games.service';
 import { RecommendationsService } from './recommendations.service';
 
@@ -63,6 +68,15 @@ export class GamesController {
   @Patch('games/:id/cancel')
   async cancel(@Param('id') id: string): Promise<IApiResponse<IGame>> {
     return { success: true, data: await this.gamesService.cancel(id) };
+  }
+
+  // 선수 교체 — 게임 중·대기 조합에서 한 명만 바꿈 (타이머·큐 순서 유지)
+  @Patch('games/:id/players')
+  async replacePlayer(
+    @Param('id') id: string,
+    @Body() dto: ReplaceGamePlayerDto,
+  ): Promise<IApiResponse<IGame>> {
+    return { success: true, data: await this.gamesService.replacePlayer(id, dto) };
   }
 
   @Patch('games/:id/order')

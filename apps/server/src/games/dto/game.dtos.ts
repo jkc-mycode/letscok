@@ -1,6 +1,7 @@
 import {
   IAssignGameDto,
   ICreateGameDto,
+  IReplaceGamePlayerDto,
   IUpdateGameOrderDto,
 } from '@letscok/shared-types';
 import {
@@ -32,4 +33,13 @@ export class UpdateGameOrderDto implements IUpdateGameOrderDto {
   @IsInt({ message: '순서 값이 올바르지 않습니다.' })
   @Min(1, { message: '순서는 1 이상이어야 합니다.' })
   queueOrder: number;
+}
+
+// 선수 교체 요청 — 나가는 사람/들어오는 사람 출석 id 한 쌍
+export class ReplaceGamePlayerDto implements IReplaceGamePlayerDto {
+  @IsString({ message: '빠질 모임원을 선택해주세요.' })
+  outAttendanceId: string;
+
+  @IsString({ message: '들어올 모임원을 선택해주세요.' })
+  inAttendanceId: string;
 }
