@@ -4,6 +4,7 @@ import { IHistorySessionListResponse } from '@letscok/shared-types';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
+import { HistoryTabs } from '@/components/history-tabs';
 import { api, ApiError } from '@/lib/api';
 
 const PAGE_SIZE = 20;
@@ -45,6 +46,8 @@ function HistoryList() {
         <h1 className="mt-1 text-2xl font-bold">지난 모임 기록</h1>
         {data && <p className="mt-1 text-sm text-dim">총 {data.total}번의 모임</p>}
       </header>
+
+      <HistoryTabs current="sessions" />
 
       {error && <p className="py-10 text-center text-sm text-coral">{error}</p>}
       {!error && data === null && <p className="py-10 text-center text-sm text-dim">불러오는 중...</p>}
