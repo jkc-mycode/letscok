@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   IHistoryMemberStats,
+  IHistoryRankingEntry,
   IHistorySessionDetail,
   IHistorySessionListResponse,
 } from '@letscok/shared-types';
@@ -100,6 +101,64 @@ export class HistoryService {
         playerNames: game.players.map((player) => player.attendance.member.name),
       })),
     };
+  }
+
+  // 참여 랭킹 — 전체 모임원의 출석·게임 수 순위 (멤버 색인 겸용이라 0회도 포함해 맨 아래로)
+  // months 지정 시 최근 N개월 출석만 집계 (전체 vs 요즘 활발한 사람 구분용)
+  async getRanking(months?: number): Promise<IHistoryRankingEntry[]> {
+    let since: Date | undefined;
+    if (months) {
+      since = new Date();
+      since.setMonth(since.getMonth() - months);
+    }
+
+    const [members, attendances] = await Promise.all([
+      this.prisma.member.findMany({ orderBy: { name: 'asc' } }),
+      this.prisma.attendance.findMany({
+        where: since ? { session: { date: { gte: since } } } : {},
+        include: { session: { select: { date: true } } },
+      }),
+    ]);
+
+    // 멤버별 집계 — 규모(수십 명 × 주 1~2회)상 DB groupBy 없이 병합으로 충분
+    const byMember = new Map<
+      string,
+      { totalSessions: number; totalGames: number; lastDate: Date | null }
+    >();
+    for (const attendance of attendances) {
+      const entry = byMember.get(attendance.memberId) ?? {
+        totalSessions: 0,
+        totalGames: 0,
+        lastDate: null,
+      };
+      entry.totalSessions += 1;
+      entry.totalGames += attendance.gamesPlayed;
+      if (!entry.lastDate || attendance.session.date > entry.lastDate) {
+        entry.lastDate = attendance.session.date;
+      }
+      byMember.set(attendance.memberId, entry);
+    }
+
+    return members
+      .map((member) => {
+        const agg = byMember.get(member.id);
+        return {
+          memberId: member.id,
+          name: member.name,
+          grade: member.grade,
+          gender: member.gender,
+          isGuest: member.isGuest,
+          totalSessions: agg?.totalSessions ?? 0,
+          totalGames: agg?.totalGames ?? 0,
+          lastAttendedDate: agg?.lastDate ? toDateString(agg.lastDate) : null,
+        };
+      })
+      .sort(
+        (a, b) =>
+          b.totalSessions - a.totalSessions ||
+          b.totalGames - a.totalGames ||
+          a.name.localeCompare(b.name, 'ko'), // 동률은 이름순으로 안정 정렬
+      );
   }
 
   // 개인 전적 — 누적 출석/게임 + 함께 뛴 파트너 top 5 + 최근 모임별 게임 수

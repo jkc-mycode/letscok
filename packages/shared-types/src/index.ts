@@ -241,6 +241,18 @@ export interface IHistoryMemberStats {
   recentSessions: { date: string; gamesPlayed: number }[]; // 최근 모임별 게임 수
 }
 
+// 참여 랭킹 한 줄 — 승패가 아니라 참여(출석·게임 수) 기준. 0회 멤버도 포함(멤버 색인 겸용)
+export interface IHistoryRankingEntry {
+  memberId: string;
+  name: string;
+  grade: Grade;
+  gender: Gender | null;
+  isGuest: boolean;
+  totalSessions: number; // 출석 수 (months 지정 시 기간 내)
+  totalGames: number; // gamesPlayed 합 (동일 기간 기준)
+  lastAttendedDate: string | null; // 기간 내 최근 출석일
+}
+
 // ===== 실시간 세션 스냅샷 (GET /sessions/current, 재연결 시 재조회) =====
 
 export interface ISessionSnapshot {

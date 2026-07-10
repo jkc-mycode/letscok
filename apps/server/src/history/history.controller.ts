@@ -10,6 +10,7 @@ import {
 import {
   IApiResponse,
   IHistoryMemberStats,
+  IHistoryRankingEntry,
   IHistorySessionDetail,
   IHistorySessionListResponse,
 } from '@letscok/shared-types';
@@ -33,6 +34,19 @@ export class HistoryController {
       data: await this.historyService.listSessions(
         Math.max(1, page),
         Math.min(50, Math.max(1, limit)),
+      ),
+    };
+  }
+
+  // 참여 랭킹 — months 생략 시 전체 누적, 지정 시 최근 N개월만
+  @Get('ranking')
+  async getRanking(
+    @Query('months', new ParseIntPipe({ optional: true })) months?: number,
+  ): Promise<IApiResponse<IHistoryRankingEntry[]>> {
+    return {
+      success: true,
+      data: await this.historyService.getRanking(
+        months ? Math.min(24, Math.max(1, months)) : undefined,
       ),
     };
   }

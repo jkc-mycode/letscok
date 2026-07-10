@@ -130,6 +130,71 @@ describe('getSessionDetail', () => {
   });
 });
 
+describe('getRanking', () => {
+  it('출석순 → 게임순 → 이름순으로 정렬하고, 0회 멤버도 맨 아래 포함한다', async () => {
+    const s1 = await seedClosedSession('2026-01-01');
+    const s2 = await seedClosedSession('2026-01-08');
+    const many = await seedMember('다출석'); // 2회 출석
+    const someA = await seedMember('나게임'); // 1회 출석, 3게임 — 동률(출석 1회)에서 게임순 위
+    const someB = await seedMember('가게임'); // 1회 출석, 1게임
+    const zero = await seedMember('안나옴'); // 0회 — 맨 아래
+    await seedAttendance(s1.id, many.id, 1);
+    await seedAttendance(s2.id, many.id, 2);
+    await seedAttendance(s1.id, someA.id, 3);
+    await seedAttendance(s1.id, someB.id, 1);
+
+    const ranking = await service.getRanking();
+
+    expect(ranking.map((r) => r.name)).toEqual(['다출석', '나게임', '가게임', '안나옴']);
+    expect(ranking[0]).toMatchObject({
+      totalSessions: 2,
+      totalGames: 3,
+      lastAttendedDate: '2026-01-08',
+    });
+    expect(ranking[3]).toMatchObject({
+      totalSessions: 0,
+      totalGames: 0,
+      lastAttendedDate: null,
+    });
+  });
+
+  it('완전 동률은 이름 가나다순으로 안정 정렬한다', async () => {
+    const session = await seedClosedSession('2026-01-01');
+    const b = await seedMember('나다라');
+    const a = await seedMember('가나다');
+    await seedAttendance(session.id, b.id, 1);
+    await seedAttendance(session.id, a.id, 1);
+
+    const ranking = await service.getRanking();
+    expect(ranking.map((r) => r.name)).toEqual(['가나다', '나다라']);
+  });
+
+  it('months 지정 시 기간 밖 출석은 집계에서 빠진다', async () => {
+    // 오래된 모임(4개월 전)과 최근 모임(어제) — 1개월 필터면 최근 것만 잡혀야 한다
+    const old = new Date();
+    old.setMonth(old.getMonth() - 4);
+    const recent = new Date();
+    recent.setDate(recent.getDate() - 1);
+    const oldSession = await seedClosedSession(old.toISOString().slice(0, 10));
+    const recentSession = await seedClosedSession(recent.toISOString().slice(0, 10));
+
+    const veteran = await seedMember('옛날사람'); // 옛 모임만 출석
+    const active = await seedMember('요즘사람'); // 최근 모임만 출석
+    await seedAttendance(oldSession.id, veteran.id, 2);
+    await seedAttendance(recentSession.id, active.id, 1);
+
+    const all = await service.getRanking();
+    expect(all.find((r) => r.name === '옛날사람')?.totalSessions).toBe(1); // 전체 누적엔 포함
+
+    const lastMonth = await service.getRanking(1);
+    expect(lastMonth.find((r) => r.name === '요즘사람')?.totalSessions).toBe(1);
+    expect(lastMonth.find((r) => r.name === '옛날사람')).toMatchObject({
+      totalSessions: 0, // 기간 밖 — 0회로 강등되지만 목록엔 남는다 (멤버 색인)
+      lastAttendedDate: null,
+    });
+  });
+});
+
 describe('getMemberStats', () => {
   it('누적 출석·게임·최근 출석일·파트너 top·최근 모임 목록을 집계한다', async () => {
     const s1 = await seedClosedSession('2026-01-01');
