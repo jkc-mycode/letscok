@@ -10,6 +10,7 @@ import { IApiResponse, IAttendance } from '@letscok/shared-types';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { AttendancesService } from './attendances.service';
 import { CheckInDto } from './dto/check-in.dto';
+import { ManualCheckInDto } from './dto/manual-check-in.dto';
 
 @Controller()
 export class AttendancesController {
@@ -24,6 +25,22 @@ export class AttendancesController {
     return {
       success: true,
       data: await this.attendancesService.checkIn(sessionId, dto),
+    };
+  }
+
+  // 수동 체크인 (운영진 전용) — QR 오픈 지연 등 예외 상황에서 운영진이 대신 체크인
+  @Post('sessions/:sessionId/attendances/manual')
+  @UseGuards(AdminGuard)
+  async manualCheckIn(
+    @Param('sessionId') sessionId: string,
+    @Body() dto: ManualCheckInDto,
+  ): Promise<IApiResponse<IAttendance>> {
+    return {
+      success: true,
+      data: await this.attendancesService.manualCheckIn(
+        sessionId,
+        dto.memberId,
+      ),
     };
   }
 

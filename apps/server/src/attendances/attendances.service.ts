@@ -28,22 +28,35 @@ export class AttendancesService {
       throw new ForbiddenException('현장 QR을 스캔해 체크인해주세요.');
     }
 
+    return this.checkInMember(sessionId, dto.memberId);
+  }
+
+  // 운영진 수동 체크인 — AdminGuard 뒤라 코드 대조 생략, 나머지 정책(재입장·409)은 공개 체크인과 동일
+  async manualCheckIn(sessionId: string, memberId: string): Promise<IAttendance> {
+    await this.sessionsService.findOpenSessionOrThrow(sessionId);
+    return this.checkInMember(sessionId, memberId);
+  }
+
+  private async checkInMember(
+    sessionId: string,
+    memberId: string,
+  ): Promise<IAttendance> {
     const member = await this.prisma.member.findFirst({
-      where: { id: dto.memberId, deletedAt: null },
+      where: { id: memberId, deletedAt: null },
     });
     if (!member) {
       throw new NotFoundException('등록되지 않은 모임원입니다.');
     }
 
     const existing = await this.prisma.attendance.findUnique({
-      where: { sessionId_memberId: { sessionId, memberId: dto.memberId } },
+      where: { sessionId_memberId: { sessionId, memberId } },
       include: { member: true },
     });
 
     // 첫 체크인
     if (!existing) {
       const attendance = await this.prisma.attendance.create({
-        data: { sessionId, memberId: dto.memberId },
+        data: { sessionId, memberId },
         include: { member: true },
       });
       this.realtime.broadcastSnapshot(sessionId);
