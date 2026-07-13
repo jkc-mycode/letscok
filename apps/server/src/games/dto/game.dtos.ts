@@ -3,12 +3,15 @@ import {
   ICreateGameDto,
   IReplaceGamePlayerDto,
   IUpdateGameOrderDto,
+  RecommendationCategory,
 } from '@letscok/shared-types';
 import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsEnum,
   IsInt,
+  IsOptional,
   IsString,
   Min,
 } from 'class-validator';
@@ -20,6 +23,13 @@ export class CreateGameDto implements ICreateGameDto {
   @ArrayMaxSize(4, { message: '게임은 4명으로 구성해야 합니다.' })
   @IsString({ each: true })
   attendanceIds: [string, string, string, string];
+}
+
+// 추천 종목 필터 쿼리 — 생략 시 ALL(기존 동작, 하위 호환)
+export class RecommendGamesQueryDto {
+  @IsOptional()
+  @IsEnum(RecommendationCategory, { message: '올바르지 않은 종목입니다.' })
+  category?: RecommendationCategory;
 }
 
 // 코트 배정 요청 — 대기 조합을 올릴 코트 id

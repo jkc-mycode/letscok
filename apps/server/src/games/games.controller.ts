@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { IApiResponse, IGame, IGameRecommendation } from '@letscok/shared-types';
@@ -12,6 +13,7 @@ import { AdminGuard } from '../common/guards/admin.guard';
 import {
   AssignGameDto,
   CreateGameDto,
+  RecommendGamesQueryDto,
   ReplaceGamePlayerDto,
   UpdateGameOrderDto,
 } from './dto/game.dtos';
@@ -31,10 +33,11 @@ export class GamesController {
   @Get('sessions/:sessionId/game-recommendations')
   async recommend(
     @Param('sessionId') sessionId: string,
+    @Query() query: RecommendGamesQueryDto,
   ): Promise<IApiResponse<IGameRecommendation[]>> {
     return {
       success: true,
-      data: await this.recommendationsService.recommend(sessionId),
+      data: await this.recommendationsService.recommend(sessionId, query.category),
     };
   }
 

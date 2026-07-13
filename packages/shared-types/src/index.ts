@@ -160,6 +160,17 @@ export interface IAdminLoginDto {
 // ===== 게임 추천 (GET /sessions/:id/game-recommendations) =====
 
 // 후보 성격 — 클라이언트가 한국어 라벨로 표시 (공정성/새 조합/믹스)
+// 추천 종목 필터 — 모달 탭과 1:1. ALL이 기본(성별 무관 최적, 미지정 포함)
+export const RecommendationCategory = {
+  ALL: 'ALL', // 제한 없음 — 기존 동작 (미지정 포함, 표준 복식 소프트 선호)
+  MENS: 'MENS', // 남복 4:0
+  WOMENS: 'WOMENS', // 여복 0:4
+  MIXED: 'MIXED', // 혼복 2:2
+  OTHER: 'OTHER', // 기타 3:1 · 1:3
+} as const;
+export type RecommendationCategory =
+  (typeof RecommendationCategory)[keyof typeof RecommendationCategory];
+
 export const RecommendationKind = {
   FAIRNESS: 'FAIRNESS', // 가장 오래 기다린 사람 우선
   FRESH: 'FRESH', // 오늘 안 만난 사람 위주

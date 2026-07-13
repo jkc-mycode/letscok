@@ -8,6 +8,7 @@ import {
   IGameRecommendation,
   IMember,
   ISessionSnapshot,
+  RecommendationCategory,
   RecommendationKind,
 } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
@@ -404,6 +405,7 @@ function BoardBody({
       {recommendOpen && (
         <RecommendModal
           sessionId={session.id}
+          attendances={attendances}
           run={run}
           busy={busy}
           onClose={() => setRecommendOpen(false)}
@@ -446,17 +448,46 @@ const KIND_META: Record<
   MIX: { label: '믹스', desc: '상위 조합에서 살짝 섞음', text: 'text-amber', border: 'border-amber/40' },
 };
 
+// 종목 탭 — 서버 category 필터와 1:1. ALL이 기본(기존 동작)
+const CATEGORY_TABS: { value: RecommendationCategory; label: string }[] = [
+  { value: 'ALL', label: '전체' },
+  { value: 'MENS', label: '남복' },
+  { value: 'WOMENS', label: '여복' },
+  { value: 'MIXED', label: '혼복' },
+  { value: 'OTHER', label: '기타 3:1' },
+];
+
+// 탭별 빈 결과 사유 — 스냅샷 출석 성별을 세어 구체적으로 안내 (추가 API 없음)
+function emptyMessage(category: RecommendationCategory, attendances: IAttendance[]): string {
+  const active = attendances.filter((a) => a.status !== 'LEFT');
+  const m = active.filter((a) => a.member?.gender === 'MALE').length;
+  const f = active.filter((a) => a.member?.gender === 'FEMALE').length;
+  if (category === 'MENS' && m < 4) return `남성 인원이 ${m}명이라 남복 조합을 만들 수 없어요`;
+  if (category === 'WOMENS' && f < 4) return `여성 인원이 ${f}명이라 여복 조합을 만들 수 없어요`;
+  if (category === 'MIXED' && (m < 2 || f < 2))
+    return `혼복은 남녀 2명씩 필요해요 (현재 남 ${m} · 여 ${f})`;
+  if (category === 'OTHER' && !((m >= 3 && f >= 1) || (m >= 1 && f >= 3)))
+    return `3:1 구성이 안 나오는 인원이에요 (현재 남 ${m} · 여 ${f})`;
+  // 성별 인원은 충분한데 후보가 없는 경우 = 미배정 대기 부족 (성별 미지정은 종목 탭 제외)
+  return category === 'ALL'
+    ? '추천할 미배정 대기 인원이 없어요'
+    : '조건에 맞는 대기 인원이 부족해요 (성별 미지정은 종목 탭에서 빠져요)';
+}
+
 function RecommendModal({
   sessionId,
+  attendances,
   run,
   busy,
   onClose,
 }: {
   sessionId: string;
+  attendances: IAttendance[];
   run: (a: () => Promise<unknown>) => Promise<void>;
   busy: boolean;
   onClose: () => void;
 }) {
+  const [category, setCategory] = useState<RecommendationCategory>('ALL');
   const [candidates, setCandidates] = useState<IGameRecommendation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -465,14 +496,15 @@ function RecommendModal({
     setError(null);
     try {
       setCandidates(
-        await api<IGameRecommendation[]>(`/sessions/${sessionId}/game-recommendations`, {
-          admin: true,
-        }),
+        await api<IGameRecommendation[]>(
+          `/sessions/${sessionId}/game-recommendations?category=${category}`,
+          { admin: true },
+        ),
       );
     } catch (e) {
       setError(e instanceof ApiError ? e.message : '추천을 불러오지 못했습니다.');
     }
-  }, [sessionId]);
+  }, [sessionId, category]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -516,6 +548,23 @@ function RecommendModal({
           </div>
         </div>
 
+        {/* 종목 탭 — 전환 시 해당 구성으로 재요청 */}
+        <div className="flex gap-1.5 pb-3">
+          {CATEGORY_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              onClick={() => setCategory(tab.value)}
+              className={`h-9 rounded-lg border px-3 text-sm font-medium ${
+                category === tab.value
+                  ? 'border-court bg-court/10 text-court'
+                  : 'border-line text-dim'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         <div className="min-h-0 flex-1 overflow-y-auto">
           {error && <p className="py-10 text-center text-sm text-coral">{error}</p>}
           {!error && candidates === null && (
@@ -523,7 +572,7 @@ function RecommendModal({
           )}
           {candidates?.length === 0 && (
             <p className="py-10 text-center text-sm text-faint">
-              추천할 미배정 대기 인원이 없어요
+              {emptyMessage(category, attendances)}
             </p>
           )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -926,6 +975,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
     items: [
       '[게임 추천]은 참고용 초안 3종 — 공정성(오래 기다린 순) / 새 조합(오늘 안 만난 사람) / 믹스.',
       '대기시간·게임 수·함께 뛴 조합·성별 구성(남복/여복/혼복)을 점수로 계산해요. 넣을지는 운영진 마음!',
+      '종목 탭(남복/여복/혼복/기타 3:1)을 누르면 그 구성으로만 추천해요. 성별 미지정 멤버는 [전체] 탭에서만 나와요.',
     ],
   },
   {

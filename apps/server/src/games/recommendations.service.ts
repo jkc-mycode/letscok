@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   IGameRecommendation,
   IRecommendedPlayer,
+  RecommendationCategory,
   RecommendationKind,
 } from '@letscok/shared-types';
 import { Attendance, Member } from '../generated/prisma/client';
@@ -32,10 +33,14 @@ export class RecommendationsService {
   ) {}
 
   // 다음 1게임에 대한 후보 조합 최대 3개 (공정성/새 조합/믹스) — 저장 없이 계산만
-  async recommend(sessionId: string): Promise<IGameRecommendation[]> {
+  // category = 종목 탭 필터. ALL이면 기존 동작, 종목이면 성별 확정자 풀 + 구성 강제
+  async recommend(
+    sessionId: string,
+    category: RecommendationCategory = 'ALL',
+  ): Promise<IGameRecommendation[]> {
     await this.sessionsService.findOpenSessionOrThrow(sessionId);
 
-    const [attendances, playedGames] = await Promise.all([
+    const [allAttendances, playedGames] = await Promise.all([
       this.prisma.attendance.findMany({
         where: { sessionId, status: { not: 'LEFT' } },
         include: { member: true },
@@ -46,6 +51,14 @@ export class RecommendationsService {
         select: { players: { select: { attendanceId: true } } },
       }),
     ]);
+
+    // 종목 탭 풀 필터: 남복/여복은 해당 성별만, 혼복/기타는 성별 확정자만 (미지정은 ALL 전용)
+    const attendances = allAttendances.filter((a) => {
+      if (category === 'ALL') return true;
+      if (category === 'MENS') return a.member.gender === 'MALE';
+      if (category === 'WOMENS') return a.member.gender === 'FEMALE';
+      return a.member.gender !== null;
+    });
 
     // 같은 게임을 뛴 쌍의 등장 횟수 — 반복 회피 감점의 재료
     const pairCounts = new Map<string, number>();
@@ -84,6 +97,12 @@ export class RecommendationsService {
       combos = choose(borrowPool, need).map((borrowed) => [...free, ...borrowed]);
     }
 
+    // 혼복/기타는 남녀 혼합 풀에서 나온 조합 중 구성이 맞는 것만 (남복/여복은 풀 필터로 이미 보장)
+    if (category === 'MIXED' || category === 'OTHER') {
+      combos = combos.filter((players) => matchesComposition(players, category));
+    }
+    if (combos.length === 0) return [];
+
     const now = Date.now();
     const scored = combos.map((players) => {
       let waitSum = 0;
@@ -105,7 +124,9 @@ export class RecommendationsService {
         }
       }
       const gradeExcess = Math.max(0, Math.max(...grades) - Math.min(...grades) - 3);
-      const genderPenalty = isCleanGenderComposition(players) ? 0 : W_GENDER;
+      // 종목 탭은 구성이 강제라 성별 선호 감점이 무의미 — ALL에서만 적용
+      const genderPenalty =
+        category === 'ALL' && !isCleanGenderComposition(players) ? W_GENDER : 0;
       const base =
         waitSum * W_WAIT -
         gamesSum * W_GAMES -
@@ -172,6 +193,12 @@ function pairKey(a: string, b: string): string {
 
 function waitingMinutes(since: Date, now: number): number {
   return Math.max(0, Math.floor((now - since.getTime()) / 60_000));
+}
+
+// 종목 탭 구성 판정 — 풀이 성별 확정자뿐이라 null 걱정 없이 남성 수만 세면 된다
+function matchesComposition(players: Pooled[], category: 'MIXED' | 'OTHER'): boolean {
+  const m = players.filter((p) => p.member.gender === 'MALE').length;
+  return category === 'MIXED' ? m === 2 : m === 1 || m === 3;
 }
 
 // 4인이 표준 복식(남복 4:0 / 여복 0:4 / 혼복 2:2)으로 떨어지는지.
