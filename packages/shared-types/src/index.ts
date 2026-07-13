@@ -126,6 +126,18 @@ export interface IManualCheckInDto {
   memberId: string;
 }
 
+// 관제판 운영 메모 (운영진 전용 — 이름·건강 정보가 적히므로 공개 응답엔 절대 미포함)
+// 세션 무관 전역: 모임 종료에도 유지, 삭제 = 완료 처리
+export interface IAdminMemo {
+  id: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface ICreateMemoDto {
+  content: string;
+}
+
 // 진행 중 세션의 현장 체크인 코드 (운영진 전용 조회 — QR 렌더용). 공개 스냅샷엔 절대 미포함
 export interface ICheckInCodeResponse {
   code: string | null;

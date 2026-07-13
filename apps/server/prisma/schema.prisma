@@ -83,6 +83,16 @@ model Session {
   @@map("sessions")
 }
 
+// 관제판 운영 메모 (한 줄 = 1행, 추가/삭제만) — 세션 무관 전역: 모임이 끝나도 처리 전 요청·건강
+// 메모는 다음 모임으로 이어진다. 삭제 = 완료 처리. 이름·건강 정보가 적히므로 공개 응답엔 절대 미노출
+model AdminMemo {
+  id        String   @id @default(cuid())
+  content   String
+  createdAt DateTime @default(now())
+
+  @@map("admin_memos")
+}
+
 // 세션에 등록된 코트 (체육관 실제 코트 번호 사용)
 model Court {
   id        String      @id @default(cuid())

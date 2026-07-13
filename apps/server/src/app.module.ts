@@ -10,6 +10,7 @@ import { GamesModule } from './games/games.module';
 import { HealthController } from './health/health.controller';
 import { HistoryModule } from './history/history.module';
 import { MembersModule } from './members/members.module';
+import { MemosModule } from './memos/memos.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { SessionsModule } from './sessions/sessions.module';
@@ -31,6 +32,7 @@ import { SessionsModule } from './sessions/sessions.module';
     CourtsModule,
     GamesModule,
     HistoryModule,
+    MemosModule,
   ],
   controllers: [HealthController, AuthController],
   providers: [
