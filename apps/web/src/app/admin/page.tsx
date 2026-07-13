@@ -6,6 +6,7 @@ import {
   ICourt,
   IGame,
   IGameRecommendation,
+  IMember,
   ISessionSnapshot,
   RecommendationKind,
 } from '@letscok/shared-types';
@@ -138,6 +139,7 @@ function BoardBody({
   const [recommendOpen, setRecommendOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false); // 운영진 수동 체크인 (QR 오픈 지연 등 예외용)
   const [replaceGameId, setReplaceGameId] = useState<string | null>(null); // 선수 교체 대상 게임
 
   const { session, courts, attendances, games } = snapshot;
@@ -313,25 +315,33 @@ function BoardBody({
           accent="text-ink"
           count={waiting.length}
           headerExtra={
-            busyList.length > 0 && (
+            <div className="ml-auto flex items-center gap-2">
+              {busyList.length > 0 && (
+                <button
+                  onClick={() => {
+                    setIncludeBusy((on) => {
+                      // 끌 때 게임 중/조합 인원이 선택에 남아 보이지 않게 되는 것 방지
+                      if (on) {
+                        const waitingIds = new Set(waiting.map((a) => a.id));
+                        setSelected((prev) => new Set([...prev].filter((id) => waitingIds.has(id))));
+                      }
+                      return !on;
+                    });
+                  }}
+                  className={`h-7 rounded-lg border px-2.5 text-xs font-medium ${
+                    includeBusy ? 'border-court text-court' : 'border-line text-faint'
+                  }`}
+                >
+                  게임 중 포함
+                </button>
+              )}
               <button
-                onClick={() => {
-                  setIncludeBusy((on) => {
-                    // 끌 때 게임 중/조합 인원이 선택에 남아 보이지 않게 되는 것 방지
-                    if (on) {
-                      const waitingIds = new Set(waiting.map((a) => a.id));
-                      setSelected((prev) => new Set([...prev].filter((id) => waitingIds.has(id))));
-                    }
-                    return !on;
-                  });
-                }}
-                className={`ml-auto h-7 rounded-lg border px-2.5 text-xs font-medium ${
-                  includeBusy ? 'border-court text-court' : 'border-line text-faint'
-                }`}
+                onClick={() => setManualOpen(true)}
+                className="h-7 rounded-lg border border-line px-2.5 text-xs font-medium text-faint"
               >
-                게임 중 포함
+                수동 체크인
               </button>
-            )
+            </div>
           }
           footer={
             <>
@@ -400,6 +410,15 @@ function BoardBody({
         />
       )}
       {qrOpen && <CheckInQrModal onClose={() => setQrOpen(false)} />}
+      {manualOpen && (
+        <ManualCheckInModal
+          sessionId={session.id}
+          attendances={attendances}
+          run={run}
+          busy={busy}
+          onClose={() => setManualOpen(false)}
+        />
+      )}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
       {replaceTarget && (
         <ReplacePlayerModal
@@ -753,6 +772,134 @@ function ReplacePlayerModal({
   );
 }
 
+// ===== 수동 체크인 모달 =====
+
+// QR 오픈이 늦어 이미 게임 중인 인원 등을 운영진이 대신 체크인 — 기등록 모임원 전용
+// (신규 등록은 개인정보 동의가 본인 몫이라 여기서 안 받는다. 본인 폰 QR 스캔으로 안내)
+// 본인 폰 연결은 걱정 없음: 나중에 QR 스캔하면 409를 /checkin이 "본인 확인 완료"로 받아 /m 진입
+function ManualCheckInModal({
+  sessionId,
+  attendances,
+  run,
+  busy,
+  onClose,
+}: {
+  sessionId: string;
+  attendances: IAttendance[];
+  run: (a: () => Promise<unknown>) => Promise<void>;
+  busy: boolean;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<IMember[]>([]);
+  const [lastDone, setLastDone] = useState<string | null>(null); // 연속 입력용 직전 완료 표시
+
+  // 입력 후 300ms 조용하면 검색 (타이핑마다 요청하지 않도록 — /checkin과 동일 패턴)
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setResults([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      void api<IMember[]>(`/members/search?name=${encodeURIComponent(trimmed)}`)
+        .then(setResults)
+        .catch(() => setResults([]));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  // 현재 세션 출석과 대조 — 이미 출석 중이면 탭 자체를 막아 쓸모없는 409를 없앤다
+  const statusByMemberId = useMemo(
+    () => new Map(attendances.map((a) => [a.memberId, a.status])),
+    [attendances],
+  );
+
+  const checkIn = (member: IMember) =>
+    run(async () => {
+      await api(`/sessions/${sessionId}/attendances/manual`, {
+        method: 'POST',
+        admin: true,
+        body: { memberId: member.id },
+      });
+      setLastDone(member.name); // 모달은 열어둔다 — 지각 시나리오는 보통 여러 명 연속 입력
+    });
+
+  return (
+    <div
+      onClick={onClose}
+      className="fade-in fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-2xl border border-line bg-panel p-5"
+      >
+        <div className="flex items-center pb-3">
+          <h2 className="text-lg font-bold text-court">수동 체크인</h2>
+          <p className="ml-3 text-xs text-faint">QR 오픈이 늦었을 때 등 예외용</p>
+          <button
+            onClick={onClose}
+            className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
+          >
+            닫기
+          </button>
+        </div>
+
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="모임원 이름을 검색하세요"
+          autoFocus
+          className="h-12 rounded-xl border border-line bg-panel2 px-4 outline-none focus:border-court"
+        />
+        <p className="pt-2 text-xs text-faint">
+          탭하면 바로 체크인돼요. 미등록 인원은 본인 폰으로 QR 스캔해 등록해주세요.
+        </p>
+        {lastDone && (
+          <p className="pt-1 text-xs font-medium text-court">{lastDone}님 체크인 완료</p>
+        )}
+
+        <div className="mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+          {results.map((member) => {
+            const status = statusByMemberId.get(member.id);
+            const present = status !== undefined && status !== 'LEFT';
+            return (
+              <button
+                key={member.id}
+                onClick={() => !present && void checkIn(member)}
+                disabled={present || busy}
+                className={`flex items-center gap-2 rounded-xl border p-3 text-left text-sm ${
+                  present ? 'border-line bg-panel2 opacity-50' : 'border-line bg-panel2'
+                }`}
+              >
+                <GradeBadge grade={member.grade} />
+                <span className="truncate font-medium">{member.name}</span>
+                <GenderMarker gender={member.gender} />
+                {member.isGuest && <span className="text-[10px] text-sky">G</span>}
+                {present && (
+                  <span className="shrink-0 rounded bg-court/15 px-1.5 py-0.5 text-[10px] font-medium text-court">
+                    출석 중
+                  </span>
+                )}
+                {status === 'LEFT' && (
+                  <span className="shrink-0 rounded bg-amber/15 px-1.5 py-0.5 text-[10px] font-medium text-amber">
+                    퇴장 — 재입장 처리
+                  </span>
+                )}
+                {/* 동명이인 구분용 생년월일 노출 */}
+                <span className="ml-auto shrink-0 text-xs text-dim">{member.birthDate}</span>
+              </button>
+            );
+          })}
+          {query.trim() && results.length === 0 && (
+            <p className="py-6 text-center text-sm text-faint">검색 결과가 없어요</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ===== 도움말 모달 =====
 
 // 정적 안내문 — 운영진 교체 시 구두 설명 없이 관제판을 넘길 수 있게 핵심 개념만 요약
@@ -771,6 +918,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
       '모임원은 현장 QR을 스캔해야만 체크인돼요 (코드 없는 주소는 차단).',
       '[체크인 QR] 모달을 입구 화면에 띄워두세요. 코드는 모임마다 새로 발급되고 그날 내내 같아요.',
       '카메라가 안 되는 폰은 모달 하단 6자리 코드를 불러주세요.',
+      'QR 오픈이 늦어 이미 게임 중인 사람들은 대기 인원의 [수동 체크인]으로 넣어주세요. 본인 폰은 나중에 QR을 스캔하면 그대로 연결돼요.',
     ],
   },
   {
