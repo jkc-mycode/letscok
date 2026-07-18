@@ -35,6 +35,7 @@ export const AttendanceStatus = {
   CHECKED_IN: 'CHECKED_IN', // 미배정 대기
   MATCHED: 'MATCHED', // 4인 조합에 포함되어 코트 대기
   PLAYING: 'PLAYING', // 게임 중
+  RESTING: 'RESTING', // 잠깐 휴식 — 조합 대상에서 제외, 복귀 시 대기시간 리셋
   LEFT: 'LEFT', // 퇴장 (재입장 시 CHECKED_IN 복귀)
 } as const;
 export type AttendanceStatus = (typeof AttendanceStatus)[keyof typeof AttendanceStatus];

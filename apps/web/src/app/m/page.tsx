@@ -7,8 +7,9 @@ import { IAttendance } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { GenderMarker, GradeBadge, MeChip, PlayerGrid } from '@/components/badges';
+import { GenderMarker, GradeBadge, MeChip, PlayerGrid, Toast } from '@/components/badges';
 import { MotionCard } from '@/components/motion-card';
+import { api, ApiError } from '@/lib/api';
 import { getMemberId } from '@/lib/member';
 import {
   formatElapsed,
@@ -33,6 +34,23 @@ export default function MyStatusPage() {
     () => snapshot?.attendances.find((a) => a.memberId === memberId) ?? null,
     [snapshot, memberId],
   );
+
+  // 타임(잠깐 쉴래요) — 유일한 셀프 액션. 조합에 묶여 있으면 서버 409 안내를 토스트로
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const toggleRest = async () => {
+    if (busy || !me) return;
+    setBusy(true);
+    try {
+      const action = me.status === 'RESTING' ? 'resume' : 'rest';
+      await api(`/attendances/${me.id}/${action}`, { method: 'PATCH' });
+    } catch (e) {
+      setToast(e instanceof ApiError ? e.message : '요청에 실패했습니다.');
+      setTimeout(() => setToast(null), 4000);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   if (!mounted || loading) {
     return <Shell><p className="py-20 text-center text-dim">불러오는 중...</p></Shell>;
@@ -64,6 +82,7 @@ export default function MyStatusPage() {
   );
   const queuedGames = games.filter((g) => g.status === 'QUEUED');
   const waiting = attendances.filter((a) => a.status === 'CHECKED_IN');
+  const resting = attendances.filter((a) => a.status === 'RESTING'); // 대기 인원 뒤에 흐리게 표시
   // 여러 대기 조합에 겹쳐 들어간 인원 표시 (관제판과 동일 기준)
   const overlapCounts = new Map<string, number>();
   for (const game of queuedGames) {
@@ -85,6 +104,27 @@ export default function MyStatusPage() {
         LETSCOK
       </Link>
       <MyBanner me={me} waiting={waiting} now={now} />
+
+      {/* 타임 버튼 — 대기·조합 대기 중에만. 게임 중·퇴장엔 의미 없어 숨김
+          (MATCHED는 눌러도 서버가 409로 막고 "운영진에게 말씀해주세요" 안내) */}
+      {(me.status === 'CHECKED_IN' || me.status === 'MATCHED') && (
+        <button
+          onClick={() => void toggleRest()}
+          disabled={busy}
+          className="h-12 rounded-xl border border-sky/40 text-sm font-medium text-sky disabled:opacity-50"
+        >
+          잠깐 쉴래요 — 게임 조합에서 빼주세요
+        </button>
+      )}
+      {me.status === 'RESTING' && (
+        <button
+          onClick={() => void toggleRest()}
+          disabled={busy}
+          className="h-12 rounded-xl bg-court text-sm font-bold text-bg disabled:opacity-50"
+        >
+          다시 뛸래요 — 대기로 복귀
+        </button>
+      )}
 
       {/* 게임 중 — 관제판과 동일 정보, 버튼만 없음 */}
       <SectionTitle accent="text-court" title="게임 중" count={playingByCourt.size} />
@@ -152,6 +192,35 @@ export default function MyStatusPage() {
           );
         })}
       </AnimatePresence>
+      <AnimatePresence initial={false}>
+        {resting.map((attendance) => {
+          const member = attendance.member;
+          if (!member) return null;
+          const isMe = member.id === memberId;
+          return (
+            <MotionCard
+              key={attendance.id}
+              className={`flex items-center gap-2 rounded-xl border p-3 ${
+                isMe ? 'border-sky bg-sky/10' : 'border-line bg-panel2 opacity-60'
+              }`}
+            >
+              <GradeBadge grade={member.grade} />
+              <span className={`font-medium ${isMe ? 'font-bold text-sky' : ''}`}>
+                {member.name}
+              </span>
+              <GenderMarker gender={member.gender} />
+              {isMe && <MeChip />}
+              <span className="shrink-0 rounded bg-sky/15 px-1.5 py-0.5 text-[10px] font-medium text-sky">
+                휴식
+              </span>
+              <span className="tabular ml-auto font-mono text-xs text-dim">
+                {attendance.gamesPlayed}게임
+              </span>
+            </MotionCard>
+          );
+        })}
+      </AnimatePresence>
+      {toast && <Toast message={toast} />}
     </Shell>
   );
 }
@@ -179,6 +248,9 @@ function MyBanner({
   } else if (me.status === 'PLAYING') {
     statusClass = 'border-court bg-court/10 text-court';
     statusText = '게임 중';
+  } else if (me.status === 'RESTING') {
+    statusClass = 'border-sky bg-sky/10 text-sky';
+    statusText = `휴식 중 · ${formatWaitingMinutes(me.waitingSince, now)}`;
   } else {
     statusText = '퇴장 — 다시 오면 QR 재체크인';
   }

@@ -32,7 +32,7 @@ export class GamesService {
 
   // 조합 생성: 4명 → QUEUED 게임. 중복 대기 허용 정책 —
   // 한 사람이 여러 QUEUED 게임에 동시에 들어갈 수 있고(다음다음 게임 미리 짜기),
-  // 게임 중(PLAYING)인 사람도 미리 넣을 수 있다. 퇴장(LEFT)한 사람만 불가
+  // 게임 중(PLAYING)인 사람도 미리 넣을 수 있다. 퇴장(LEFT)·휴식(RESTING)만 불가
   async create(sessionId: string, dto: CreateGameDto): Promise<IGame> {
     await this.sessionsService.findOpenSessionOrThrow(sessionId);
 
@@ -42,10 +42,12 @@ export class GamesService {
     }
 
     const activeCount = await this.prisma.attendance.count({
-      where: { id: { in: uniqueIds }, sessionId, status: { not: 'LEFT' } },
+      where: { id: { in: uniqueIds }, sessionId, status: { notIn: ['LEFT', 'RESTING'] } },
     });
     if (activeCount !== 4) {
-      throw new ConflictException('퇴장했거나 이 모임에 없는 모임원이 포함되어 있습니다.');
+      throw new ConflictException(
+        '퇴장·휴식 중이거나 이 모임에 없는 모임원이 포함되어 있습니다.',
+      );
     }
 
     const game = await this.prisma.$transaction(async (tx) => {
@@ -271,10 +273,14 @@ export class GamesService {
     }
 
     const incoming = await this.prisma.attendance.findFirst({
-      where: { id: dto.inAttendanceId, sessionId: game.sessionId, status: { not: 'LEFT' } },
+      where: {
+        id: dto.inAttendanceId,
+        sessionId: game.sessionId,
+        status: { notIn: ['LEFT', 'RESTING'] },
+      },
     });
     if (!incoming) {
-      throw new ConflictException('퇴장했거나 이 모임에 없는 모임원입니다.');
+      throw new ConflictException('퇴장·휴식 중이거나 이 모임에 없는 모임원입니다.');
     }
     // PLAYING은 동시에 한 곳만 — 게임 중인 게임엔 다른 코트에서 뛰는 중인 사람 투입 불가
     // (QUEUED 조합엔 중복 대기 정책상 게임 중인 사람도 미리 넣을 수 있다)

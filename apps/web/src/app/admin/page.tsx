@@ -170,6 +170,11 @@ function BoardBody({
     () => attendances.filter((a) => a.status === 'CHECKED_IN'),
     [attendances],
   );
+  // 휴식 인원 — 보이되 선택 불가 (인원 파악은 되고 실수 투입은 차단)
+  const restingList = useMemo(
+    () => attendances.filter((a) => a.status === 'RESTING'),
+    [attendances],
+  );
   // 게임 중 포함 토글 — 잔여 인원을 게임 중/조합에 든 사람과 미리 조합할 때 켠다
   const [includeBusy, setIncludeBusy] = useState(false);
   const busyList = useMemo(
@@ -391,6 +396,19 @@ function BoardBody({
               />
             ))}
           </AnimatePresence>
+          <AnimatePresence initial={false}>
+            {restingList.map((attendance) => (
+              <WaitingRow
+                key={attendance.id}
+                attendance={attendance}
+                now={now}
+                selected={false}
+                onToggle={() => undefined}
+                run={run}
+                resting
+              />
+            ))}
+          </AnimatePresence>
           {includeBusy && busyList.length > 0 && (
             <>
               <p className="pt-2 pb-1 text-center text-[11px] text-faint">
@@ -483,7 +501,7 @@ const CATEGORY_TABS: { value: RecommendationCategory; label: string }[] = [
 
 // 탭별 빈 결과 사유 — 스냅샷 출석 성별을 세어 구체적으로 안내 (추가 API 없음)
 function emptyMessage(category: RecommendationCategory, attendances: IAttendance[]): string {
-  const active = attendances.filter((a) => a.status !== 'LEFT');
+  const active = attendances.filter((a) => a.status !== 'LEFT' && a.status !== 'RESTING'); // 휴식은 추천 풀 밖
   const m = active.filter((a) => a.member?.gender === 'MALE').length;
   const f = active.filter((a) => a.member?.gender === 'FEMALE').length;
   if (category === 'MENS' && m < 4) return `남성 인원이 ${m}명이라 남복 조합을 만들 수 없어요`;
@@ -1399,6 +1417,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
       '부상·급한 일로 한 명만 바꿀 땐 [교체] — 게임을 갈아엎지 않아 타이머·순서가 유지돼요. 빠진 사람은 대기 인원으로 돌아와요.',
       '구두 요청("○○랑 파트너 연습", "무릎 조심")은 메모에 적어두세요. 모임이 끝나도 남아 다음 모임에 이어지고, 처리했으면 ✕로 지워요.',
       '오늘 끝난 게임은 상단 [게임 기록]에서 확인해요 — 이름으로 검색하면 그 사람이 뛴 게임만 모아 볼 수 있어요.',
+      '모임원이 폰에서 [잠깐 쉴래요]를 누르면 휴식으로 빠져요 — 조합 선택·게임 추천에서 제외되고, 복귀하면 대기시간이 새로 시작돼요. 대기 인원 행의 [휴식]/[복귀]로 운영진이 대신 처리할 수도 있어요.',
     ],
   },
   {
@@ -1781,6 +1800,7 @@ function WaitingRow({
   onToggle,
   run,
   busyStatus,
+  resting,
 }: {
   attendance: IAttendance;
   now: number;
@@ -1788,15 +1808,18 @@ function WaitingRow({
   onToggle: () => void;
   run: (a: () => Promise<unknown>) => Promise<void>;
   busyStatus?: 'PLAYING' | 'MATCHED'; // 게임 중 포함 토글로 노출된 행 — 흐리게 + 상태 칩, 퇴장 버튼 없음
+  resting?: boolean; // 휴식 행 — 선택 불가, 복귀·퇴장 버튼만
 }) {
   const member = attendance.member;
   if (!member) return null;
   return (
     <MotionCard
-      onClick={onToggle}
-      className={`flex cursor-pointer items-center gap-2 rounded-xl border p-3 transition-colors ${
+      onClick={resting ? undefined : onToggle}
+      className={`flex items-center gap-2 rounded-xl border p-3 transition-colors ${
         selected ? 'border-amber bg-amber/10' : 'border-line bg-panel2'
-      } ${busyStatus && !selected ? 'opacity-60' : ''}`}
+      } ${(busyStatus && !selected) || resting ? 'opacity-60' : ''} ${
+        resting ? '' : 'cursor-pointer'
+      }`}
     >
       <GradeBadge grade={member.grade} />
       <span className="font-medium">{member.name}</span>
@@ -1811,9 +1834,42 @@ function WaitingRow({
           {busyStatus === 'PLAYING' ? '게임 중' : '대기 조합'}
         </span>
       )}
+      {resting && (
+        <span className="shrink-0 rounded bg-sky/15 px-1.5 py-0.5 text-[10px] font-medium text-sky">
+          휴식
+        </span>
+      )}
       <span className="tabular ml-auto font-mono text-xs text-dim">
         {attendance.gamesPlayed}게임 · {formatWaitingMinutes(attendance.waitingSince, now)}
       </span>
+      {resting && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            void run(() =>
+              api(`/attendances/${attendance.id}/resume`, { method: 'PATCH' }),
+            );
+          }}
+          title="휴식 해제 — 대기로 복귀 (대기시간 리셋)"
+          className="h-8 shrink-0 rounded-lg border border-sky/40 px-2 text-xs font-medium text-sky"
+        >
+          복귀
+        </button>
+      )}
+      {!busyStatus && !resting && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation(); // 행 선택 토글과 분리
+            void run(() =>
+              api(`/attendances/${attendance.id}/rest`, { method: 'PATCH' }),
+            );
+          }}
+          title="휴식 처리 — 게임 조합 대상에서 제외"
+          className="h-8 shrink-0 rounded-lg px-1.5 text-xs text-faint hover:text-sky"
+        >
+          휴식
+        </button>
+      )}
       {!busyStatus && (
         <button
           onClick={(e) => {
@@ -1823,7 +1879,7 @@ function WaitingRow({
             );
           }}
           title="퇴장 처리"
-          className="h-8 w-8 rounded-lg text-faint hover:text-coral"
+          className="h-8 w-8 shrink-0 rounded-lg text-faint hover:text-coral"
         >
           ✕
         </button>

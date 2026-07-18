@@ -103,4 +103,60 @@ export class AttendancesService {
     this.realtime.broadcastSnapshot(attendance.sessionId);
     return toAttendanceResponse(left);
   }
+
+  // 잠깐 휴식 — 본인(/m)과 운영진 관제판이 같은 API를 쓴다
+  // waitingSince를 휴식 시작 시각으로 갱신해 "쉰 지 N분" 표시에 재사용
+  async rest(id: string): Promise<IAttendance> {
+    const attendance = await this.findAttendanceOrThrow(id);
+    if (attendance.status === 'RESTING') {
+      return toAttendanceResponse(attendance); // 더블탭 안전 — 이미 휴식 중이면 그대로
+    }
+    // 조합에 묶인 채 빠지면 조합이 3명으로 깨진다 — 교체/해체는 운영진 판단
+    if (attendance.status === 'MATCHED' || attendance.status === 'PLAYING') {
+      throw new ConflictException(
+        '이미 게임 조합에 들어가 있어요. 쉬려면 운영진에게 말씀해주세요.',
+      );
+    }
+    if (attendance.status === 'LEFT') {
+      throw new ConflictException('퇴장 처리된 모임원입니다.');
+    }
+
+    const resting = await this.prisma.attendance.update({
+      where: { id },
+      data: { status: 'RESTING', waitingSince: new Date() },
+      include: { member: true },
+    });
+    this.realtime.broadcastSnapshot(attendance.sessionId);
+    return toAttendanceResponse(resting);
+  }
+
+  // 휴식 복귀 — 쉬는 동안은 기다린 게 아니므로 대기시간 리셋 (퇴장→재입장과 동일 규칙)
+  async resume(id: string): Promise<IAttendance> {
+    const attendance = await this.findAttendanceOrThrow(id);
+    if (attendance.status === 'CHECKED_IN') {
+      return toAttendanceResponse(attendance); // 더블탭 안전 — 이미 대기 중이면 그대로
+    }
+    if (attendance.status !== 'RESTING') {
+      throw new ConflictException('휴식 중인 모임원이 아닙니다.');
+    }
+
+    const resumed = await this.prisma.attendance.update({
+      where: { id },
+      data: { status: 'CHECKED_IN', waitingSince: new Date() },
+      include: { member: true },
+    });
+    this.realtime.broadcastSnapshot(attendance.sessionId);
+    return toAttendanceResponse(resumed);
+  }
+
+  private async findAttendanceOrThrow(id: string) {
+    const attendance = await this.prisma.attendance.findUnique({
+      where: { id },
+      include: { member: true },
+    });
+    if (!attendance) {
+      throw new NotFoundException('출석 정보를 찾을 수 없습니다.');
+    }
+    return attendance;
+  }
 }

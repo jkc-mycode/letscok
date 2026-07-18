@@ -33,7 +33,10 @@ async function seedCourt(sessionId: string, courtNo = 1) {
 // 회원 생성 + 체크인 상태의 출석 1행 — 상태 전이의 기본 시작점
 async function seedAttendance(
   sessionId: string,
-  overrides: { status?: 'CHECKED_IN' | 'MATCHED' | 'PLAYING' | 'LEFT'; waitingSince?: Date } = {},
+  overrides: {
+    status?: 'CHECKED_IN' | 'MATCHED' | 'PLAYING' | 'RESTING' | 'LEFT';
+    waitingSince?: Date;
+  } = {},
 ) {
   const member = await prisma.member.create({
     data: {
@@ -101,6 +104,16 @@ describe('create', () => {
       attendanceIds: [e.id, f.id, g.id, h.id],
     });
     expect(second.queueOrder).toBe(2);
+  });
+
+  it('휴식(RESTING) 인원이 포함되면 409 — 조합 투입 차단', async () => {
+    const session = await seedSession();
+    const resting = await seedAttendance(session.id, { status: 'RESTING' });
+    const [a, b, c] = await seedFour(session.id);
+
+    await expect(
+      service.create(session.id, { attendanceIds: [resting.id, a.id, b.id, c.id] }),
+    ).rejects.toThrow('퇴장·휴식 중이거나 이 모임에 없는 모임원이 포함되어 있습니다.');
   });
 
   it('중복 대기 — PLAYING·MATCHED 인원도 조합에 넣을 수 있고 상태는 유지된다', async () => {

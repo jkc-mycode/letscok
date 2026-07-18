@@ -152,3 +152,73 @@ describe('checkIn (공개 경로 회귀 — 리팩터링으로 코드 검증이 
     ).rejects.toThrow(ConflictException);
   });
 });
+
+describe('rest / resume (잠깐 휴식)', () => {
+  async function seedCheckedIn() {
+    const session = await seedSession();
+    const member = await seedMember();
+    return service.manualCheckIn(session.id, member.id);
+  }
+
+  it('대기(CHECKED_IN) → 휴식, waitingSince가 휴식 시작 시각으로 갱신', async () => {
+    const checkedIn = await seedCheckedIn();
+
+    const resting = await service.rest(checkedIn.id);
+
+    expect(resting.status).toBe('RESTING');
+    expect(new Date(resting.waitingSince).getTime()).toBeGreaterThan(
+      new Date(checkedIn.waitingSince).getTime() - 1,
+    );
+  });
+
+  it('복귀하면 CHECKED_IN + 대기시간 리셋 (쉬는 동안은 기다린 게 아님)', async () => {
+    const checkedIn = await seedCheckedIn();
+    await service.rest(checkedIn.id);
+    // 휴식 시작을 과거로 밀어 리셋 여부를 시간차로 검증
+    const past = new Date(Date.now() - 30 * 60 * 1000);
+    await prisma.attendance.update({
+      where: { id: checkedIn.id },
+      data: { waitingSince: past },
+    });
+
+    const resumed = await service.resume(checkedIn.id);
+
+    expect(resumed.status).toBe('CHECKED_IN');
+    expect(new Date(resumed.waitingSince).getTime()).toBeGreaterThan(past.getTime());
+  });
+
+  it('조합(MATCHED)·게임 중(PLAYING)엔 휴식 불가 — 운영진 안내 메시지 409', async () => {
+    for (const status of ['MATCHED', 'PLAYING'] as const) {
+      const checkedIn = await seedCheckedIn();
+      await prisma.attendance.update({ where: { id: checkedIn.id }, data: { status } });
+
+      await expect(service.rest(checkedIn.id)).rejects.toThrow(
+        '이미 게임 조합에 들어가 있어요. 쉬려면 운영진에게 말씀해주세요.',
+      );
+    }
+  });
+
+  it('더블탭 안전 — 휴식 중 rest, 대기 중 resume은 에러 없이 현재 상태 반환', async () => {
+    const checkedIn = await seedCheckedIn();
+
+    expect((await service.resume(checkedIn.id)).status).toBe('CHECKED_IN');
+    await service.rest(checkedIn.id);
+    expect((await service.rest(checkedIn.id)).status).toBe('RESTING');
+  });
+
+  it('퇴장(LEFT) 상태에선 휴식·복귀 모두 409', async () => {
+    const checkedIn = await seedCheckedIn();
+    await service.leave(checkedIn.id);
+
+    await expect(service.rest(checkedIn.id)).rejects.toThrow(ConflictException);
+    await expect(service.resume(checkedIn.id)).rejects.toThrow(ConflictException);
+  });
+
+  it('휴식 중인 사람은 퇴장 처리 가능 (쉬다가 그냥 가는 경우)', async () => {
+    const checkedIn = await seedCheckedIn();
+    await service.rest(checkedIn.id);
+
+    const left = await service.leave(checkedIn.id);
+    expect(left.status).toBe('LEFT');
+  });
+});

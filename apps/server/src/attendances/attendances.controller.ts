@@ -50,4 +50,16 @@ export class AttendancesController {
   async leave(@Param('id') id: string): Promise<IApiResponse<IAttendance>> {
     return { success: true, data: await this.attendancesService.leave(id) };
   }
+
+  // 잠깐 휴식/복귀 — 본인이 /m에서 직접 쓰는 셀프 액션이라 가드 없음(체크인과 같은 신뢰 모델)
+  // 운영진 관제판도 같은 API를 사용한다
+  @Patch('attendances/:id/rest')
+  async rest(@Param('id') id: string): Promise<IApiResponse<IAttendance>> {
+    return { success: true, data: await this.attendancesService.rest(id) };
+  }
+
+  @Patch('attendances/:id/resume')
+  async resume(@Param('id') id: string): Promise<IApiResponse<IAttendance>> {
+    return { success: true, data: await this.attendancesService.resume(id) };
+  }
 }
