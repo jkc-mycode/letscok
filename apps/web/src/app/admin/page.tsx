@@ -6,6 +6,7 @@ import {
   ICourt,
   IGame,
   IAdminMemo,
+  IHistorySessionDetail,
   IGameRecommendation,
   IMember,
   ISessionSnapshot,
@@ -142,6 +143,7 @@ function BoardBody({
   const [qrOpen, setQrOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false); // 운영진 수동 체크인 (QR 오픈 지연 등 예외용)
+  const [gamesLogOpen, setGamesLogOpen] = useState(false); // 오늘 완료 게임 조회·이름 검색
   const [replaceGameId, setReplaceGameId] = useState<string | null>(null); // 선수 교체 대상 게임
 
   const { session, courts, attendances, games } = snapshot;
@@ -243,6 +245,12 @@ function BoardBody({
             className="h-10 rounded-lg border border-court/50 px-4 text-sm font-medium text-court"
           >
             체크인 QR
+          </button>
+          <button
+            onClick={() => setGamesLogOpen(true)}
+            className="h-10 rounded-lg border border-line px-4 text-sm font-medium text-dim"
+          >
+            게임 기록
           </button>
           <button
             onClick={() => setCourtsOpen((v) => !v)}
@@ -425,6 +433,13 @@ function BoardBody({
           run={run}
           busy={busy}
           onClose={() => setManualOpen(false)}
+        />
+      )}
+      {gamesLogOpen && (
+        <TodayGamesModal
+          sessionId={session.id}
+          snapshot={snapshot}
+          onClose={() => setGamesLogOpen(false)}
         />
       )}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
@@ -1070,6 +1085,136 @@ function ManualCheckInModal({
   );
 }
 
+// ===== 오늘 게임 기록 모달 =====
+
+// 완료(FINISHED) 게임만 — 진행 중은 코트 구역에 이미 보이므로 중복 노출 안 함
+// 서버는 히스토리 상세 API 재사용 (OPEN 세션에도 동작, 별도 엔드포인트 안 만듦)
+function TodayGamesModal({
+  sessionId,
+  snapshot,
+  onClose,
+}: {
+  sessionId: string;
+  snapshot: ISessionSnapshot;
+  onClose: () => void;
+}) {
+  const [detail, setDetail] = useState<IHistorySessionDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      setDetail(
+        await api<IHistorySessionDetail>(`/history/sessions/${sessionId}`, { admin: true }),
+      );
+      setError(null);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '게임 기록을 불러오지 못했습니다.');
+    }
+  }, [sessionId]);
+  // 스냅샷 변경마다 재조회 — 모달이 열린 동안 끝난 게임도 따라온다
+  // (FINISHED는 스냅샷에 안 실리므로 브로드캐스트를 refetch 트리거로만 사용, 메모 패널과 같은 패턴)
+  useEffect(() => {
+    void load();
+  }, [load, snapshot]);
+
+  const q = query.trim();
+  // 순번은 시간순(1 = 첫 게임)으로 매긴 뒤 최신 완료가 위로 오게 역순 — 현장에선 방금 끝난 게임을 주로 찾음
+  const games = useMemo(() => {
+    const numbered = (detail?.games ?? []).map((game, i) => ({ ...game, no: i + 1 })).reverse();
+    if (!q) return numbered;
+    return numbered.filter((game) => game.playerNames.some((name) => name.includes(q)));
+  }, [detail, q]);
+
+  const timeOf = (iso: string | null) =>
+    iso
+      ? new Date(iso).toLocaleTimeString('ko-KR', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        })
+      : '--:--';
+
+  return (
+    <div
+      onClick={onClose}
+      className="fade-in fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="flex max-h-[85dvh] w-full max-w-2xl flex-col rounded-2xl border border-line bg-panel p-5"
+      >
+        <div className="flex items-center gap-3 pb-3">
+          <h2 className="text-lg font-bold text-court">오늘 게임 기록</h2>
+          {detail && (
+            <p className="text-xs text-faint">완료 {detail.session.finishedGameCount}게임</p>
+          )}
+          <button
+            onClick={onClose}
+            className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
+          >
+            닫기
+          </button>
+        </div>
+
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="이름으로 검색"
+          className="mb-3 h-11 rounded-lg border border-line bg-panel2 px-3 text-sm outline-none focus:border-court"
+        />
+        {q && detail && (
+          <p className="pb-2 text-xs text-dim">
+            &lsquo;{q}&rsquo; 포함 <span className="font-bold text-court">{games.length}</span>게임
+          </p>
+        )}
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {error && <p className="py-10 text-center text-sm text-coral">{error}</p>}
+          {!error && detail === null && (
+            <p className="py-10 text-center text-sm text-dim">불러오는 중...</p>
+          )}
+          {detail && games.length === 0 && (
+            <p className="py-10 text-center text-sm text-faint">
+              {q ? `'${q}' 이(가) 포함된 완료 게임이 없어요` : '아직 완료된 게임이 없어요'}
+            </p>
+          )}
+          <ul className="space-y-1.5">
+            {games.map((game) => (
+              <li
+                key={game.id}
+                className="flex items-center gap-3 rounded-xl bg-panel2 px-4 py-2.5"
+              >
+                <span className="tabular w-8 shrink-0 font-mono text-xs text-faint">
+                  #{game.no}
+                </span>
+                <div className="flex min-w-0 flex-1 flex-wrap gap-x-2 text-sm">
+                  {game.playerNames.map((name, i) => (
+                    <span
+                      key={i}
+                      className={
+                        q && name.includes(q) ? 'font-bold text-court' : 'font-medium'
+                      }
+                    >
+                      {name}
+                    </span>
+                  ))}
+                </div>
+                <div className="shrink-0 text-right text-xs text-dim">
+                  <p>{game.courtNo != null ? `${game.courtNo}번 코트` : '코트 미지정'}</p>
+                  <p className="tabular font-mono text-faint">
+                    {timeOf(game.startedAt)} ~ {timeOf(game.endedAt)}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ===== 도움말 모달 =====
 
 // 정적 안내문 — 운영진 교체 시 구두 설명 없이 관제판을 넘길 수 있게 핵심 개념만 요약
@@ -1081,6 +1226,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
       '[게임 종료]만 게임 수 +1 · 대기시간 리셋. [대기로]는 조합을 유지한 채 뒤로, [취소]·[해체]는 없던 일로 (둘 다 미집계).',
       '부상·급한 일로 한 명만 바꿀 땐 [교체] — 게임을 갈아엎지 않아 타이머·순서가 유지돼요. 빠진 사람은 대기 인원으로 돌아와요.',
       '구두 요청("○○랑 파트너 연습", "무릎 조심")은 메모에 적어두세요. 모임이 끝나도 남아 다음 모임에 이어지고, 처리했으면 ✕로 지워요.',
+      '오늘 끝난 게임은 상단 [게임 기록]에서 확인해요 — 이름으로 검색하면 그 사람이 뛴 게임만 모아 볼 수 있어요.',
     ],
   },
   {
