@@ -29,7 +29,10 @@ export default function CheckinPage() {
 function CheckinInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const code = searchParams.get('c'); // 현장 QR이 실어준 오늘 코드 — 체크인 요청에 그대로 전달
+  const urlCode = searchParams.get('c'); // 현장 QR이 실어준 오늘 코드 — 체크인 요청에 그대로 전달
+  // QR을 못 찍는 폰 폴백 — 운영진 화면의 6자리 코드를 직접 입력 (서버가 동일하게 대조)
+  const [manualCode, setManualCode] = useState('');
+  const code = urlCode ?? (manualCode.length === 6 ? manualCode : null);
   const { snapshot, noSession, loading } = useSnapshot();
   const [mode, setMode] = useState<'search' | 'register'>('search');
   const [toast, setToast] = useState<string | null>(null);
@@ -87,10 +90,27 @@ function CheckinInner() {
         </h1>
       </header>
 
-      {/* 코드 없이 진입(바 URL·지난 QR) — 현장 QR로 유도. 체크인 시 서버도 403으로 막음 */}
-      {!code && (
-        <div className="rounded-xl border border-amber/40 bg-amber/10 p-3 text-center text-sm text-amber">
-          현장의 <b>오늘 QR</b>을 스캔해 들어와주세요
+      {/* 코드 없이 진입(바 URL·지난 QR) — 현장 QR로 유도 + 카메라 안 되는 폰용 코드 수동 입력.
+          입력값이 틀려도 서버가 403으로 막으므로 여기선 형식만 맞춘다 */}
+      {!urlCode && (
+        <div className="rounded-xl border border-amber/40 bg-amber/10 p-3 text-center text-sm">
+          <p className="text-amber">
+            현장의 <b>오늘 QR</b>을 스캔해 들어와주세요
+          </p>
+          <p className="mt-2 text-xs text-dim">
+            QR을 못 찍으면 운영진에게 6자리 코드를 물어봐 입력하세요
+          </p>
+          <input
+            value={manualCode}
+            onChange={(e) =>
+              // 코드는 대문자+숫자 6자 (혼동 문자 제외) — 소문자 입력도 통과되게 정규화
+              setManualCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))
+            }
+            placeholder="6자리 코드"
+            autoCapitalize="characters"
+            autoComplete="off"
+            className="tabular mt-2 h-12 w-full rounded-lg border border-line bg-panel text-center font-mono text-lg tracking-[0.3em] outline-none placeholder:tracking-normal focus:border-amber"
+          />
         </div>
       )}
 
