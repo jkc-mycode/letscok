@@ -550,7 +550,7 @@ function RecommendModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[85dvh] w-full max-w-3xl flex-col rounded-2xl border border-line bg-panel p-5"
+        className="flex max-h-[85dvh] w-full max-w-4xl flex-col rounded-2xl border border-line bg-panel p-5"
       >
         <div className="flex items-center gap-3 pb-3">
           <h2 className="text-lg font-bold text-court">게임 추천</h2>
@@ -618,7 +618,8 @@ function RecommendModal({
                     {rec.players.map((player) => (
                       <div key={player.attendanceId} className="flex items-center gap-1.5 text-sm">
                         <GradeBadge grade={player.grade} />
-                        <span className="truncate font-medium">{player.name}</span>
+                        {/* 이름이 핵심 정보 — 뱃지·통계에 밀려도 최소 한글 4자는 보장 */}
+                        <span className="min-w-[4em] truncate font-medium">{player.name}</span>
                         <GenderMarker gender={player.gender} />
                         {player.isGuest && <span className="text-[10px] text-sky">G</span>}
                         {player.borrowedFrom && (
