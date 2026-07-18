@@ -236,12 +236,17 @@ export interface IHistoryAttendee {
   gamesPlayed: number; // 그날 뛴 게임 수
 }
 
+export interface IHistoryGamePlayer {
+  name: string;
+  grade: Grade; // 동명이인 구분용
+}
+
 export interface IHistoryGame {
   id: string;
   courtNo: number | null; // 해제(soft-delete)된 코트여도 번호는 표시
   startedAt: string | null;
   endedAt: string | null;
-  playerNames: string[]; // 4인
+  players: IHistoryGamePlayer[]; // 4인
 }
 
 export interface IHistorySessionDetail {

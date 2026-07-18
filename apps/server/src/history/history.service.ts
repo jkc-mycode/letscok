@@ -98,7 +98,10 @@ export class HistoryService {
         courtNo: game.court?.courtNo ?? null,
         startedAt: game.startedAt?.toISOString() ?? null,
         endedAt: game.endedAt?.toISOString() ?? null,
-        playerNames: game.players.map((player) => player.attendance.member.name),
+        players: game.players.map((player) => ({
+          name: player.attendance.member.name,
+          grade: player.attendance.member.grade,
+        })),
       })),
     };
   }

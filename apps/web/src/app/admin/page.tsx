@@ -1123,7 +1123,7 @@ function TodayGamesModal({
   const games = useMemo(() => {
     const numbered = (detail?.games ?? []).map((game, i) => ({ ...game, no: i + 1 })).reverse();
     if (!q) return numbered;
-    return numbered.filter((game) => game.playerNames.some((name) => name.includes(q)));
+    return numbered.filter((game) => game.players.some((player) => player.name.includes(q)));
   }, [detail, q]);
 
   const timeOf = (iso: string | null) =>
@@ -1188,15 +1188,17 @@ function TodayGamesModal({
                 <span className="tabular w-8 shrink-0 font-mono text-xs text-faint">
                   #{game.no}
                 </span>
-                <div className="flex min-w-0 flex-1 flex-wrap gap-x-2 text-sm">
-                  {game.playerNames.map((name, i) => (
-                    <span
-                      key={i}
-                      className={
-                        q && name.includes(q) ? 'font-bold text-court' : 'font-medium'
-                      }
-                    >
-                      {name}
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1 text-sm">
+                  {game.players.map((player, i) => (
+                    <span key={i} className="flex items-center gap-1">
+                      <GradeBadge grade={player.grade} />
+                      <span
+                        className={
+                          q && player.name.includes(q) ? 'font-bold text-court' : 'font-medium'
+                        }
+                      >
+                        {player.name}
+                      </span>
                     </span>
                   ))}
                 </div>

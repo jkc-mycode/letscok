@@ -91,7 +91,14 @@ function HistoryDetail() {
                       {timeLabel(game.startedAt)} ~ {timeLabel(game.endedAt)}
                     </span>
                   </div>
-                  <p className="mt-1.5 text-sm font-medium">{game.playerNames.join(' · ')}</p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm font-medium">
+                    {game.players.map((player, i) => (
+                      <span key={i} className="flex items-center gap-1">
+                        <GradeBadge grade={player.grade} />
+                        {player.name}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>

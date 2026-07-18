@@ -122,7 +122,8 @@ describe('getSessionDetail', () => {
     expect(detail.attendees.map((a) => a.name)).toContain('마'); // LEFT 포함
     expect(detail.games).toHaveLength(1);
     expect(detail.games[0].courtNo).toBe(3); // soft-delete 코트 번호 유지
-    expect(detail.games[0].playerNames.sort()).toEqual(['가', '나', '다', '라']);
+    expect(detail.games[0].players.map((p) => p.name).sort()).toEqual(['가', '나', '다', '라']);
+    expect(detail.games[0].players.every((p) => p.grade)).toBe(true); // 동명이인 구분용 급수 포함
   });
 
   it('없는 세션은 404', async () => {
