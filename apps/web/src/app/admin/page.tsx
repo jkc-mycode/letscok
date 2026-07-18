@@ -24,6 +24,7 @@ import { LoginGate } from '@/components/admin-gate';
 import { GenderMarker, GradeBadge, PlayerGrid, Toast } from '@/components/badges';
 import { MotionCard } from '@/components/motion-card';
 import { api, ApiError, clearPasscode, getPasscode } from '@/lib/api';
+import { formatBirthInput, parseBirthDate } from '@/lib/birth-input';
 import {
   formatElapsed,
   formatWaitingMinutes,
@@ -963,9 +964,9 @@ function MemoPanel({
 // ===== 수동 체크인 모달 =====
 
 // QR 오픈이 늦어 이미 게임 중인 인원 등을 운영진이 대신 체크인
-// 신규 정회원 등록은 개인정보(생년월일) 동의가 본인 몫이라 안 받는다 — 본인 폰 QR 스캔으로 안내
-// 게스트만 예외: 생년월일 미수집 정책이라 이름·급수·성별만 구두 동의 전제로 대리 등록+체크인
-// 본인 폰 연결은 걱정 없음: 나중에 QR 스캔하면 409를 /checkin이 "본인 확인 완료"로 받아 /m 진입
+// 미등록 인원은 구두 동의 전제로 대리 등록+체크인까지 — 게스트는 이름·급수·성별만(생년월일 미수집 정책),
+// 정회원은 생년월일 포함(운영진이 알 수 있음). 본인 폰 연결은 걱정 없음:
+// 나중에 QR 스캔하면 409를 /checkin이 "본인 확인 완료"로 받아 /m 진입
 const GRADES: Grade[] = ['A', 'B', 'C', 'D', 'E', 'F'];
 
 function ManualCheckInModal({
@@ -984,11 +985,15 @@ function ManualCheckInModal({
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<IMember[]>([]);
   const [lastDone, setLastDone] = useState<string | null>(null); // 연속 입력용 직전 완료 표시
-  // 게스트 대리 등록 폼 — 생년월일 미수집 정책이라 이름·급수·성별만
-  const [guestFormOpen, setGuestFormOpen] = useState(false);
-  const [guestName, setGuestName] = useState('');
-  const [guestGrade, setGuestGrade] = useState<Grade | null>(null);
-  const [guestGender, setGuestGender] = useState<Gender | null>(null);
+  // 신규 등록 폼 — 현장 대리 등록은 게스트가 흔해서 기본 게스트. 정회원 선택 시 생년월일 입력 추가
+  const [regOpen, setRegOpen] = useState(false);
+  const [regIsGuest, setRegIsGuest] = useState(true);
+  const [regName, setRegName] = useState('');
+  const [regBirth, setRegBirth] = useState('');
+  const [regGrade, setRegGrade] = useState<Grade | null>(null);
+  const [regGender, setRegGender] = useState<Gender | null>(null);
+  const regDigits = regBirth.replace(/\D/g, '');
+  const regBirthDate = parseBirthDate(regBirth);
 
   // 입력 후 300ms 조용하면 검색 (타이핑마다 요청하지 않도록 — /checkin과 동일 패턴)
   useEffect(() => {
@@ -1022,24 +1027,33 @@ function ManualCheckInModal({
     });
 
   // 등록+체크인 한 번에 — consent는 현장 구두 동의 전제(운영진이 본인에게 확인)
-  const registerGuest = () => {
-    const name = guestName.trim();
-    if (!name || !guestGrade || !guestGender) return;
+  const registerNew = () => {
+    const name = regName.trim();
+    if (!name || !regGrade || !regGender || (!regIsGuest && !regBirthDate)) return;
     void run(async () => {
-      const guest = await api<IMember>('/members', {
+      const created = await api<IMember>('/members', {
         method: 'POST',
-        body: { name, grade: guestGrade, gender: guestGender, isGuest: true, consent: true },
+        body: {
+          name,
+          ...(regIsGuest ? {} : { birthDate: regBirthDate }),
+          grade: regGrade,
+          gender: regGender,
+          isGuest: regIsGuest,
+          consent: true,
+        },
       });
       await api(`/sessions/${sessionId}/attendances/manual`, {
         method: 'POST',
         admin: true,
-        body: { memberId: guest.id },
+        body: { memberId: created.id },
       });
-      setLastDone(`${guest.name} (게스트)`);
-      setGuestFormOpen(false);
-      setGuestName('');
-      setGuestGrade(null);
-      setGuestGender(null);
+      setLastDone(`${created.name}${regIsGuest ? ' (게스트)' : ''}`);
+      setRegOpen(false);
+      setRegIsGuest(true);
+      setRegName('');
+      setRegBirth('');
+      setRegGrade(null);
+      setRegGender(null);
     });
   };
 
@@ -1071,7 +1085,7 @@ function ManualCheckInModal({
           className="h-12 rounded-xl border border-line bg-panel2 px-4 outline-none focus:border-court"
         />
         <p className="pt-2 text-xs text-faint">
-          탭하면 바로 체크인돼요. 미등록 정회원은 본인 폰 QR 스캔으로 안내해주세요.
+          탭하면 바로 체크인돼요. 검색에 없으면 아래 [신규 등록]으로 바로 등록할 수 있어요.
         </p>
         {lastDone && (
           <p className="pt-1 text-xs font-medium text-court">{lastDone}님 체크인 완료</p>
@@ -1114,34 +1128,69 @@ function ManualCheckInModal({
           )}
         </div>
 
-        {/* 게스트 대리 등록 — 검색에 없는 게스트를 즉석 등록+체크인 */}
+        {/* 신규 대리 등록 — 검색에 없는 인원을 즉석 등록+체크인 (기본 게스트, 정회원은 생년월일 추가) */}
         <div className="mt-3 border-t border-line pt-3">
-          {!guestFormOpen ? (
+          {!regOpen ? (
             <button
               onClick={() => {
-                setGuestFormOpen(true);
-                setGuestName(query.trim()); // 방금 검색한 이름 이어받기
+                setRegOpen(true);
+                setRegName(query.trim()); // 방금 검색한 이름 이어받기
               }}
               className="h-11 w-full rounded-xl border border-sky/40 text-sm font-medium text-sky"
             >
-              + 게스트 등록 — 이름·급수·성별만
+              + 신규 등록 — 검색에 없는 인원
             </button>
           ) : (
             <div className="flex flex-col gap-2">
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  onClick={() => setRegIsGuest(true)}
+                  className={`h-10 rounded-lg border text-sm font-bold ${
+                    regIsGuest ? 'border-sky bg-sky/15 text-sky' : 'border-line bg-panel2 text-dim'
+                  }`}
+                >
+                  게스트
+                </button>
+                <button
+                  onClick={() => setRegIsGuest(false)}
+                  className={`h-10 rounded-lg border text-sm font-bold ${
+                    !regIsGuest
+                      ? 'border-court bg-court/15 text-court'
+                      : 'border-line bg-panel2 text-dim'
+                  }`}
+                >
+                  정회원
+                </button>
+              </div>
               <input
-                value={guestName}
-                onChange={(e) => setGuestName(e.target.value)}
+                value={regName}
+                onChange={(e) => setRegName(e.target.value)}
                 maxLength={20}
-                placeholder="게스트 이름"
+                placeholder="이름"
                 className="h-11 rounded-xl border border-line bg-panel2 px-4 text-sm outline-none focus:border-sky"
               />
+              {!regIsGuest && (
+                <div>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={regBirth}
+                    onChange={(e) => setRegBirth(formatBirthInput(e.target.value))}
+                    placeholder="생년월일 8자리 (예: 19970312)"
+                    className="h-11 w-full rounded-xl border border-line bg-panel2 px-4 text-sm outline-none focus:border-court"
+                  />
+                  {regDigits.length === 8 && !regBirthDate && (
+                    <p className="mt-1 text-xs text-coral">날짜가 올바르지 않아요</p>
+                  )}
+                </div>
+              )}
               <div className="grid grid-cols-6 gap-1.5">
                 {GRADES.map((g) => (
                   <button
                     key={g}
-                    onClick={() => setGuestGrade(g)}
+                    onClick={() => setRegGrade(g)}
                     className={`h-10 rounded-lg border text-sm font-bold ${
-                      guestGrade === g
+                      regGrade === g
                         ? 'border-sky bg-sky/15 text-sky'
                         : 'border-line bg-panel2 text-dim'
                     }`}
@@ -1152,9 +1201,9 @@ function ManualCheckInModal({
               </div>
               <div className="grid grid-cols-2 gap-1.5">
                 <button
-                  onClick={() => setGuestGender('MALE')}
+                  onClick={() => setRegGender('MALE')}
                   className={`h-10 rounded-lg border text-sm font-bold ${
-                    guestGender === 'MALE'
+                    regGender === 'MALE'
                       ? 'border-sky bg-sky/15 text-sky'
                       : 'border-line bg-panel2 text-dim'
                   }`}
@@ -1162,9 +1211,9 @@ function ManualCheckInModal({
                   ♂ 남
                 </button>
                 <button
-                  onClick={() => setGuestGender('FEMALE')}
+                  onClick={() => setRegGender('FEMALE')}
                   className={`h-10 rounded-lg border text-sm font-bold ${
-                    guestGender === 'FEMALE'
+                    regGender === 'FEMALE'
                       ? 'border-pink bg-pink/15 text-pink'
                       : 'border-line bg-panel2 text-dim'
                   }`}
@@ -1174,21 +1223,29 @@ function ManualCheckInModal({
               </div>
               <div className="flex gap-2">
                 <button
-                  onClick={() => setGuestFormOpen(false)}
+                  onClick={() => setRegOpen(false)}
                   className="h-11 rounded-xl border border-line px-4 text-sm text-dim"
                 >
                   취소
                 </button>
                 <button
-                  onClick={registerGuest}
-                  disabled={!guestName.trim() || !guestGrade || !guestGender || busy}
+                  onClick={registerNew}
+                  disabled={
+                    !regName.trim() ||
+                    !regGrade ||
+                    !regGender ||
+                    (!regIsGuest && !regBirthDate) ||
+                    busy
+                  }
                   className="h-11 flex-1 rounded-xl bg-sky text-sm font-bold text-bg disabled:opacity-50"
                 >
                   등록 + 체크인
                 </button>
               </div>
               <p className="text-[11px] text-faint">
-                게스트는 생년월일을 받지 않아요. 이름·급수·성별 등록은 본인에게 구두로 동의받아 주세요.
+                {regIsGuest
+                  ? '게스트는 생년월일을 받지 않아요. 이름·급수·성별 등록은 본인에게 구두로 동의받아 주세요.'
+                  : '정회원 등록은 본인에게 구두로 동의받아 주세요. 본인 폰으로 QR을 스캔하면 이 계정으로 연결돼요.'}
               </p>
             </div>
           )}
@@ -1351,7 +1408,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
       '[체크인 QR] 모달을 입구 화면에 띄워두세요. 코드는 모임마다 새로 발급되고 그날 내내 같아요.',
       '카메라가 안 되는 폰은 모달 하단 6자리 코드를 불러주세요.',
       'QR 오픈이 늦어 이미 게임 중인 사람들은 대기 인원의 [수동 체크인]으로 넣어주세요. 본인 폰은 나중에 QR을 스캔하면 그대로 연결돼요.',
-      '게스트는 [수동 체크인] 안의 [게스트 등록]으로 이름·급수·성별만 받아 바로 등록+체크인할 수 있어요 (생년월일 안 받아요).',
+      '미등록 인원은 [수동 체크인] 안의 [신규 등록]으로 바로 등록+체크인할 수 있어요 — 게스트는 이름·급수·성별만(생년월일 안 받아요), 정회원은 생년월일 포함. 구두 동의는 받아주세요.',
     ],
   },
   {

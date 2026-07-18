@@ -9,6 +9,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { GenderMarker, GradeBadge, Toast } from '@/components/badges';
 import { api, ApiError } from '@/lib/api';
+import { formatBirthInput, parseBirthDate } from '@/lib/birth-input';
 import { saveMemberId } from '@/lib/member';
 import { useSnapshot } from '@/lib/use-snapshot';
 
@@ -209,27 +210,9 @@ function RegisterPanel({
   const [consent, setConsent] = useState(false); // 개인정보 수집 동의 — 서버도 필수 검증
   const [error, setError] = useState<string | null>(null);
 
-  // 캘린더 피커는 연도 이동이 불편해서(1997년까지 수백 번 클릭) 숫자 8자리 직접 입력 방식
   const digits = birthInput.replace(/\D/g, '');
-  const birthDate = useMemo(() => {
-    if (digits.length !== 8) return '';
-    const year = Number(digits.slice(0, 4));
-    const month = Number(digits.slice(4, 6));
-    const day = Number(digits.slice(6, 8));
-    const currentYear = new Date().getFullYear();
-    if (year < 1930 || year > currentYear) return '';
-    if (month < 1 || month > 12 || day < 1 || day > 31) return '';
-    return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
-  }, [digits]);
-
-  const handleBirthChange = (raw: string) => {
-    const only = raw.replace(/\D/g, '').slice(0, 8);
-    // 4자리(년)·6자리(월) 지나면 하이픈 자동 삽입
-    let formatted = only;
-    if (only.length > 6) formatted = `${only.slice(0, 4)}-${only.slice(4, 6)}-${only.slice(6)}`;
-    else if (only.length > 4) formatted = `${only.slice(0, 4)}-${only.slice(4)}`;
-    setBirthInput(formatted);
-  };
+  const birthDate = useMemo(() => parseBirthDate(birthInput), [birthInput]);
+  const handleBirthChange = (raw: string) => setBirthInput(formatBirthInput(raw));
 
   const submit = async () => {
     if (!name.trim() || (!isGuest && !birthDate) || !grade || !gender || !consent || busy) return;
