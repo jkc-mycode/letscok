@@ -24,7 +24,7 @@ export function toMemberResponse(member: Member): IMember {
   return {
     id: member.id,
     name: member.name,
-    birthDate: toDateString(member.birthDate),
+    birthDate: member.birthDate ? toDateString(member.birthDate) : null, // 게스트는 null
     grade: member.grade,
     gender: member.gender,
     isGuest: member.isGuest,

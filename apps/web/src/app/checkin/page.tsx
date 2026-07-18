@@ -232,12 +232,20 @@ function RegisterPanel({
   };
 
   const submit = async () => {
-    if (!name.trim() || !birthDate || !grade || !gender || !consent || busy) return;
+    if (!name.trim() || (!isGuest && !birthDate) || !grade || !gender || !consent || busy) return;
     setError(null);
     try {
       const member = await api<IMember>('/members', {
         method: 'POST',
-        body: { name: name.trim(), birthDate, grade, gender, isGuest, consent },
+        // 게스트는 생년월일 미수집 (게스트 정책) — 서버도 보내와도 무시
+        body: {
+          name: name.trim(),
+          ...(isGuest ? {} : { birthDate }),
+          grade,
+          gender,
+          isGuest,
+          consent,
+        },
       });
       await onDone(member); // 등록 즉시 체크인까지
     } catch (e) {
@@ -254,6 +262,17 @@ function RegisterPanel({
           placeholder="이름"
           className="h-14 rounded-xl border border-line bg-panel px-5 text-lg outline-none focus:border-court"
         />
+        {/* 게스트 토글을 생년월일보다 위에 — 게스트는 생년월일 미수집이라 켜면 아래 입력란이 아예 안 나온다 */}
+        <button
+          onClick={() => setIsGuest((v) => !v)}
+          className={`flex h-14 items-center justify-between rounded-xl border px-5 ${
+            isGuest ? 'border-sky bg-sky/10' : 'border-line bg-panel'
+          }`}
+        >
+          <span className={isGuest ? 'text-sky' : 'text-dim'}>게스트로 참여하면 눌러주세요</span>
+          <span className="text-sm text-faint">{isGuest ? '게스트' : '정회원'}</span>
+        </button>
+        {!isGuest && (
         <div>
           <p className="mb-2 text-sm text-dim">
             생년월일 <span className="text-faint">— 동명이인 구분에 쓰여요</span>
@@ -270,6 +289,7 @@ function RegisterPanel({
             <p className="mt-1 text-xs text-coral">날짜가 올바르지 않아요</p>
           )}
         </div>
+        )}
         <div>
           <p className="mb-2 text-sm text-dim">급수</p>
           <div className="grid grid-cols-6 gap-2">
@@ -307,15 +327,6 @@ function RegisterPanel({
             </button>
           </div>
         </div>
-        <button
-          onClick={() => setIsGuest((v) => !v)}
-          className={`flex h-14 items-center justify-between rounded-xl border px-5 ${
-            isGuest ? 'border-sky bg-sky/10' : 'border-line bg-panel'
-          }`}
-        >
-          <span className={isGuest ? 'text-sky' : 'text-dim'}>게스트로 참여해요</span>
-          <span className="text-sm text-faint">{isGuest ? '게스트' : '정회원'}</span>
-        </button>
       </div>
 
       {/* 개인정보 수집 동의 — 친목단체라 법적 의무는 아니나 모임원 신뢰용으로 명시 */}
@@ -343,7 +354,7 @@ function RegisterPanel({
 
       <button
         onClick={() => void submit()}
-        disabled={!name.trim() || !birthDate || !grade || !gender || !consent || busy}
+        disabled={!name.trim() || (!isGuest && !birthDate) || !grade || !gender || !consent || busy}
         className="h-14 rounded-xl bg-court text-lg font-bold text-bg disabled:bg-panel2 disabled:text-faint"
       >
         등록하고 체크인

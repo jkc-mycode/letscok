@@ -52,7 +52,7 @@ export type GameStatus = (typeof GameStatus)[keyof typeof GameStatus];
 export interface IMember {
   id: string;
   name: string;
-  birthDate: string; // YYYY-MM-DD (동명이인 구분용 노출)
+  birthDate: string | null; // YYYY-MM-DD (동명이인 구분용 노출) — 게스트는 null
   grade: Grade;
   gender: Gender | null; // null = 미지정 (도입 전 기존 회원)
   isGuest: boolean;
@@ -109,7 +109,7 @@ export interface IGamePlayer {
 
 export interface ICreateMemberDto {
   name: string;
-  birthDate: string; // YYYY-MM-DD
+  birthDate?: string; // YYYY-MM-DD — 정회원 필수, 게스트는 생략(서버가 null 저장)
   grade: Grade;
   gender: Gender; // 신규 등록은 필수 (남/여)
   isGuest: boolean;
