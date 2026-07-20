@@ -32,6 +32,7 @@ async function seedSession(overrides: { status?: 'OPEN' | 'CLOSED'; checkInCode?
   });
 }
 
+// 동의를 이미 마친 회원이 기본 — 미동의(운영진 대리 등록 직후) 케이스만 명시적으로 null로 바꾼다
 async function seedMember() {
   return prisma.member.create({
     data: {
@@ -39,6 +40,7 @@ async function seedMember() {
       grade: 'C',
       gender: 'MALE',
       birthDate: new Date('2000-01-01'),
+      consentedAt: new Date('2026-01-01'),
     },
   });
 }
@@ -150,6 +152,62 @@ describe('checkIn (공개 경로 회귀 — 리팩터링으로 코드 검증이 
     await expect(
       service.checkIn(session.id, { memberId: member.id, code: 'ABC123' }),
     ).rejects.toThrow(ConflictException);
+  });
+});
+
+describe('첫 체크인 개인정보 동의 (운영진 대리 등록분)', () => {
+  async function seedUnconsentedMember() {
+    const member = await seedMember();
+    return prisma.member.update({
+      where: { id: member.id },
+      data: { consentedAt: null },
+    });
+  }
+
+  it('동의 이력이 없으면 consent 없이는 403', async () => {
+    const session = await seedSession({ checkInCode: 'ABC123' });
+    const member = await seedUnconsentedMember();
+
+    await expect(
+      service.checkIn(session.id, { memberId: member.id, code: 'ABC123' }),
+    ).rejects.toThrow('개인정보 수집·이용에 동의해주세요.');
+  });
+
+  it('동의하면 시각이 기록되고 체크인된다', async () => {
+    const session = await seedSession({ checkInCode: 'ABC123' });
+    const member = await seedUnconsentedMember();
+
+    const attendance = await service.checkIn(session.id, {
+      memberId: member.id,
+      code: 'ABC123',
+      consent: true,
+    });
+
+    expect(attendance.status).toBe('CHECKED_IN');
+    const after = await prisma.member.findUniqueOrThrow({ where: { id: member.id } });
+    expect(after.consentedAt).not.toBeNull();
+  });
+
+  it('수동 체크인된 사람이 폰으로 클레임할 때도 동의가 먼저 기록된다 (409보다 앞)', async () => {
+    const session = await seedSession({ checkInCode: 'ABC123' });
+    const member = await seedUnconsentedMember();
+    await service.manualCheckIn(session.id, member.id); // 운영진이 미리 체크인
+
+    await expect(
+      service.checkIn(session.id, { memberId: member.id, code: 'ABC123', consent: true }),
+    ).rejects.toThrow(ConflictException); // 클레임 신호인 409는 그대로
+
+    const after = await prisma.member.findUniqueOrThrow({ where: { id: member.id } });
+    expect(after.consentedAt).not.toBeNull(); // 409에 가려 동의가 유실되면 안 된다
+  });
+
+  it('운영진 수동 체크인은 동의를 요구하지 않는다 (본인이 아직 오지 않았을 수 있음)', async () => {
+    const session = await seedSession();
+    const member = await seedUnconsentedMember();
+
+    const attendance = await service.manualCheckIn(session.id, member.id);
+
+    expect(attendance.status).toBe('CHECKED_IN');
   });
 });
 

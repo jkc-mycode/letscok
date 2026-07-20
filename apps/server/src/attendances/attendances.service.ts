@@ -28,7 +28,29 @@ export class AttendancesService {
       throw new ForbiddenException('현장 QR을 스캔해 체크인해주세요.');
     }
 
+    // 운영진 대리 등록은 동의를 못 받으므로 본인이 처음 들어오는 이 시점에 받는다
+    // 이미 수동 체크인된 사람은 아래에서 409가 나므로, 동의 기록은 반드시 그보다 먼저
+    await this.recordConsentIfNeeded(dto.memberId, dto.consent);
+
     return this.checkInMember(sessionId, dto.memberId);
+  }
+
+  private async recordConsentIfNeeded(memberId: string, consent?: boolean) {
+    const member = await this.prisma.member.findFirst({
+      where: { id: memberId, deletedAt: null },
+    });
+    if (!member) {
+      throw new NotFoundException('등록되지 않은 모임원입니다.');
+    }
+    if (member.consentedAt) return;
+
+    if (consent !== true) {
+      throw new ForbiddenException('개인정보 수집·이용에 동의해주세요.');
+    }
+    await this.prisma.member.update({
+      where: { id: memberId },
+      data: { consentedAt: new Date() },
+    });
   }
 
   // 운영진 수동 체크인 — AdminGuard 뒤라 코드 대조 생략, 나머지 정책(재입장·409)은 공개 체크인과 동일

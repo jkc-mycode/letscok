@@ -5,19 +5,23 @@ import {
   Get,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { IApiResponse, IMember } from '@letscok/shared-types';
+import { AdminGuard } from '../common/guards/admin.guard';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { MembersService } from './members.service';
 
-// 등록·검색 모두 모임원이 QR 진입 후 직접 쓰는 공개 API (운영진 가드 없음)
+// 검색은 공개(모임원이 본인을 찾아 체크인), 등록은 운영진 전용
 @Controller('members')
 export class MembersController {
   constructor(private readonly membersService: MembersService) {}
 
-  // 등록은 전역 제한보다 엄격하게 — 스크립트로 가짜 회원을 쏟아붓는 것 방지
+  // 자가 가입 차단 — 운영진이 정회원·게스트를 모두 사전 등록하므로 공개 등록 경로가 필요 없다
+  // 열어두면 코드를 아는 외부인이 없던 회원을 만들어 들어올 수 있다
   @Post()
+  @UseGuards(AdminGuard)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   async create(@Body() dto: CreateMemberDto): Promise<IApiResponse<IMember>> {
     return { success: true, data: await this.membersService.create(dto) };

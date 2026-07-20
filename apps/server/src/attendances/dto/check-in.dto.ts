@@ -1,5 +1,5 @@
 import { ICheckInDto } from '@letscok/shared-types';
-import { IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsOptional, IsString } from 'class-validator';
 
 // 체크인 요청 body — 회원 id + 현장 코드(QR ?c=). 세션 id는 URL 파라미터
 export class CheckInDto implements ICheckInDto {
@@ -10,4 +10,9 @@ export class CheckInDto implements ICheckInDto {
   @IsOptional()
   @IsString()
   code?: string;
+
+  // 아직 동의 이력이 없는 회원(운영진 대리 등록)만 필요 — 서비스에서 판단
+  @IsOptional()
+  @IsBoolean()
+  consent?: boolean;
 }

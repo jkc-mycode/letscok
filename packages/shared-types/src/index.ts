@@ -57,6 +57,7 @@ export interface IMember {
   grade: Grade;
   gender: Gender | null; // null = 미지정 (도입 전 기존 회원)
   isGuest: boolean;
+  consented: boolean; // 개인정보 동의 이력 — false면 첫 체크인 때 본인 동의를 받아야 한다
   createdAt: string;
 }
 
@@ -115,12 +116,12 @@ export interface ICreateMemberDto {
   grade: Grade;
   gender: Gender; // 신규 등록은 필수 (남/여)
   isGuest: boolean;
-  consent: boolean; // 개인정보 수집·이용 동의 (true여야 등록 가능, 서버가 동의 시각 기록)
 }
 
 export interface ICheckInDto {
   memberId: string;
   code?: string; // 현장 체크인 코드(QR ?c=) — 세션에 코드가 있으면 서버가 대조, 불일치·누락 시 거부
+  consent?: boolean; // 동의 이력이 없는 회원(운영진 대리 등록)의 첫 체크인에만 필요
 }
 
 // 운영진 수동 체크인 — 코드 대조 없음(AdminGuard 뒤). QR 오픈 지연 등 예외 상황용
@@ -143,6 +144,11 @@ export interface ICreateMemoDto {
 // 진행 중 세션의 현장 체크인 코드 (운영진 전용 조회 — QR 렌더용). 공개 스냅샷엔 절대 미포함
 export interface ICheckInCodeResponse {
   code: string | null;
+}
+
+// 코드 변경 (운영진 전용) — 영문 대문자·숫자 4~8자. 변경값은 다음 모임에 승계된다
+export interface IUpdateCheckInCodeDto {
+  code: string;
 }
 
 export interface ICreateCourtDto {

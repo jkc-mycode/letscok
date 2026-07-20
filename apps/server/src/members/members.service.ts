@@ -34,7 +34,8 @@ export class MembersService {
         grade: dto.grade,
         gender: dto.gender,
         isGuest: dto.isGuest,
-        consentedAt: new Date(), // DTO에서 consent=true 검증 통과한 시각을 동의 이력으로 기록
+        // 운영진 대리 등록이라 여기서 동의를 받을 수 없다 — 본인이 처음 체크인할 때 받아 기록한다
+        consentedAt: null,
       },
     });
     return toMemberResponse(member);

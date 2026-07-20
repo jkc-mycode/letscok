@@ -1,6 +1,5 @@
 import { Gender, Grade, ICreateMemberDto } from '@letscok/shared-types';
 import {
-  Equals,
   IsBoolean,
   IsIn,
   IsString,
@@ -9,8 +8,8 @@ import {
   ValidateIf,
 } from 'class-validator';
 
-// 회원 등록 요청 body — 신규 등록 폼에서 넘어온다. 검증 실패 메시지가 곧 사용자 안내 문구
-// consent는 @Equals(true)라 미동의면 등록 자체가 막힌다 (동의 시각은 서비스에서 기록)
+// 회원 등록 요청 body — 운영진 관제판의 등록 폼에서만 넘어온다(자가 가입 차단)
+// 개인정보 동의는 여기서 받지 않는다 — 대리 등록이라 본인 의사가 아니므로, 첫 체크인 때 본인에게 받는다
 export class CreateMemberDto implements ICreateMemberDto {
   @IsString({ message: '이름을 입력해주세요.' })
   @Length(1, 20, { message: '이름은 1~20자여야 합니다.' })
@@ -31,7 +30,4 @@ export class CreateMemberDto implements ICreateMemberDto {
 
   @IsBoolean({ message: '게스트 여부를 선택해주세요.' })
   isGuest: boolean;
-
-  @Equals(true, { message: '개인정보 수집·이용에 동의해주세요.' })
-  consent: boolean;
 }

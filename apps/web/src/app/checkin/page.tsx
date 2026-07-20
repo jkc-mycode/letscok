@@ -1,19 +1,18 @@
 'use client';
 
-// QR 스캔 진입점 — 이름 검색으로 본인 선택 후 체크인, 처음이면 등록
+// QR 스캔 진입점 — 이름 검색으로 본인 선택 후 체크인
+// 자가 가입은 없다: 명단 등록은 운영진이 관제판에서 한다 (코드를 아는 외부인의 가짜 회원 생성 차단)
+// 운영진이 대신 등록한 회원은 동의 이력이 없으므로 이 화면에서 본인 동의를 받는다
 // 체크인 성공 시 memberId를 저장하고 내 상태 화면(/m)으로 이동
 
-import { Gender, Grade, IAttendance, IMember } from '@letscok/shared-types';
+import { IAttendance, IMember } from '@letscok/shared-types';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { GenderMarker, GradeBadge, Toast } from '@/components/badges';
 import { api, ApiError } from '@/lib/api';
-import { formatBirthInput, parseBirthDate } from '@/lib/birth-input';
 import { saveMemberId } from '@/lib/member';
 import { useSnapshot } from '@/lib/use-snapshot';
-
-const GRADES: Grade[] = ['A', 'B', 'C', 'D', 'E', 'F'];
 
 // useSearchParams는 Suspense 경계 안에서만 안전 (App Router 프리렌더 대응)
 export default function CheckinPage() {
@@ -29,27 +28,28 @@ export default function CheckinPage() {
 function CheckinInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const urlCode = searchParams.get('c'); // 현장 QR이 실어준 오늘 코드 — 체크인 요청에 그대로 전달
-  // QR을 못 찍는 폰 폴백 — 운영진 화면의 6자리 코드를 직접 입력 (서버가 동일하게 대조)
+  const urlCode = searchParams.get('c'); // 현장 QR이 실어준 코드 — 체크인 요청에 그대로 전달
+  // QR을 못 찍는 폰 폴백 — 운영진이 정한 코드를 직접 입력 (서버가 동일하게 대조)
+  // 운영진이 코드를 바꿀 수 있어 길이가 4~8자로 가변이다
   const [manualCode, setManualCode] = useState('');
-  const code = urlCode ?? (manualCode.length === 6 ? manualCode : null);
+  const code = urlCode ?? (manualCode.length >= 4 ? manualCode : null);
   const { snapshot, noSession, loading } = useSnapshot();
-  const [mode, setMode] = useState<'search' | 'register'>('search');
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const checkIn = async (member: IMember) => {
+  const checkIn = async (member: IMember, consent: boolean) => {
     if (busy || !snapshot) return;
     setBusy(true);
     try {
       await api<IAttendance>(`/sessions/${snapshot.session.id}/attendances`, {
         method: 'POST',
-        body: { memberId: member.id, code },
+        body: { memberId: member.id, code, ...(consent && { consent: true }) },
       });
       saveMemberId(member.id);
       router.replace('/m');
     } catch (e) {
-      // QR 재스캔 등으로 이미 출석된 경우도 본인 확인은 된 것 — 내 상태로 진입
+      // 운영진이 미리 체크인해둔 경우도 본인 확인은 된 것 — 내 상태로 진입
+      // (서버는 이 409보다 먼저 동의를 기록하므로 동의가 유실되지 않는다)
       if (e instanceof ApiError && e.status === 409) {
         saveMemberId(member.id);
         router.replace('/m');
@@ -85,9 +85,7 @@ function CheckinInner() {
         >
           LETSCOK
         </Link>
-        <h1 className="mt-1 text-2xl font-bold">
-          {mode === 'search' ? '이름으로 체크인' : '처음 오셨네요!'}
-        </h1>
+        <h1 className="mt-1 text-2xl font-bold">이름으로 체크인</h1>
       </header>
 
       {/* 코드 없이 진입(바 URL·지난 QR) — 현장 QR로 유도 + 카메라 안 되는 폰용 코드 수동 입력.
@@ -95,18 +93,18 @@ function CheckinInner() {
       {!urlCode && (
         <div className="rounded-xl border border-amber/40 bg-amber/10 p-3 text-center text-sm">
           <p className="text-amber">
-            현장의 <b>오늘 QR</b>을 스캔해 들어와주세요
+            현장의 <b>QR</b>을 스캔해 들어와주세요
           </p>
           <p className="mt-2 text-xs text-dim">
-            QR을 못 찍으면 운영진에게 6자리 코드를 물어봐 입력하세요
+            QR을 못 찍으면 운영진에게 체크인 코드를 물어봐 입력하세요
           </p>
           <input
             value={manualCode}
             onChange={(e) =>
-              // 코드는 대문자+숫자 6자 (혼동 문자 제외) — 소문자 입력도 통과되게 정규화
-              setManualCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))
+              // 대문자+숫자 4~8자 — 소문자 입력도 통과되게 정규화
+              setManualCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))
             }
-            placeholder="6자리 코드"
+            placeholder="체크인 코드"
             autoCapitalize="characters"
             autoComplete="off"
             className="tabular mt-2 h-12 w-full rounded-lg border border-line bg-panel text-center font-mono text-lg tracking-[0.3em] outline-none placeholder:tracking-normal focus:border-amber"
@@ -114,11 +112,7 @@ function CheckinInner() {
         </div>
       )}
 
-      {mode === 'search' ? (
-        <SearchPanel busy={busy} onSelect={checkIn} onRegister={() => setMode('register')} />
-      ) : (
-        <RegisterPanel busy={busy} onDone={checkIn} onBack={() => setMode('search')} />
-      )}
+      <SearchPanel busy={busy} onSelect={checkIn} />
 
       {toast && <Toast message={toast} />}
     </Shell>
@@ -138,15 +132,14 @@ function Shell({ children }: { children: React.ReactNode }) {
 function SearchPanel({
   busy,
   onSelect,
-  onRegister,
 }: {
   busy: boolean;
-  onSelect: (member: IMember) => Promise<void>;
-  onRegister: () => void;
+  onSelect: (member: IMember, consent: boolean) => Promise<void>;
 }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<IMember[]>([]);
   const [selected, setSelected] = useState<IMember | null>(null);
+  const [consent, setConsent] = useState(false);
 
   // 입력 후 300ms 조용하면 검색 (타이핑마다 요청하지 않도록)
   useEffect(() => {
@@ -163,6 +156,10 @@ function SearchPanel({
     return () => clearTimeout(timer);
   }, [query]);
 
+  // 운영진 대리 등록분만 동의를 받는다 — 한 번 동의하면 다음 모임부턴 안 뜬다
+  const needsConsent = selected !== null && !selected.consented;
+  const blocked = !selected || busy || (needsConsent && !consent);
+
   return (
     <>
       <input
@@ -170,6 +167,7 @@ function SearchPanel({
         onChange={(e) => {
           setQuery(e.target.value);
           setSelected(null);
+          setConsent(false);
         }}
         placeholder="이름을 입력하세요"
         className="h-14 rounded-xl border border-line bg-panel px-5 text-lg outline-none focus:border-court"
@@ -179,7 +177,10 @@ function SearchPanel({
         {results.map((member) => (
           <button
             key={member.id}
-            onClick={() => setSelected(member)}
+            onClick={() => {
+              setSelected(member);
+              setConsent(false);
+            }}
             className={`flex items-center gap-2 rounded-xl border p-4 text-left ${
               selected?.id === member.id ? 'border-court bg-court/10' : 'border-line bg-panel'
             }`}
@@ -197,175 +198,45 @@ function SearchPanel({
         )}
       </div>
 
-      <button
-        onClick={() => selected && void onSelect(selected)}
-        disabled={!selected || busy}
-        className="h-14 rounded-xl bg-court text-lg font-bold text-bg disabled:bg-panel2 disabled:text-faint"
-      >
-        {selected ? `${selected.name}(으)로 체크인` : '본인을 선택해주세요'}
-      </button>
-      <button onClick={onRegister} className="text-sm text-dim underline underline-offset-4">
-        처음이에요 — 새로 등록하기
-      </button>
-    </>
-  );
-}
-
-// ===== 신규 등록 =====
-
-function RegisterPanel({
-  busy,
-  onDone,
-  onBack,
-}: {
-  busy: boolean;
-  onDone: (member: IMember) => Promise<void>;
-  onBack: () => void;
-}) {
-  const [name, setName] = useState('');
-  const [birthInput, setBirthInput] = useState(''); // 화면 표시용 (자동 하이픈)
-  const [grade, setGrade] = useState<Grade | null>(null);
-  const [gender, setGender] = useState<Gender | null>(null); // 복식 종목용 — 필수
-  const [isGuest, setIsGuest] = useState(false);
-  const [consent, setConsent] = useState(false); // 개인정보 수집 동의 — 서버도 필수 검증
-  const [error, setError] = useState<string | null>(null);
-
-  const digits = birthInput.replace(/\D/g, '');
-  const birthDate = useMemo(() => parseBirthDate(birthInput), [birthInput]);
-  const handleBirthChange = (raw: string) => setBirthInput(formatBirthInput(raw));
-
-  const submit = async () => {
-    if (!name.trim() || (!isGuest && !birthDate) || !grade || !gender || !consent || busy) return;
-    setError(null);
-    try {
-      const member = await api<IMember>('/members', {
-        method: 'POST',
-        // 게스트는 생년월일 미수집 (게스트 정책) — 서버도 보내와도 무시
-        body: {
-          name: name.trim(),
-          ...(isGuest ? {} : { birthDate }),
-          grade,
-          gender,
-          isGuest,
-          consent,
-        },
-      });
-      await onDone(member); // 등록 즉시 체크인까지
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : '등록에 실패했습니다.');
-    }
-  };
-
-  return (
-    <>
-      <div className="flex flex-col gap-3">
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="이름"
-          className="h-14 rounded-xl border border-line bg-panel px-5 text-lg outline-none focus:border-court"
-        />
-        {/* 게스트 토글을 생년월일보다 위에 — 게스트는 생년월일 미수집이라 켜면 아래 입력란이 아예 안 나온다 */}
+      {/* 개인정보 수집 동의 — 운영진이 대신 등록했으므로 본인 확인 시점에 받는다 */}
+      {needsConsent && (
         <button
-          onClick={() => setIsGuest((v) => !v)}
-          className={`flex h-14 items-center justify-between rounded-xl border px-5 ${
-            isGuest ? 'border-sky bg-sky/10' : 'border-line bg-panel'
+          onClick={() => setConsent((v) => !v)}
+          className={`rounded-xl border p-4 text-left ${
+            consent ? 'border-court bg-court/10' : 'border-line bg-panel'
           }`}
         >
-          <span className={isGuest ? 'text-sky' : 'text-dim'}>게스트로 참여하면 눌러주세요</span>
-          <span className="text-sm text-faint">{isGuest ? '게스트' : '정회원'}</span>
-        </button>
-        {!isGuest && (
-        <div>
-          <p className="mb-2 text-sm text-dim">
-            생년월일 <span className="text-faint">— 동명이인 구분에 쓰여요</span>
-          </p>
-          <input
-            type="text"
-            inputMode="numeric"
-            value={birthInput}
-            onChange={(e) => handleBirthChange(e.target.value)}
-            placeholder="8자리 숫자 (예: 19970312)"
-            className="h-14 w-full rounded-xl border border-line bg-panel px-5 text-lg outline-none focus:border-court"
-          />
-          {digits.length === 8 && !birthDate && (
-            <p className="mt-1 text-xs text-coral">날짜가 올바르지 않아요</p>
-          )}
-        </div>
-        )}
-        <div>
-          <p className="mb-2 text-sm text-dim">급수</p>
-          <div className="grid grid-cols-6 gap-2">
-            {GRADES.map((g) => (
-              <button
-                key={g}
-                onClick={() => setGrade(g)}
-                className={`h-12 rounded-xl border font-bold ${
-                  grade === g ? 'border-court bg-court/15 text-court' : 'border-line bg-panel text-dim'
-                }`}
-              >
-                {g}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div>
-          <p className="mb-2 text-sm text-dim">성별 <span className="text-faint">— 복식 조 편성에 쓰여요</span></p>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => setGender('MALE')}
-              className={`h-12 rounded-xl border font-bold ${
-                gender === 'MALE' ? 'border-sky bg-sky/15 text-sky' : 'border-line bg-panel text-dim'
+          <span className="flex items-center gap-2 text-sm font-medium">
+            <span
+              className={`flex h-5 w-5 items-center justify-center rounded border text-xs ${
+                consent ? 'border-court bg-court text-bg' : 'border-line text-transparent'
               }`}
             >
-              ♂ 남
-            </button>
-            <button
-              onClick={() => setGender('FEMALE')}
-              className={`h-12 rounded-xl border font-bold ${
-                gender === 'FEMALE' ? 'border-pink bg-pink/15 text-pink' : 'border-line bg-panel text-dim'
-              }`}
-            >
-              ♀ 여
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* 개인정보 수집 동의 — 친목단체라 법적 의무는 아니나 모임원 신뢰용으로 명시 */}
-      <button
-        onClick={() => setConsent((v) => !v)}
-        className={`rounded-xl border p-4 text-left ${
-          consent ? 'border-court bg-court/10' : 'border-line bg-panel'
-        }`}
-      >
-        <span className="flex items-center gap-2 text-sm font-medium">
-          <span
-            className={`flex h-5 w-5 items-center justify-center rounded border text-xs ${
-              consent ? 'border-court bg-court text-bg' : 'border-line text-transparent'
-            }`}
-          >
-            ✓
+              ✓
+            </span>
+            개인정보 수집·이용에 동의합니다
           </span>
-          개인정보 수집·이용에 동의합니다
-        </span>
-        <span className="mt-2 block pl-7 text-xs leading-relaxed text-dim">
-          수집 항목: 이름, 생년월일, 급수, 성별 · 목적: 모임 출석·게임 배정 관리, 동명이인 구분 ·
-          보관: 모임 운영 기간 (삭제 요청 시 운영진이 지체 없이 삭제)
-        </span>
-      </button>
+          <span className="mt-2 block pl-7 text-xs leading-relaxed text-dim">
+            수집 항목: 이름, 생년월일, 급수, 성별 · 목적: 모임 출석·게임 배정 관리, 동명이인 구분 ·
+            보관: 모임 운영 기간 (삭제 요청 시 운영진이 지체 없이 삭제)
+          </span>
+        </button>
+      )}
 
       <button
-        onClick={() => void submit()}
-        disabled={!name.trim() || (!isGuest && !birthDate) || !grade || !gender || !consent || busy}
+        onClick={() => selected && void onSelect(selected, needsConsent)}
+        disabled={blocked}
         className="h-14 rounded-xl bg-court text-lg font-bold text-bg disabled:bg-panel2 disabled:text-faint"
       >
-        등록하고 체크인
+        {!selected
+          ? '본인을 선택해주세요'
+          : needsConsent && !consent
+            ? '동의 후 체크인할 수 있어요'
+            : `${selected.name}(으)로 체크인`}
       </button>
-      <button onClick={onBack} className="text-sm text-dim underline underline-offset-4">
-        이미 등록했어요 — 이름 검색으로
-      </button>
-      {error && <p className="text-center text-sm text-coral">{error}</p>}
+      <p className="text-center text-sm text-dim">
+        이름이 안 보이면 운영진에게 등록을 요청해주세요
+      </p>
     </>
   );
 }

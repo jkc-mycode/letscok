@@ -15,7 +15,6 @@ const memberDto = (over: Partial<CreateMemberDto> = {}): CreateMemberDto => ({
   grade: 'C',
   gender: 'MALE',
   isGuest: false,
-  consent: true,
   ...over,
 });
 
