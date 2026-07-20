@@ -47,10 +47,37 @@ export class SessionsService {
       return toSessionResponse(reopened);
     }
 
+    // 코드 승계 — 운영진이 정한 코드(0000 등)가 모임마다 초기화되면 매번 다시 설정해야 한다
+    // 고정 코드라야 QR을 한 번 인쇄해 붙여두고 계속 쓸 수 있다
+    const previous = await this.prisma.session.findFirst({
+      where: { checkInCode: { not: null } },
+      orderBy: { date: 'desc' },
+      select: { checkInCode: true },
+    });
     const session = await this.prisma.session.create({
-      data: { date: today, checkInCode: generateCheckInCode() },
+      data: {
+        date: today,
+        checkInCode: previous?.checkInCode ?? generateCheckInCode(),
+      },
     });
     return toSessionResponse(session);
+  }
+
+  // 체크인 코드 변경 (운영진 전용) — 0000·1234처럼 부르기 쉬운 값을 쓸 수 있게
+  // 코드는 실질 방어선이 아니다(콕 확인이 게이트). 유출돼도 게임 배정은 운영진 손을 거친다
+  async updateCheckInCode(code: string): Promise<string> {
+    const session = await this.prisma.session.findFirst({
+      where: { status: 'OPEN' },
+    });
+    if (!session) {
+      throw new NotFoundException('아직 모임이 시작되지 않았습니다.');
+    }
+
+    const updated = await this.prisma.session.update({
+      where: { id: session.id },
+      data: { checkInCode: code },
+    });
+    return updated.checkInCode as string;
   }
 
   // 모임 종료 = 그날 운영 마감 — 보드를 통째로 정리한다

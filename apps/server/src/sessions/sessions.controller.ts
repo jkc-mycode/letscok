@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import {
   IApiResponse,
   ICheckInCodeResponse,
@@ -6,6 +6,7 @@ import {
   ISessionSnapshot,
 } from '@letscok/shared-types';
 import { AdminGuard } from '../common/guards/admin.guard';
+import { UpdateCheckInCodeDto } from './dto/update-check-in-code.dto';
 import { SessionsService } from './sessions.service';
 
 @Controller('sessions')
@@ -37,5 +38,17 @@ export class SessionsController {
   @UseGuards(AdminGuard)
   async getCheckInCode(): Promise<IApiResponse<ICheckInCodeResponse>> {
     return { success: true, data: { code: await this.sessionsService.getCurrentCheckInCode() } };
+  }
+
+  // 코드 변경 (운영진 전용) — 변경값은 다음 모임에도 승계된다
+  @Patch('current/checkin-code')
+  @UseGuards(AdminGuard)
+  async updateCheckInCode(
+    @Body() dto: UpdateCheckInCodeDto,
+  ): Promise<IApiResponse<ICheckInCodeResponse>> {
+    return {
+      success: true,
+      data: { code: await this.sessionsService.updateCheckInCode(dto.code) },
+    };
   }
 }

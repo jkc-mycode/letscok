@@ -832,13 +832,97 @@ function CheckInQrModal({ onClose }: { onClose: () => void }) {
               <QRCodeSVG value={url} size={240} level="M" />
             </div>
             <div>
-              <p className="text-xs text-dim">현장 입구에 띄워두세요 · 스캔하면 체크인</p>
+              <p className="text-xs text-dim">인쇄해 붙여두거나 입구에 띄워두세요 · 스캔하면 체크인</p>
               <p className="tabular mt-1 font-mono text-3xl font-bold tracking-[0.2em]">{code}</p>
               <p className="mt-1 text-xs text-faint">카메라가 안 되면 이 코드를 불러주세요</p>
             </div>
+            <CodeEditor current={code} onChanged={setCode} />
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// 코드 변경 — 부르기 쉬운 값(0000 등)으로 바꿀 수 있다. 바꾼 값은 다음 모임에도 승계돼
+// QR을 한 번 인쇄해 붙여두면 계속 쓸 수 있다 (코드는 방어선이 아니고 콕 확인이 게이트)
+function CodeEditor({
+  current,
+  onChanged,
+}: {
+  current: string;
+  onChanged: (code: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(current);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => {
+          setDraft(current);
+          setError(null);
+          setOpen(true);
+        }}
+        className="text-xs text-dim underline underline-offset-4"
+      >
+        코드 변경
+      </button>
+    );
+  }
+
+  const save = async () => {
+    if (busy || draft.length < 4) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api<ICheckInCodeResponse>('/sessions/current/checkin-code', {
+        method: 'PATCH',
+        admin: true,
+        body: { code: draft },
+      });
+      if (res.code) onChanged(res.code);
+      setOpen(false);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '코드를 바꾸지 못했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex w-full flex-col gap-2">
+      <input
+        value={draft}
+        onChange={(e) =>
+          setDraft(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))
+        }
+        placeholder="영문 대문자·숫자 4~8자"
+        autoCapitalize="characters"
+        autoComplete="off"
+        className="tabular h-12 w-full rounded-lg border border-line bg-panel2 text-center font-mono text-lg tracking-[0.2em] outline-none placeholder:font-sans placeholder:text-xs placeholder:tracking-normal focus:border-court"
+      />
+      <p className="text-[11px] leading-relaxed text-faint">
+        바꾼 코드는 다음 모임에도 그대로 이어져요 — 인쇄한 QR을 계속 쓸 수 있어요
+      </p>
+      <div className="flex gap-2">
+        <button
+          onClick={() => setOpen(false)}
+          className="h-11 flex-1 rounded-lg border border-line text-sm text-dim"
+        >
+          취소
+        </button>
+        <button
+          onClick={() => void save()}
+          disabled={busy || draft.length < 4}
+          className="h-11 flex-1 rounded-lg bg-court text-sm font-bold text-bg disabled:bg-panel2 disabled:text-faint"
+        >
+          저장
+        </button>
+      </div>
+      {error && <p className="text-xs text-coral">{error}</p>}
     </div>
   );
 }
@@ -1161,20 +1245,21 @@ function ManualCheckInModal({
       setLastDone(member.name); // 모달은 열어둔다 — 지각 시나리오는 보통 여러 명 연속 입력
     });
 
-  // 등록+체크인 한 번에 — consent는 현장 구두 동의 전제(운영진이 본인에게 확인)
+  // 등록+체크인 한 번에 — 개인정보 동의는 여기서 받지 않는다(대리 등록이라 본인 의사가 아님)
+  // 본인이 QR·코드로 처음 들어올 때 /checkin에서 동의를 받아 기록한다
   const registerNew = () => {
     const name = regName.trim();
     if (!name || !regGrade || !regGender || (!regIsGuest && !regBirthDate)) return;
     void run(async () => {
       const created = await api<IMember>('/members', {
         method: 'POST',
+        admin: true,
         body: {
           name,
           ...(regIsGuest ? {} : { birthDate: regBirthDate }),
           grade: regGrade,
           gender: regGender,
           isGuest: regIsGuest,
-          consent: true,
         },
       });
       await api(`/sessions/${sessionId}/attendances/manual`, {
@@ -1542,11 +1627,12 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
   {
     title: '체크인 QR',
     items: [
-      '모임원은 현장 QR을 스캔해야만 체크인돼요 (코드 없는 주소는 차단).',
-      '[체크인 QR] 모달을 입구 화면에 띄워두세요. 코드는 모임마다 새로 발급되고 그날 내내 같아요.',
-      '카메라가 안 되는 폰은 모달 하단 6자리 코드를 불러주세요.',
-      'QR 오픈이 늦어 이미 게임 중인 사람들은 대기 인원의 [수동 체크인]으로 넣어주세요. 본인 폰은 나중에 QR을 스캔하면 그대로 연결돼요.',
-      '미등록 인원은 [수동 체크인] 안의 [신규 등록]으로 바로 등록+체크인할 수 있어요 — 게스트는 이름·급수·성별만(생년월일 안 받아요), 정회원은 생년월일 포함. 구두 동의는 받아주세요.',
+      '모임원은 QR 스캔 또는 코드 입력으로 들어와요 (둘 다 같은 코드라 보안 차이는 없어요).',
+      '[체크인 QR] 모달의 [코드 변경]으로 0000처럼 부르기 쉬운 코드를 정할 수 있어요. 바꾼 코드는 다음 모임에도 이어지니 QR을 한 번 인쇄해 벽에 붙여두면 계속 써요 — 그러면 태블릿 앞에 줄 설 일이 없어요.',
+      '한 번 들어온 모임원은 다음 모임부터 QR을 다시 찍을 필요가 없어요. 본인 화면 주소를 홈 화면에 추가해두라고 안내해주세요.',
+      '모임 전에 참석자를 [수동 체크인]으로 미리 넣어두면 현장에서는 콕 확인만 하면 돼요.',
+      '명단에 없는 사람은 [수동 체크인] 안의 [신규 등록]으로 등록해요 — 게스트는 이름·급수·성별만(생년월일 안 받아요), 정회원은 생년월일 포함. 모임원이 스스로 가입하는 경로는 없어요(외부인 가짜 등록 차단).',
+      '개인정보 동의는 본인이 처음 QR·코드로 들어올 때 받아요 — 운영진이 대신 체크하지 않아요.',
     ],
   },
   {
@@ -1926,7 +2012,9 @@ function ShuttleRow({
   return (
     <MotionCard
       onClick={() =>
-        void run(() => api(`/attendances/${attendance.id}/shuttle`, { method: 'PATCH' }))
+        void run(() =>
+          api(`/attendances/${attendance.id}/shuttle`, { method: 'PATCH', admin: true }),
+        )
       }
       className="flex cursor-pointer items-center gap-2 rounded-xl border border-amber/40 bg-amber/5 p-3 transition-colors"
     >
@@ -2024,7 +2112,10 @@ function WaitingRow({
           onClick={(e) => {
             e.stopPropagation();
             void run(() =>
-              api(`/attendances/${attendance.id}/shuttle/cancel`, { method: 'PATCH' }),
+              api(`/attendances/${attendance.id}/shuttle/cancel`, {
+                method: 'PATCH',
+                admin: true,
+              }),
             );
           }}
           title="콕 확인 취소 — 콕 확인 대기로 되돌림"
