@@ -66,6 +66,7 @@ export function toAttendanceResponse(
     waitingSince: attendance.waitingSince.toISOString(),
     gamesPlayed: attendance.gamesPlayed,
     leftAt: attendance.leftAt?.toISOString() ?? null,
+    shuttleConfirmedAt: attendance.shuttleConfirmedAt?.toISOString() ?? null,
     ...(attendance.member && { member: toMemberResponse(attendance.member) }),
   };
 }

@@ -42,11 +42,16 @@ export class GamesService {
     }
 
     const activeCount = await this.prisma.attendance.count({
-      where: { id: { in: uniqueIds }, sessionId, status: { notIn: ['LEFT', 'RESTING'] } },
+      where: {
+        id: { in: uniqueIds },
+        sessionId,
+        status: { notIn: ['LEFT', 'RESTING'] },
+        shuttleConfirmedAt: { not: null }, // 콕 미확인은 게임 배정 불가
+      },
     });
     if (activeCount !== 4) {
       throw new ConflictException(
-        '퇴장·휴식 중이거나 이 모임에 없는 모임원이 포함되어 있습니다.',
+        '콕 미확인·퇴장·휴식 중이거나 이 모임에 없는 모임원이 포함되어 있습니다.',
       );
     }
 
@@ -277,10 +282,13 @@ export class GamesService {
         id: dto.inAttendanceId,
         sessionId: game.sessionId,
         status: { notIn: ['LEFT', 'RESTING'] },
+        shuttleConfirmedAt: { not: null }, // 콕 미확인은 교체 투입도 불가
       },
     });
     if (!incoming) {
-      throw new ConflictException('퇴장·휴식 중이거나 이 모임에 없는 모임원입니다.');
+      throw new ConflictException(
+        '콕 미확인·퇴장·휴식 중이거나 이 모임에 없는 모임원입니다.',
+      );
     }
     // PLAYING은 동시에 한 곳만 — 게임 중인 게임엔 다른 코트에서 뛰는 중인 사람 투입 불가
     // (QUEUED 조합엔 중복 대기 정책상 게임 중인 사람도 미리 넣을 수 있다)

@@ -81,7 +81,8 @@ export default function MyStatusPage() {
     games.filter((g) => g.status === 'PLAYING' && g.courtId).map((g) => [g.courtId as string, g]),
   );
   const queuedGames = games.filter((g) => g.status === 'QUEUED');
-  const waiting = attendances.filter((a) => a.status === 'CHECKED_IN');
+  // 콕 미확인은 아직 배정 대상이 아니라 대기 인원에서 뺀다 (관제판과 같은 기준)
+  const waiting = attendances.filter((a) => a.status === 'CHECKED_IN' && a.shuttleConfirmedAt);
   const resting = attendances.filter((a) => a.status === 'RESTING'); // 대기 인원 뒤에 흐리게 표시
   // 여러 대기 조합에 겹쳐 들어간 인원 표시 (관제판과 동일 기준)
   const overlapCounts = new Map<string, number>();
@@ -104,6 +105,13 @@ export default function MyStatusPage() {
         LETSCOK
       </Link>
       <MyBanner me={me} waiting={waiting} now={now} />
+
+      {/* 콕 미확인 안내 — 이게 없으면 "왜 나만 게임에 안 넣어주지" 오해로 운영진 문의가 늘어난다 */}
+      {!me.shuttleConfirmedAt && me.status !== 'LEFT' && (
+        <p className="rounded-xl border border-amber/40 bg-amber/10 p-3 text-sm text-amber">
+          콕 제출 확인을 기다리고 있어요 — 확인되면 게임에 들어갈 수 있어요
+        </p>
+      )}
 
       {/* 타임 버튼 — 대기·조합 대기 중에만. 게임 중·퇴장엔 의미 없어 숨김
           (MATCHED는 눌러도 서버가 409로 막고 "운영진에게 말씀해주세요" 안내) */}
@@ -239,7 +247,11 @@ function MyBanner({
 
   let statusText: string;
   let statusClass = 'border-line bg-panel';
-  if (me.status === 'CHECKED_IN') {
+  if (me.status === 'CHECKED_IN' && !me.shuttleConfirmedAt) {
+    // 콕 확인 전엔 대기 목록에 없어 순번이 안 잡힌다 — 순번 대신 대기 사유를 보여준다
+    statusClass = 'border-amber bg-amber/10 text-amber';
+    statusText = '콕 확인 대기 중';
+  } else if (me.status === 'CHECKED_IN') {
     const position = waiting.findIndex((a) => a.id === me.id) + 1;
     statusText = `대기 ${position}번째 · ${formatWaitingMinutes(me.waitingSince, now)}`;
   } else if (me.status === 'MATCHED') {

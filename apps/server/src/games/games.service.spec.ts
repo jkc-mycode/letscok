@@ -31,11 +31,13 @@ async function seedCourt(sessionId: string, courtNo = 1) {
 }
 
 // 회원 생성 + 체크인 상태의 출석 1행 — 상태 전이의 기본 시작점
+// 콕은 기본 확인됨: 대다수 테스트의 관심사가 아니고, 미확인 케이스만 명시적으로 끈다
 async function seedAttendance(
   sessionId: string,
   overrides: {
     status?: 'CHECKED_IN' | 'MATCHED' | 'PLAYING' | 'RESTING' | 'LEFT';
     waitingSince?: Date;
+    shuttleConfirmed?: boolean;
   } = {},
 ) {
   const member = await prisma.member.create({
@@ -52,6 +54,8 @@ async function seedAttendance(
       memberId: member.id,
       status: overrides.status ?? 'CHECKED_IN',
       waitingSince: overrides.waitingSince ?? new Date('2026-01-01T10:00:00Z'),
+      shuttleConfirmedAt:
+        overrides.shuttleConfirmed === false ? null : new Date('2026-01-01T09:00:00Z'),
     },
   });
 }
@@ -113,7 +117,21 @@ describe('create', () => {
 
     await expect(
       service.create(session.id, { attendanceIds: [resting.id, a.id, b.id, c.id] }),
-    ).rejects.toThrow('퇴장·휴식 중이거나 이 모임에 없는 모임원이 포함되어 있습니다.');
+    ).rejects.toThrow(
+      '콕 미확인·퇴장·휴식 중이거나 이 모임에 없는 모임원이 포함되어 있습니다.',
+    );
+  });
+
+  it('콕 미확인 인원이 포함되면 409 — 회비 게이트', async () => {
+    const session = await seedSession();
+    const noShuttle = await seedAttendance(session.id, { shuttleConfirmed: false });
+    const [a, b, c] = await seedFour(session.id);
+
+    await expect(
+      service.create(session.id, { attendanceIds: [noShuttle.id, a.id, b.id, c.id] }),
+    ).rejects.toThrow(
+      '콕 미확인·퇴장·휴식 중이거나 이 모임에 없는 모임원이 포함되어 있습니다.',
+    );
   });
 
   it('중복 대기 — PLAYING·MATCHED 인원도 조합에 넣을 수 있고 상태는 유지된다', async () => {

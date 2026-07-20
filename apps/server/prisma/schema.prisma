@@ -117,9 +117,13 @@ model Attendance {
   memberId     String
   status       AttendanceStatus @default(CHECKED_IN)
   checkedInAt  DateTime         @default(now())
-  waitingSince DateTime         @default(now()) // 게임 종료·재입장 시 갱신
+  waitingSince DateTime         @default(now()) // 게임 종료·재입장·콕 확인 시 갱신
   gamesPlayed  Int              @default(0) // FINISHED 트랜잭션에서 증가
   leftAt       DateTime?
+
+  // 콕 제출 확인 시각 — null이면 게임 배정 불가 (status와 직교: status는 "어디 있나", 이건 "자격이 있나")
+  // 확인 시점이 곧 참여 시작이라 waitingSince도 이때 맞춘다
+  shuttleConfirmedAt DateTime?
 
   session     Session      @relation(fields: [sessionId], references: [id])
   member      Member       @relation(fields: [memberId], references: [id])

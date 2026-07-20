@@ -222,3 +222,74 @@ describe('rest / resume (잠깐 휴식)', () => {
     expect(left.status).toBe('LEFT');
   });
 });
+
+describe('confirmShuttle / cancelShuttle (콕 제출 확인)', () => {
+  async function seedCheckedIn() {
+    const session = await seedSession();
+    const member = await seedMember();
+    return service.manualCheckIn(session.id, member.id);
+  }
+
+  it('체크인 직후엔 콕 미확인 상태다', async () => {
+    const checkedIn = await seedCheckedIn();
+
+    expect(checkedIn.shuttleConfirmedAt).toBeNull();
+  });
+
+  it('확인하면 시각이 남고 waitingSince가 그 시점으로 맞춰진다', async () => {
+    const checkedIn = await seedCheckedIn();
+    // 체크인을 과거로 밀어 "콕 확인 시점부터 참여" 규칙을 시간차로 검증
+    const past = new Date(Date.now() - 30 * 60 * 1000);
+    await prisma.attendance.update({
+      where: { id: checkedIn.id },
+      data: { waitingSince: past },
+    });
+
+    const confirmed = await service.confirmShuttle(checkedIn.id);
+
+    expect(confirmed.shuttleConfirmedAt).not.toBeNull();
+    expect(new Date(confirmed.waitingSince).getTime()).toBeGreaterThan(
+      past.getTime(),
+    );
+    expect(confirmed.waitingSince).toBe(confirmed.shuttleConfirmedAt);
+  });
+
+  it('더블탭 안전 — 이미 확인됐으면 시각을 덮어쓰지 않는다', async () => {
+    const checkedIn = await seedCheckedIn();
+    const first = await service.confirmShuttle(checkedIn.id);
+
+    const second = await service.confirmShuttle(checkedIn.id);
+
+    expect(second.shuttleConfirmedAt).toBe(first.shuttleConfirmedAt);
+  });
+
+  it('취소하면 다시 미확인으로 돌아간다', async () => {
+    const checkedIn = await seedCheckedIn();
+    await service.confirmShuttle(checkedIn.id);
+
+    const cancelled = await service.cancelShuttle(checkedIn.id);
+
+    expect(cancelled.shuttleConfirmedAt).toBeNull();
+  });
+
+  it('조합·게임에 배정된 사람은 취소 불가 — 진행 중 게임이 깨지지 않게', async () => {
+    for (const status of ['MATCHED', 'PLAYING'] as const) {
+      const checkedIn = await seedCheckedIn();
+      await service.confirmShuttle(checkedIn.id);
+      await prisma.attendance.update({ where: { id: checkedIn.id }, data: { status } });
+
+      await expect(service.cancelShuttle(checkedIn.id)).rejects.toThrow(
+        ConflictException,
+      );
+    }
+  });
+
+  it('퇴장한 사람은 콕 확인 불가', async () => {
+    const checkedIn = await seedCheckedIn();
+    await service.leave(checkedIn.id);
+
+    await expect(service.confirmShuttle(checkedIn.id)).rejects.toThrow(
+      ConflictException,
+    );
+  });
+});

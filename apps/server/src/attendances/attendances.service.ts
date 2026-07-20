@@ -149,6 +149,49 @@ export class AttendancesService {
     return toAttendanceResponse(resumed);
   }
 
+  // 콕 제출 확인 — 돈에 준하는 검증이라 운영진 전용(컨트롤러 AdminGuard)
+  // 확인 시점이 곧 참여 시작이므로 waitingSince를 여기 맞춘다 (일찍 와서 콕만 늦게 낸 사람이 대기줄 앞을 차지하지 않게)
+  async confirmShuttle(id: string): Promise<IAttendance> {
+    const attendance = await this.findAttendanceOrThrow(id);
+    if (attendance.shuttleConfirmedAt) {
+      return toAttendanceResponse(attendance); // 더블탭 안전
+    }
+    if (attendance.status === 'LEFT') {
+      throw new ConflictException('퇴장 처리된 모임원입니다.');
+    }
+
+    const now = new Date();
+    const confirmed = await this.prisma.attendance.update({
+      where: { id },
+      data: { shuttleConfirmedAt: now, waitingSince: now },
+      include: { member: true },
+    });
+    this.realtime.broadcastSnapshot(attendance.sessionId);
+    return toAttendanceResponse(confirmed);
+  }
+
+  // 잘못 누른 경우 되돌리기 — 이미 조합·게임에 들어간 사람은 막는다
+  // (진행 중 게임을 깨지 않기 위해. 그 경우 조합 해체·게임 종료가 먼저)
+  async cancelShuttle(id: string): Promise<IAttendance> {
+    const attendance = await this.findAttendanceOrThrow(id);
+    if (!attendance.shuttleConfirmedAt) {
+      return toAttendanceResponse(attendance); // 더블탭 안전
+    }
+    if (attendance.status === 'MATCHED' || attendance.status === 'PLAYING') {
+      throw new ConflictException(
+        '게임에 배정된 모임원입니다. 조합 해체 또는 게임 종료 후 취소해주세요.',
+      );
+    }
+
+    const cancelled = await this.prisma.attendance.update({
+      where: { id },
+      data: { shuttleConfirmedAt: null },
+      include: { member: true },
+    });
+    this.realtime.broadcastSnapshot(attendance.sessionId);
+    return toAttendanceResponse(cancelled);
+  }
+
   private async findAttendanceOrThrow(id: string) {
     const attendance = await this.prisma.attendance.findUnique({
       where: { id },

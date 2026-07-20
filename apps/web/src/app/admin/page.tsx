@@ -172,13 +172,19 @@ function BoardBody({
     () => courts.filter((c) => !playingByCourt.has(c.id)),
     [courts, playingByCourt],
   );
+  // 콕 확인 대기 — 확인 전엔 게임 배정이 막히므로 대기 인원과 분리해 구역 맨 위에 모은다
+  // (운영진은 이 섹션이 비었는지만 확인하면 된다)
+  const pendingShuttle = useMemo(
+    () => attendances.filter((a) => a.status !== 'LEFT' && !a.shuttleConfirmedAt),
+    [attendances],
+  );
   const waiting = useMemo(
-    () => attendances.filter((a) => a.status === 'CHECKED_IN'),
+    () => attendances.filter((a) => a.status === 'CHECKED_IN' && a.shuttleConfirmedAt),
     [attendances],
   );
   // 휴식 인원 — 보이되 선택 불가 (인원 파악은 되고 실수 투입은 차단)
   const restingList = useMemo(
-    () => attendances.filter((a) => a.status === 'RESTING'),
+    () => attendances.filter((a) => a.status === 'RESTING' && a.shuttleConfirmedAt),
     [attendances],
   );
   // 게임 중 포함 토글 — 잔여 인원을 게임 중/조합에 든 사람과 미리 조합할 때 켠다
@@ -472,7 +478,22 @@ function BoardBody({
             </>
           }
         >
-          {waiting.length === 0 && <Empty>체크인한 대기 인원이 없어요</Empty>}
+          {pendingShuttle.length > 0 && (
+            <>
+              <p className="pb-1 text-center text-[11px] font-medium text-amber">
+                콕 확인 대기 {pendingShuttle.length}명 — 탭하면 대기 인원으로 내려가요
+              </p>
+              <AnimatePresence initial={false}>
+                {pendingShuttle.map((attendance) => (
+                  <ShuttleRow key={attendance.id} attendance={attendance} run={run} />
+                ))}
+              </AnimatePresence>
+              <div className="mb-1 border-b border-line" />
+            </>
+          )}
+          {waiting.length === 0 && pendingShuttle.length === 0 && (
+            <Empty>체크인한 대기 인원이 없어요</Empty>
+          )}
           <AnimatePresence initial={false}>
             {waiting.map((attendance) => (
               <WaitingRow
@@ -1508,6 +1529,8 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
   {
     title: '기본 흐름',
     items: [
+      '체크인만으로는 게임에 못 들어가요 — 대기 인원 맨 위 [콕 확인 대기]에서 콕 낸 사람을 탭해야 대기 인원으로 내려와요. 그 섹션이 비어 있으면 다 처리된 거예요.',
+      '콕 확인 시각이 곧 참여 시작이에요 — 일찍 와서 콕을 늦게 낸 사람이 대기 순번을 앞지르지 않아요. 잘못 눌렀으면 행의 [콕취소]로 되돌려요 (조합·게임에 든 뒤엔 불가).',
       '대기 인원에서 4명 선택 → [조합 만들기] → 대기 조합에서 [코트 배정] → 끝나면 [게임 종료].',
       '[게임 종료]만 게임 수 +1 · 대기시간 리셋. [대기로]는 조합을 유지한 채 뒤로, [취소]·[해체]는 없던 일로 (둘 다 미집계).',
       '부상·급한 일로 한 명만 바꿀 땐 [교체] — 게임을 갈아엎지 않아 타이머·순서가 유지돼요. 빠진 사람은 대기 인원으로 돌아와요.',
@@ -1889,6 +1912,35 @@ function QueueCard({
 
 // ===== 대기 인원 구역 =====
 
+// 콕 확인 대기 행 — 행 전체가 확인 버튼이다 (시작 시간에 20명을 연속으로 눌러야 해서 탭 영역을 최대로)
+// 확인 전에는 게임 배정이 막히므로 선택 체크박스는 없다
+function ShuttleRow({
+  attendance,
+  run,
+}: {
+  attendance: IAttendance;
+  run: (a: () => Promise<unknown>) => Promise<void>;
+}) {
+  const member = attendance.member;
+  if (!member) return null;
+  return (
+    <MotionCard
+      onClick={() =>
+        void run(() => api(`/attendances/${attendance.id}/shuttle`, { method: 'PATCH' }))
+      }
+      className="flex cursor-pointer items-center gap-2 rounded-xl border border-amber/40 bg-amber/5 p-3 transition-colors"
+    >
+      <GradeBadge grade={member.grade} />
+      <span className="font-medium">{member.name}</span>
+      <GenderMarker gender={member.gender} />
+      {member.isGuest && <span className="text-[10px] text-sky">게스트</span>}
+      <span className="ml-auto shrink-0 rounded-lg bg-amber px-2.5 py-1 text-xs font-bold text-bg">
+        콕 확인
+      </span>
+    </MotionCard>
+  );
+}
+
 function WaitingRow({
   attendance,
   now,
@@ -1964,6 +2016,21 @@ function WaitingRow({
           className="h-8 shrink-0 rounded-lg px-1.5 text-xs text-faint hover:text-sky"
         >
           휴식
+        </button>
+      )}
+      {/* 콕을 잘못 확인했을 때의 유일한 복구 경로 — 되돌리면 콕 확인 대기로 올라간다 */}
+      {!busyStatus && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            void run(() =>
+              api(`/attendances/${attendance.id}/shuttle/cancel`, { method: 'PATCH' }),
+            );
+          }}
+          title="콕 확인 취소 — 콕 확인 대기로 되돌림"
+          className="h-8 shrink-0 rounded-lg px-1.5 text-xs text-faint hover:text-amber"
+        >
+          콕취소
         </button>
       )}
       {!busyStatus && (

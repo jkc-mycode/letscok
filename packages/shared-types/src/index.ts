@@ -81,9 +81,10 @@ export interface IAttendance {
   memberId: string;
   status: AttendanceStatus;
   checkedInAt: string;
-  waitingSince: string; // 대기 시작 시각 (게임 종료·재입장 시 갱신)
+  waitingSince: string; // 대기 시작 시각 (게임 종료·재입장·콕 확인 시 갱신)
   gamesPlayed: number; // 오늘 완료한 게임 수
   leftAt: string | null;
+  shuttleConfirmedAt: string | null; // 콕 제출 확인 시각 — null이면 게임 배정 불가
   member?: IMember;
 }
 

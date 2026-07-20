@@ -42,7 +42,12 @@ export class RecommendationsService {
 
     const [allAttendances, playedGames] = await Promise.all([
       this.prisma.attendance.findMany({
-        where: { sessionId, status: { not: 'LEFT' } },
+        // 콕 미확인은 추천 후보에서 아예 제외 — 고른 뒤 서버가 거부하면 운영진이 헛수고한다
+        where: {
+          sessionId,
+          status: { not: 'LEFT' },
+          shuttleConfirmedAt: { not: null },
+        },
         include: { member: true },
       }),
       // 오늘 "같이 뛴" 이력 = 종료된 게임 + 지금 뛰는 게임 (QUEUED 조합은 아직 안 뛰었으므로 제외)

@@ -43,6 +43,7 @@ async function seedAttendance(
       memberId: member.id,
       status,
       waitingSince: new Date('2026-01-01T10:00:00Z'),
+      shuttleConfirmedAt: new Date('2026-01-01T09:00:00Z'), // 추천 풀은 콕 확인자만 — 기본 확인 상태로 시드
     },
     include: { member: true },
   });

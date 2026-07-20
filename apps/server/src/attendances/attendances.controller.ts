@@ -62,4 +62,27 @@ export class AttendancesController {
   async resume(@Param('id') id: string): Promise<IApiResponse<IAttendance>> {
     return { success: true, data: await this.attendancesService.resume(id) };
   }
+
+  // 콕 제출 확인/취소 (운영진 전용) — 회비에 준하는 검증이라 셀프 불가
+  @Patch('attendances/:id/shuttle')
+  @UseGuards(AdminGuard)
+  async confirmShuttle(
+    @Param('id') id: string,
+  ): Promise<IApiResponse<IAttendance>> {
+    return {
+      success: true,
+      data: await this.attendancesService.confirmShuttle(id),
+    };
+  }
+
+  @Patch('attendances/:id/shuttle/cancel')
+  @UseGuards(AdminGuard)
+  async cancelShuttle(
+    @Param('id') id: string,
+  ): Promise<IApiResponse<IAttendance>> {
+    return {
+      success: true,
+      data: await this.attendancesService.cancelShuttle(id),
+    };
+  }
 }
