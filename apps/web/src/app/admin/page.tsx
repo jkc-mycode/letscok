@@ -124,6 +124,9 @@ function StartScreen({
   );
 }
 
+// 폰 전용 구역 탭 — md 이상에서는 전부 동시에 보이므로 무시된다
+type MobileTab = 'courts' | 'queue' | 'waiting' | 'memo';
+
 function BoardBody({
   snapshot,
   run,
@@ -147,6 +150,9 @@ function BoardBody({
   const [helpOpen, setHelpOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false); // 운영진 수동 체크인 (QR 오픈 지연 등 예외용)
   const [gamesLogOpen, setGamesLogOpen] = useState(false); // 오늘 완료 게임 조회·이름 검색
+  // 폰(<md)에서는 3구역을 한 번에 못 보여주므로 탭 전환 — 조작 시작점인 대기 인원이 기본
+  const [mobileTab, setMobileTab] = useState<MobileTab>('waiting');
+  const [menuOpen, setMenuOpen] = useState(false); // 폰 헤더 햄버거
   const [replaceGameId, setReplaceGameId] = useState<string | null>(null); // 선수 교체 대상 게임
 
   const { session, courts, attendances, games } = snapshot;
@@ -235,65 +241,144 @@ function BoardBody({
     });
   };
 
+  // 폰에서는 활성 탭만, md 이상에서는 항상 표시 (display 충돌을 피하려고 래퍼 div에만 건다)
+  const pane = (...tabs: MobileTab[]) =>
+    `${tabs.includes(mobileTab) ? 'flex' : 'hidden'} min-h-0 flex-col gap-3 md:flex`;
+
+  // 헤더 액션 — 데스크톱은 가로 버튼 줄, 폰은 햄버거 메뉴로 같은 목록을 재사용한다
+  const headerActions: {
+    key: string;
+    label: string;
+    icon?: string; // 데스크톱에서 아이콘으로만 표시 (도움말)
+    keepMenuOpen?: boolean; // 2탭 확인·토글이라 메뉴를 닫으면 안 되는 것
+    onClick: () => void;
+    cls: string;
+  }[] = [
+    {
+      key: 'qr',
+      label: '체크인 QR',
+      onClick: () => setQrOpen(true),
+      cls: 'border-court/50 text-court',
+    },
+    {
+      key: 'log',
+      label: '게임 기록',
+      onClick: () => setGamesLogOpen(true),
+      cls: 'border-line text-dim',
+    },
+    {
+      key: 'courts',
+      label: '코트 관리',
+      keepMenuOpen: true,
+      onClick: () => setCourtsOpen((v) => !v),
+      cls: courtsOpen ? 'border-court text-court' : 'border-line text-dim',
+    },
+    {
+      key: 'close',
+      label: confirmClose ? '한 번 더 누르면 종료' : '모임 종료',
+      keepMenuOpen: true,
+      onClick: closeSession,
+      cls: confirmClose ? 'border-coral bg-coral/15 text-coral' : 'border-line text-dim',
+    },
+    { key: 'lock', label: '잠금', onClick: onLogout, cls: 'border-transparent text-faint' },
+    {
+      key: 'help',
+      label: '도움말',
+      icon: '?',
+      onClick: () => setHelpOpen(true),
+      cls: 'border-line text-dim',
+    },
+  ];
+
+  const MOBILE_TABS: { value: MobileTab; label: string; count?: number }[] = [
+    { value: 'courts', label: '게임 중', count: playingByCourt.size },
+    { value: 'queue', label: '조합', count: queuedGames.length },
+    { value: 'waiting', label: '대기', count: waiting.length },
+    { value: 'memo', label: '메모' },
+  ];
+
   return (
-    <main className="fade-in flex h-dvh flex-col p-4">
+    <main className="fade-in flex h-dvh flex-col p-2 md:p-4">
       {/* 헤더 */}
-      <header className="flex items-center gap-4 pb-3">
-        <Link href="/" className="transition-opacity hover:opacity-70" title="홈으로">
-          <h1 className="text-xl font-bold">
+      <header className="flex items-center gap-2 pb-2 md:gap-4 md:pb-3">
+        <Link href="/" className="shrink-0 transition-opacity hover:opacity-70" title="홈으로">
+          <h1 className="text-base font-bold md:text-xl">
             렛츠콕 <span className="text-court">관제판</span>
           </h1>
         </Link>
-        <p className="text-sm text-dim">
+        <p className="truncate text-xs text-dim md:text-sm">
           {session.date} · 출석 {presentCount}명
         </p>
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            onClick={() => setQrOpen(true)}
-            className="h-10 rounded-lg border border-court/50 px-4 text-sm font-medium text-court"
-          >
-            체크인 QR
-          </button>
-          <button
-            onClick={() => setGamesLogOpen(true)}
-            className="h-10 rounded-lg border border-line px-4 text-sm font-medium text-dim"
-          >
-            게임 기록
-          </button>
-          <button
-            onClick={() => setCourtsOpen((v) => !v)}
-            className={`h-10 rounded-lg border px-4 text-sm font-medium ${
-              courtsOpen ? 'border-court text-court' : 'border-line text-dim'
-            }`}
-          >
-            코트 관리
-          </button>
-          <button
-            onClick={closeSession}
-            className={`h-10 rounded-lg border px-4 text-sm font-medium ${
-              confirmClose ? 'border-coral bg-coral/15 text-coral' : 'border-line text-dim'
-            }`}
-          >
-            {confirmClose ? '한 번 더 누르면 종료' : '모임 종료'}
-          </button>
-          <button onClick={onLogout} className="h-10 px-2 text-sm text-faint">
-            잠금
-          </button>
-          <button
-            onClick={() => setHelpOpen(true)}
-            title="도움말"
-            className="h-10 w-10 rounded-lg border border-line text-sm font-bold text-dim"
-          >
-            ?
-          </button>
+        {/* 데스크톱·태블릿: 가로 버튼 줄 */}
+        <div className="ml-auto hidden items-center gap-2 md:flex">
+          {headerActions.map((action) => (
+            <button
+              key={action.key}
+              onClick={action.onClick}
+              title={action.icon ? action.label : undefined}
+              className={`h-10 rounded-lg border text-sm font-medium ${
+                action.icon ? 'w-10 font-bold' : 'px-4'
+              } ${action.cls}`}
+            >
+              {action.icon ?? action.label}
+            </button>
+          ))}
         </div>
+        {/* 폰: 햄버거 (버튼 6개가 한 줄에 안 들어감) */}
+        <button
+          onClick={() => setMenuOpen((v) => !v)}
+          title="메뉴"
+          className={`ml-auto h-9 w-9 shrink-0 rounded-lg border text-sm md:hidden ${
+            menuOpen ? 'border-court text-court' : 'border-line text-dim'
+          }`}
+        >
+          ☰
+        </button>
       </header>
+
+      {menuOpen && (
+        <div className="mb-2 grid grid-cols-2 gap-2 rounded-xl border border-line bg-panel p-2 md:hidden">
+          {headerActions.map((action) => (
+            <button
+              key={action.key}
+              onClick={() => {
+                action.onClick();
+                if (!action.keepMenuOpen) setMenuOpen(false);
+              }}
+              className={`h-11 rounded-lg border px-3 text-sm font-medium ${action.cls}`}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {courtsOpen && <CourtsManager sessionId={session.id} courts={courts} playingByCourt={playingByCourt} run={run} />}
 
-      {/* 3구역 */}
-      <div className="grid min-h-0 flex-1 grid-cols-[1.15fr_1fr_1fr] gap-3">
-        <Zone title="게임 중" accent="text-court" count={playingByCourt.size}>
+      {/* 구역 탭 — 폰에서만 (md 이상은 3열로 동시 표시) */}
+      <div className="flex gap-1 pb-2 md:hidden">
+        {MOBILE_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => setMobileTab(tab.value)}
+            className={`h-10 flex-1 rounded-lg border text-xs font-medium ${
+              mobileTab === tab.value
+                ? 'border-court bg-court/10 text-court'
+                : 'border-line text-dim'
+            }`}
+          >
+            {tab.label}
+            {tab.count !== undefined && (
+              <span className="tabular ml-1 font-mono text-[11px] opacity-70">{tab.count}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* 3구역 — 폰: 탭 1구역 / 태블릿 세로: 2열(게임 중 | 조합+대기) / 데스크톱: 3열 */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-1 gap-3 md:grid-cols-2 md:grid-rows-2 lg:grid-cols-[1.15fr_1fr_1fr] lg:grid-rows-1">
+        <div className={`${pane('courts')} md:row-span-2 lg:row-span-1`}>
+        <Zone title="게임 중" accent="text-court" count={playingByCourt.size} className="flex-1">
           {courts.length === 0 && <Empty>코트 관리에서 사용할 코트를 등록해주세요</Empty>}
           <AnimatePresence initial={false}>
             {courts.map((court) => (
@@ -308,8 +393,10 @@ function BoardBody({
             ))}
           </AnimatePresence>
         </Zone>
+        </div>
 
-        <Zone title="대기 조합" accent="text-amber" count={queuedGames.length}>
+        <div className={pane('queue')}>
+        <Zone title="대기 조합" accent="text-amber" count={queuedGames.length} className="flex-1">
           {queuedGames.length === 0 && <Empty>대기 인원에서 4명을 골라 조합을 만들어주세요</Empty>}
           <AnimatePresence initial={false}>
             {queuedGames.map((game, index) => (
@@ -327,9 +414,11 @@ function BoardBody({
             ))}
           </AnimatePresence>
         </Zone>
+        </div>
 
-        {/* 대기 인원 컬럼 = 위(인원 Zone) + 아래(운영 메모) 세로 분할 */}
-        <div className="flex min-h-0 flex-col gap-3">
+        {/* 대기 인원 + 운영 메모 — md 이상은 한 컬럼 세로 분할, 폰은 각각 별도 탭 */}
+        <div className={pane('waiting', 'memo')}>
+        <div className={`${pane('waiting')} flex-1`}>
         <Zone
           title="대기 인원"
           accent="text-ink"
@@ -433,7 +522,10 @@ function BoardBody({
             <p className="pt-2 text-center text-xs text-faint">퇴장 {leftCount}명</p>
           )}
         </Zone>
-        <MemoPanel snapshot={snapshot} run={run} busy={busy} />
+        </div>
+        <div className={`${pane('memo')} flex-1 md:max-h-[35%] md:flex-none`}>
+          <MemoPanel snapshot={snapshot} run={run} busy={busy} />
+        </div>
         </div>
       </div>
 
@@ -927,7 +1019,7 @@ function MemoPanel({
   };
 
   return (
-    <section className="flex max-h-[35%] shrink-0 flex-col rounded-2xl border border-line bg-panel/70">
+    <section className="flex min-h-0 flex-1 flex-col rounded-2xl border border-line bg-panel/70">
       <h2 className="flex items-center gap-2 px-4 pt-3 pb-2 text-sm font-bold text-sky">
         메모
         <span className="tabular font-mono text-xs text-faint">{memos.length}</span>
