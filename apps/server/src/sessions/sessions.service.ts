@@ -28,7 +28,7 @@ export class SessionsService {
 
     // 같은 날 종료했던 세션이 있으면 새로 만들지 않고 재개
     // (실수로 종료한 경우 출석·게임 횟수가 초기화되지 않도록)
-    // 코드는 재발급하지 않음 — 현장에 이미 띄운 QR·이미 체크인한 인원과의 연속성 유지
+    // 코드는 재발급하지 않음 — 이미 공지한 코드·체크인한 인원과의 연속성 유지
     const today = todayKst();
     const closedToday = await this.prisma.session.findFirst({
       where: { date: today, status: 'CLOSED' },
@@ -47,8 +47,8 @@ export class SessionsService {
       return toSessionResponse(reopened);
     }
 
-    // 코드 승계 — 운영진이 정한 코드(0000 등)가 모임마다 초기화되면 매번 다시 설정해야 한다
-    // 고정 코드라야 QR을 한 번 인쇄해 붙여두고 계속 쓸 수 있다
+    // 코드 승계 — 운영진이 정한 코드가 모임마다 초기화되면 매번 다시 설정해야 한다
+    // 공지사항 작성월일을 쓰는 운영이라 공지가 바뀔 때만 관제판에서 바꾼다
     const previous = await this.prisma.session.findFirst({
       where: { checkInCode: { not: null } },
       orderBy: { date: 'desc' },
@@ -63,7 +63,7 @@ export class SessionsService {
     return toSessionResponse(session);
   }
 
-  // 체크인 코드 변경 (운영진 전용) — 0000·1234처럼 부르기 쉬운 값을 쓸 수 있게
+  // 체크인 코드 변경 (운영진 전용) — 소모임 공지사항 작성월일(MMDD)로 맞춰 쓴다
   // 코드는 실질 방어선이 아니다(콕 확인이 게이트). 유출돼도 게임 배정은 운영진 손을 거친다
   async updateCheckInCode(code: string): Promise<string> {
     const session = await this.prisma.session.findFirst({
@@ -126,7 +126,7 @@ export class SessionsService {
     return this.realtime.buildSnapshot(session.id);
   }
 
-  // 운영진 전용 — 진행 중 세션의 현장 체크인 코드 (QR 렌더용)
+  // 운영진 전용 — 진행 중 세션의 체크인 코드 (관제판 표시·변경용)
   // 공개 스냅샷엔 코드를 안 싣기 때문에 코드가 필요한 관제판은 이 경로로만 얻는다
   async getCurrentCheckInCode(): Promise<string | null> {
     const session = await this.prisma.session.findFirst({

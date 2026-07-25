@@ -19,7 +19,7 @@ let seq = 0; // 회원 이름 중복 방지용 일련번호
 
 async function seedSession() {
   return prisma.session.create({
-    data: { date: new Date('2026-01-01'), checkInCode: 'TEST01' },
+    data: { date: new Date('2026-01-01'), checkInCode: '0101' },
   });
 }
 

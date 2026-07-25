@@ -17,7 +17,6 @@ import {
 } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
 import Link from 'next/link';
-import { QRCodeSVG } from 'qrcode.react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { LoginGate } from '@/components/admin-gate';
@@ -146,9 +145,9 @@ function BoardBody({
   const [courtsOpen, setCourtsOpen] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
   const [recommendOpen, setRecommendOpen] = useState(false);
-  const [qrOpen, setQrOpen] = useState(false);
+  const [codeOpen, setCodeOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [manualOpen, setManualOpen] = useState(false); // 운영진 수동 체크인 (QR 오픈 지연 등 예외용)
+  const [manualOpen, setManualOpen] = useState(false); // 운영진 수동 체크인 (사전 등록·현장 대리 등 예외용)
   const [gamesLogOpen, setGamesLogOpen] = useState(false); // 오늘 완료 게임 조회·이름 검색
   // 폰(<md)에서는 3구역을 한 번에 못 보여주므로 탭 전환 — 조작 시작점인 대기 인원이 기본
   const [mobileTab, setMobileTab] = useState<MobileTab>('waiting');
@@ -261,9 +260,9 @@ function BoardBody({
     cls: string;
   }[] = [
     {
-      key: 'qr',
-      label: '체크인 QR',
-      onClick: () => setQrOpen(true),
+      key: 'code',
+      label: '체크인 코드',
+      onClick: () => setCodeOpen(true),
       cls: 'border-court/50 text-court',
     },
     {
@@ -559,7 +558,7 @@ function BoardBody({
           onClose={() => setRecommendOpen(false)}
         />
       )}
-      {qrOpen && <CheckInQrModal onClose={() => setQrOpen(false)} />}
+      {codeOpen && <CheckInCodeModal onClose={() => setCodeOpen(false)} />}
       {manualOpen && (
         <ManualCheckInModal
           sessionId={session.id}
@@ -787,11 +786,11 @@ function RecommendModal({
   );
 }
 
-// ===== 체크인 QR 모달 =====
+// ===== 체크인 코드 모달 =====
 
-// 현장에 띄우는 오늘의 체크인 QR — 코드는 운영진 전용 엔드포인트에서 취득(공개 스냅샷엔 없음)
-// QR은 스캔되려면 밝은 배경이 필요해 다크 테마여도 흰 카드 위에 그린다
-function CheckInQrModal({ onClose }: { onClose: () => void }) {
+// 모임원이 /checkin에서 입력하는 코드 — 소모임 공지사항의 작성월일(MMDD)에 맞춰 운영진이 관리
+// 코드는 운영진 전용 엔드포인트에서 취득(공개 스냅샷엔 없음)
+function CheckInCodeModal({ onClose }: { onClose: () => void }) {
   const [code, setCode] = useState<string | null | undefined>(undefined); // undefined=로딩, null=코드없음
   const [error, setError] = useState<string | null>(null);
 
@@ -800,9 +799,6 @@ function CheckInQrModal({ onClose }: { onClose: () => void }) {
       .then((d) => setCode(d.code))
       .catch((e) => setError(e instanceof ApiError ? e.message : '코드를 불러오지 못했습니다.'));
   }, []);
-
-  // 절대 URL — 모임원 폰이 접속할 주소라 현재 배포 도메인 기준
-  const url = code ? `${window.location.origin}/checkin?c=${code}` : '';
 
   return (
     <div
@@ -814,7 +810,7 @@ function CheckInQrModal({ onClose }: { onClose: () => void }) {
         className="flex w-full max-w-sm flex-col items-center gap-4 rounded-2xl border border-line bg-panel p-6 text-center"
       >
         <div className="flex w-full items-center">
-          <h2 className="text-lg font-bold text-court">체크인 QR</h2>
+          <h2 className="text-lg font-bold text-court">체크인 코드</h2>
           <button
             onClick={onClose}
             className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
@@ -828,13 +824,12 @@ function CheckInQrModal({ onClose }: { onClose: () => void }) {
         {code === null && <p className="py-8 text-sm text-faint">이 모임엔 코드가 없어요(구 버전 세션)</p>}
         {code && (
           <>
-            <div className="rounded-xl bg-white p-4">
-              <QRCodeSVG value={url} size={240} level="M" />
-            </div>
             <div>
-              <p className="text-xs text-dim">인쇄해 붙여두거나 입구에 띄워두세요 · 스캔하면 체크인</p>
-              <p className="tabular mt-1 font-mono text-3xl font-bold tracking-[0.2em]">{code}</p>
-              <p className="mt-1 text-xs text-faint">카메라가 안 되면 이 코드를 불러주세요</p>
+              <p className="tabular font-mono text-5xl font-bold tracking-[0.2em]">{code}</p>
+              <p className="mt-2 text-xs leading-relaxed text-dim">
+                모임원은 <b>[필독]공지사항</b>의 작성월일 4자리를 입력해 체크인해요
+              </p>
+              <p className="mt-1 text-xs text-faint">공지를 새로 올렸다면 코드도 함께 바꿔주세요</p>
             </div>
             <CodeEditor current={code} onChanged={setCode} />
           </>
@@ -844,8 +839,8 @@ function CheckInQrModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-// 코드 변경 — 부르기 쉬운 값(0000 등)으로 바꿀 수 있다. 바꾼 값은 다음 모임에도 승계돼
-// QR을 한 번 인쇄해 붙여두면 계속 쓸 수 있다 (코드는 방어선이 아니고 콕 확인이 게이트)
+// 코드 변경 — 공지사항 작성월일(MMDD)로 맞춘다. 바꾼 값은 다음 모임에도 승계되므로
+// 공지를 새로 올릴 때만 손대면 된다 (코드는 방어선이 아니고 콕 확인이 게이트)
 function CodeEditor({
   current,
   onChanged,
@@ -874,7 +869,7 @@ function CodeEditor({
   }
 
   const save = async () => {
-    if (busy || draft.length < 4) return;
+    if (busy || draft.length !== 4) return;
     setBusy(true);
     setError(null);
     try {
@@ -896,16 +891,14 @@ function CodeEditor({
     <div className="flex w-full flex-col gap-2">
       <input
         value={draft}
-        onChange={(e) =>
-          setDraft(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))
-        }
-        placeholder="영문 대문자·숫자 4~8자"
-        autoCapitalize="characters"
+        onChange={(e) => setDraft(e.target.value.replace(/\D/g, '').slice(0, 4))}
+        inputMode="numeric"
+        placeholder="공지 작성월일 4자리 (예: 0715)"
         autoComplete="off"
         className="tabular h-12 w-full rounded-lg border border-line bg-panel2 text-center font-mono text-lg tracking-[0.2em] outline-none placeholder:font-sans placeholder:text-xs placeholder:tracking-normal focus:border-court"
       />
       <p className="text-[11px] leading-relaxed text-faint">
-        바꾼 코드는 다음 모임에도 그대로 이어져요 — 인쇄한 QR을 계속 쓸 수 있어요
+        바꾼 코드는 다음 모임에도 그대로 이어져요 — 공지를 새로 올릴 때만 바꾸면 돼요
       </p>
       <div className="flex gap-2">
         <button
@@ -916,7 +909,7 @@ function CodeEditor({
         </button>
         <button
           onClick={() => void save()}
-          disabled={busy || draft.length < 4}
+          disabled={busy || draft.length !== 4}
           className="h-11 flex-1 rounded-lg bg-court text-sm font-bold text-bg disabled:bg-panel2 disabled:text-faint"
         >
           저장
@@ -1182,10 +1175,10 @@ function MemoPanel({
 
 // ===== 수동 체크인 모달 =====
 
-// QR 오픈이 늦어 이미 게임 중인 인원 등을 운영진이 대신 체크인
+// 모임 전 사전 등록·이미 게임 중인 인원 등을 운영진이 대신 체크인
 // 미등록 인원은 구두 동의 전제로 대리 등록+체크인까지 — 게스트는 이름·급수·성별만(생년월일 미수집 정책),
 // 정회원은 생년월일 포함(운영진이 알 수 있음). 본인 폰 연결은 걱정 없음:
-// 나중에 QR 스캔하면 409를 /checkin이 "본인 확인 완료"로 받아 /m 진입
+// 나중에 본인이 코드로 들어오면 409를 /checkin이 "본인 확인 완료"로 받아 /m 진입
 const GRADES: Grade[] = ['A', 'B', 'C', 'D', 'E', 'F'];
 
 function ManualCheckInModal({
@@ -1277,7 +1270,7 @@ function ManualCheckInModal({
   };
 
   // 등록+체크인 한 번에 — 개인정보 동의는 여기서 받지 않는다(대리 등록이라 본인 의사가 아님)
-  // 본인이 QR·코드로 처음 들어올 때 /checkin에서 동의를 받아 기록한다
+  // 본인이 코드로 처음 들어올 때 /checkin에서 동의를 받아 기록한다
   const registerNew = () => {
     const name = regName.trim();
     if (!name || !regGrade || !regGender || (!regIsGuest && !regBirthDate)) return;
@@ -1320,7 +1313,7 @@ function ManualCheckInModal({
       >
         <div className="flex items-center pb-3">
           <h2 className="text-lg font-bold text-court">수동 체크인</h2>
-          <p className="ml-3 text-xs text-faint">QR 오픈이 늦었을 때 등 예외용</p>
+          <p className="ml-3 text-xs text-faint">사전 등록·현장 대리 체크인용</p>
           <button
             onClick={onClose}
             className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
@@ -1542,7 +1535,7 @@ function ManualCheckInModal({
               <p className="text-[11px] text-faint">
                 {regIsGuest
                   ? '게스트는 생년월일을 받지 않아요. 이름·급수·성별 등록은 본인에게 구두로 동의받아 주세요.'
-                  : '정회원 등록은 본인에게 구두로 동의받아 주세요. 본인 폰으로 QR을 스캔하면 이 계정으로 연결돼요.'}
+                  : '정회원 등록은 본인에게 구두로 동의받아 주세요. 본인 폰으로 코드 체크인하면 이 계정으로 연결돼요.'}
               </p>
             </div>
           )}
@@ -1702,14 +1695,15 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
     ],
   },
   {
-    title: '체크인 QR',
+    title: '체크인 코드',
     items: [
-      '모임원은 QR 스캔 또는 코드 입력으로 들어와요 (둘 다 같은 코드라 보안 차이는 없어요).',
-      '[체크인 QR] 모달의 [코드 변경]으로 0000처럼 부르기 쉬운 코드를 정할 수 있어요. 바꾼 코드는 다음 모임에도 이어지니 QR을 한 번 인쇄해 벽에 붙여두면 계속 써요 — 그러면 태블릿 앞에 줄 설 일이 없어요.',
-      '한 번 들어온 모임원은 다음 모임부터 QR을 다시 찍을 필요가 없어요. 본인 화면 주소를 홈 화면에 추가해두라고 안내해주세요.',
+      '모임원은 본인 화면(/m) 링크로 들어와 [체크인하러 가기] → 코드 4자리 입력 → 이름 선택 순서로 체크인해요.',
+      '코드는 소모임 [필독]공지사항의 작성월일 4자리예요 — 모임원이 이미 보는 정보라 따로 공지할 게 없어요. 공지를 새로 올렸으면 [체크인 코드] 모달의 [코드 변경]으로 같이 바꿔주세요.',
+      '바꾼 코드는 다음 모임에도 그대로 이어져요. 코드를 여러 번 틀리면 그 폰은 잠시 막혀요(무작위 대입 방지).',
+      '한 번 들어온 모임원은 다음 모임에도 본인 화면 주소만 열면 돼요. 홈 화면에 추가해두라고 안내해주세요.',
       '모임 전에 참석자를 [수동 체크인]으로 미리 넣어두면 현장에서는 콕 확인만 하면 돼요.',
       '명단에 없는 사람은 [수동 체크인] 안의 [신규 등록]으로 등록해요 — 게스트는 이름·급수·성별만(생년월일 안 받아요), 정회원은 생년월일 포함. 모임원이 스스로 가입하는 경로는 없어요(외부인 가짜 등록 차단).',
-      '개인정보 동의는 본인이 처음 QR·코드로 들어올 때 받아요 — 운영진이 대신 체크하지 않아요.',
+      '개인정보 동의는 본인이 처음 코드로 들어올 때 받아요 — 운영진이 대신 체크하지 않아요.',
     ],
   },
   {

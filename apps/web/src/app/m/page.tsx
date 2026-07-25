@@ -65,7 +65,7 @@ export default function MyStatusPage() {
   if (!me) {
     return (
       <Shell>
-        <Centered title="체크인이 필요해요" desc="셔틀콕 내고 QR 찍으셨나요?" />
+        <Centered title="체크인이 필요해요" desc="셔틀콕 내고 코드 입력하셨나요?" />
         <Link
           href="/checkin"
           className="flex h-14 items-center justify-center rounded-xl bg-court text-lg font-bold text-bg"
@@ -264,7 +264,7 @@ function MyBanner({
     statusClass = 'border-sky bg-sky/10 text-sky';
     statusText = `휴식 중 · ${formatWaitingMinutes(me.waitingSince, now)}`;
   } else {
-    statusText = '퇴장 — 다시 오면 QR 재체크인';
+    statusText = '퇴장 — 다시 오면 코드로 재체크인';
   }
 
   return (

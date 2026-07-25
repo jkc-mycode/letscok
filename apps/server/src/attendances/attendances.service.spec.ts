@@ -27,7 +27,7 @@ async function seedSession(overrides: { status?: 'OPEN' | 'CLOSED'; checkInCode?
     data: {
       date: new Date('2026-01-01'),
       status: overrides.status ?? 'OPEN',
-      checkInCode: overrides.checkInCode === undefined ? 'TEST01' : overrides.checkInCode,
+      checkInCode: overrides.checkInCode === undefined ? '0101' : overrides.checkInCode,
     },
   });
 }
@@ -129,29 +129,55 @@ describe('manualCheckIn', () => {
 
 describe('checkIn (공개 경로 회귀 — 리팩터링으로 코드 검증이 안 깨졌는지)', () => {
   it('코드 불일치·누락은 403, 일치하면 체크인된다', async () => {
-    const session = await seedSession({ checkInCode: 'ABC123' });
+    const session = await seedSession({ checkInCode: '0715' });
     const member = await seedMember();
 
     await expect(
-      service.checkIn(session.id, { memberId: member.id, code: 'WRONG1' }),
+      service.checkIn(session.id, { memberId: member.id, code: '9999' }),
     ).rejects.toThrow(ForbiddenException);
     await expect(
       service.checkIn(session.id, { memberId: member.id }),
     ).rejects.toThrow(ForbiddenException);
 
-    const ok = await service.checkIn(session.id, { memberId: member.id, code: 'ABC123' });
+    const ok = await service.checkIn(session.id, { memberId: member.id, code: '0715' });
     expect(ok.status).toBe('CHECKED_IN');
   });
 
-  it('수동 체크인된 멤버가 QR로 다시 체크인하면 409 — 본인 폰 클레임 시나리오', async () => {
-    const session = await seedSession({ checkInCode: 'ABC123' });
+  it('수동 체크인된 멤버가 코드로 다시 체크인하면 409 — 본인 폰 클레임 시나리오', async () => {
+    const session = await seedSession({ checkInCode: '0715' });
     const member = await seedMember();
     await service.manualCheckIn(session.id, member.id);
 
     // 프론트는 이 409를 "본인 확인 완료"로 처리해 saveMemberId 후 /m 진입시킨다
     await expect(
-      service.checkIn(session.id, { memberId: member.id, code: 'ABC123' }),
+      service.checkIn(session.id, { memberId: member.id, code: '0715' }),
     ).rejects.toThrow(ConflictException);
+  });
+
+  // 코드가 숫자 4자리(1만 가지)라 대입 방어가 필요하다 — 실패만 세고 IP 단위로 잠근다
+  it('코드를 10번 틀리면 같은 IP는 429로 잠기고, 다른 IP는 영향 없다', async () => {
+    const session = await seedSession({ checkInCode: '0715' });
+    const member = await seedMember();
+    const attacker = '203.0.113.10';
+
+    for (let i = 0; i < 10; i++) {
+      await expect(
+        service.checkIn(session.id, { memberId: member.id, code: '9999' }, attacker),
+      ).rejects.toThrow(ForbiddenException);
+    }
+
+    // 잠긴 뒤엔 정답을 넣어도 통과하지 못한다
+    await expect(
+      service.checkIn(session.id, { memberId: member.id, code: '0715' }, attacker),
+    ).rejects.toThrow('코드를 여러 번 잘못 입력했어요. 잠시 후 다시 시도해주세요.');
+
+    // 공용 와이파이 우려와 별개로, 실패를 안 낸 IP는 그대로 체크인된다
+    const ok = await service.checkIn(
+      session.id,
+      { memberId: member.id, code: '0715' },
+      '203.0.113.11',
+    );
+    expect(ok.status).toBe('CHECKED_IN');
   });
 });
 
@@ -165,21 +191,21 @@ describe('첫 체크인 개인정보 동의 (운영진 대리 등록분)', () =>
   }
 
   it('동의 이력이 없으면 consent 없이는 403', async () => {
-    const session = await seedSession({ checkInCode: 'ABC123' });
+    const session = await seedSession({ checkInCode: '0715' });
     const member = await seedUnconsentedMember();
 
     await expect(
-      service.checkIn(session.id, { memberId: member.id, code: 'ABC123' }),
+      service.checkIn(session.id, { memberId: member.id, code: '0715' }),
     ).rejects.toThrow('개인정보 수집·이용에 동의해주세요.');
   });
 
   it('동의하면 시각이 기록되고 체크인된다', async () => {
-    const session = await seedSession({ checkInCode: 'ABC123' });
+    const session = await seedSession({ checkInCode: '0715' });
     const member = await seedUnconsentedMember();
 
     const attendance = await service.checkIn(session.id, {
       memberId: member.id,
-      code: 'ABC123',
+      code: '0715',
       consent: true,
     });
 
@@ -189,12 +215,12 @@ describe('첫 체크인 개인정보 동의 (운영진 대리 등록분)', () =>
   });
 
   it('수동 체크인된 사람이 폰으로 클레임할 때도 동의가 먼저 기록된다 (409보다 앞)', async () => {
-    const session = await seedSession({ checkInCode: 'ABC123' });
+    const session = await seedSession({ checkInCode: '0715' });
     const member = await seedUnconsentedMember();
     await service.manualCheckIn(session.id, member.id); // 운영진이 미리 체크인
 
     await expect(
-      service.checkIn(session.id, { memberId: member.id, code: 'ABC123', consent: true }),
+      service.checkIn(session.id, { memberId: member.id, code: '0715', consent: true }),
     ).rejects.toThrow(ConflictException); // 클레임 신호인 409는 그대로
 
     const after = await prisma.member.findUniqueOrThrow({ where: { id: member.id } });

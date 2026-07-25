@@ -1,14 +1,8 @@
 import { randomInt } from 'node:crypto';
 
-// 현장 체크인 코드 생성 — 스캔이 기본이라 길이 부담 없고, 수동 폴백 시 읽어주기 쉽게 6자리
-// 혼동 문자(0/O, 1/I/L) 제외 — 화이트보드에 적거나 불러줄 때 오인 방지
-const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-const CODE_LENGTH = 6;
-
+// 체크인 코드 생성 — 모임원이 소모임 공지사항의 작성월일(MMDD)을 그대로 입력하는 운영이라
+// 형식을 숫자 4자리로 고정한다. 여기서 만드는 값은 운영진이 아직 코드를 정하지 않은
+// 첫 세션용 임시값 — 실제로는 관제판에서 공지 월일로 바꿔 쓴다
 export function generateCheckInCode(): string {
-  let code = '';
-  for (let i = 0; i < CODE_LENGTH; i++) {
-    code += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)];
-  }
-  return code;
+  return String(randomInt(10_000)).padStart(4, '0');
 }

@@ -33,7 +33,7 @@ export class SessionsController {
     return { success: true, data: await this.sessionsService.getCurrentSnapshot() };
   }
 
-  // 현장 체크인 코드 — 운영진 전용 (QR 렌더용). 공개 스냅샷엔 코드를 안 싣기 때문에 별도 경로
+  // 체크인 코드 — 운영진 전용 (관제판 표시·변경용). 공개 스냅샷엔 코드를 안 싣기 때문에 별도 경로
   @Get('current/checkin-code')
   @UseGuards(AdminGuard)
   async getCheckInCode(): Promise<IApiResponse<ICheckInCodeResponse>> {

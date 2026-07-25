@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-// 임시 허브 — QR은 추후 /checkin(모임원 체크인)으로 직접 연결된다
+// 임시 허브 — 모임원은 보통 /m 링크로 들어와 /checkin(코드 입력)으로 넘어간다
 export default function HomePage() {
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-8">

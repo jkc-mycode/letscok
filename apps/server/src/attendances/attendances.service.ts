@@ -1,6 +1,8 @@
 import {
   ConflictException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -11,21 +13,40 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { SessionsService } from '../sessions/sessions.service';
 import { CheckInDto } from './dto/check-in.dto';
 
+// 코드 오입력 잠금 — 코드가 숫자 4자리(1만 가지)라 무차별 대입이 현실적이어서 실패만 센다
+// 성공 요청은 세지 않는다: 체육관 공용 와이파이면 여러 명이 한 IP로 들어오므로
+// 전역 rate limit만으로 막으면 정상 체크인이 같이 걸린다
+const CODE_FAIL_LIMIT = 10;
+const CODE_FAIL_WINDOW_MS = 10 * 60_000;
+
 @Injectable()
 export class AttendancesService {
+  // 인메모리 카운터 — Render 단일 인스턴스 전제이고 재시작하면 초기화된다.
+  // 코드는 실질 방어선이 아니라(콕 확인이 게이트) 스크립트 대입 지연이 목적이라 이 정도면 충분
+  private readonly codeFailures = new Map<
+    string,
+    { count: number; firstAt: number }
+  >();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly sessionsService: SessionsService,
     private readonly realtime: RealtimeService,
   ) {}
 
-  async checkIn(sessionId: string, dto: CheckInDto): Promise<IAttendance> {
+  async checkIn(
+    sessionId: string,
+    dto: CheckInDto,
+    ip = 'unknown',
+  ): Promise<IAttendance> {
+    this.assertNotLockedOut(ip);
     const session = await this.sessionsService.findOpenSessionOrThrow(sessionId);
 
-    // 현장 코드 대조 — 세션에 코드가 있으면 QR로 받은 code가 일치해야 통과
+    // 코드 대조 — 세션에 코드가 있으면 입력한 code가 일치해야 통과
     // (코드 없는 레거시 세션은 grandfather로 통과 — 배포 시 진행 중이던 세션이 안 깨지게)
     if (session.checkInCode && dto.code !== session.checkInCode) {
-      throw new ForbiddenException('현장 QR을 스캔해 체크인해주세요.');
+      this.recordCodeFailure(ip);
+      throw new ForbiddenException('코드가 맞지 않아요. 다시 확인해주세요.');
     }
 
     // 운영진 대리 등록은 동의를 못 받으므로 본인이 처음 들어오는 이 시점에 받는다
@@ -33,6 +54,36 @@ export class AttendancesService {
     await this.recordConsentIfNeeded(dto.memberId, dto.consent);
 
     return this.checkInMember(sessionId, dto.memberId);
+  }
+
+  private assertNotLockedOut(ip: string) {
+    const entry = this.codeFailures.get(ip);
+    if (!entry) return;
+    // 창이 지났으면 초기화 — 잠금은 누적이 아니라 최근 10분 기준
+    if (Date.now() - entry.firstAt > CODE_FAIL_WINDOW_MS) {
+      this.codeFailures.delete(ip);
+      return;
+    }
+    if (entry.count >= CODE_FAIL_LIMIT) {
+      throw new HttpException(
+        '코드를 여러 번 잘못 입력했어요. 잠시 후 다시 시도해주세요.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+  }
+
+  private recordCodeFailure(ip: string) {
+    const now = Date.now();
+    // 기록 시점에 만료된 항목을 함께 정리 — 별도 타이머 없이 Map이 무한히 커지는 것만 막는다
+    for (const [key, value] of this.codeFailures) {
+      if (now - value.firstAt > CODE_FAIL_WINDOW_MS) this.codeFailures.delete(key);
+    }
+    const entry = this.codeFailures.get(ip);
+    if (entry) {
+      entry.count += 1;
+      return;
+    }
+    this.codeFailures.set(ip, { count: 1, firstAt: now });
   }
 
   private async recordConsentIfNeeded(memberId: string, consent?: boolean) {

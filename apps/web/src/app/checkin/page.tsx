@@ -1,38 +1,25 @@
 'use client';
 
-// QR 스캔 진입점 — 이름 검색으로 본인 선택 후 체크인
+// 체크인 진입점 — 코드 입력 후 이름 검색으로 본인 선택
+// 코드는 소모임 공지사항의 작성월일(MMDD) — 모임원이 이미 보는 정보라 QR 없이 들어올 수 있다
 // 자가 가입은 없다: 명단 등록은 운영진이 관제판에서 한다 (코드를 아는 외부인의 가짜 회원 생성 차단)
 // 운영진이 대신 등록한 회원은 동의 이력이 없으므로 이 화면에서 본인 동의를 받는다
 // 체크인 성공 시 memberId를 저장하고 내 상태 화면(/m)으로 이동
 
 import { IAttendance, IMember } from '@letscok/shared-types';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { GenderMarker, GradeBadge, Toast } from '@/components/badges';
 import { api, ApiError } from '@/lib/api';
 import { saveMemberId } from '@/lib/member';
 import { useSnapshot } from '@/lib/use-snapshot';
 
-// useSearchParams는 Suspense 경계 안에서만 안전 (App Router 프리렌더 대응)
 export default function CheckinPage() {
-  return (
-    <Suspense
-      fallback={<Shell><p className="text-center text-dim">불러오는 중...</p></Shell>}
-    >
-      <CheckinInner />
-    </Suspense>
-  );
-}
-
-function CheckinInner() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const urlCode = searchParams.get('c'); // 현장 QR이 실어준 코드 — 체크인 요청에 그대로 전달
-  // QR을 못 찍는 폰 폴백 — 운영진이 정한 코드를 직접 입력 (서버가 동일하게 대조)
-  // 운영진이 코드를 바꿀 수 있어 길이가 4~8자로 가변이다
-  const [manualCode, setManualCode] = useState('');
-  const code = urlCode ?? (manualCode.length >= 4 ? manualCode : null);
+  // 숫자 4자리 — 서버도 같은 형식으로 검증하고, 틀리면 403(오입력 누적 시 429)
+  const [inputCode, setInputCode] = useState('');
+  const code = inputCode.length === 4 ? inputCode : null;
   const { snapshot, noSession, loading } = useSnapshot();
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -88,31 +75,23 @@ function CheckinInner() {
         <h1 className="mt-1 text-2xl font-bold">이름으로 체크인</h1>
       </header>
 
-      {/* 코드 없이 진입(바 URL·지난 QR) — 현장 QR로 유도 + 카메라 안 되는 폰용 코드 수동 입력.
-          입력값이 틀려도 서버가 403으로 막으므로 여기선 형식만 맞춘다 */}
-      {!urlCode && (
-        <div className="rounded-xl border border-amber/40 bg-amber/10 p-3 text-center text-sm">
-          <p className="text-amber">
-            현장의 <b>QR</b>을 스캔해 들어와주세요
-          </p>
-          <p className="mt-2 text-xs text-dim">
-            QR을 못 찍으면 운영진에게 체크인 코드를 물어봐 입력하세요
-          </p>
-          <input
-            value={manualCode}
-            onChange={(e) =>
-              // 대문자+숫자 4~8자 — 소문자 입력도 통과되게 정규화
-              setManualCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))
-            }
-            placeholder="체크인 코드"
-            autoCapitalize="characters"
-            autoComplete="off"
-            className="tabular mt-2 h-12 w-full rounded-lg border border-line bg-panel text-center font-mono text-lg tracking-[0.3em] outline-none placeholder:tracking-normal focus:border-amber"
-          />
-        </div>
-      )}
+      {/* 코드 입력 — 소모임 공지사항 작성월일. 틀린 값은 서버가 막으므로 여기선 형식(숫자 4자리)만 맞춘다 */}
+      <div className="rounded-xl border border-line bg-panel p-4">
+        <p className="text-sm font-medium">코드 입력</p>
+        <p className="mt-1 text-xs leading-relaxed text-dim">
+          소모임에 있는 &lsquo;[필독]공지사항&rsquo;의 작성월일 4자리 입력하세요.
+        </p>
+        <input
+          value={inputCode}
+          onChange={(e) => setInputCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+          inputMode="numeric"
+          autoComplete="off"
+          placeholder="0000"
+          className="tabular mt-3 h-14 w-full rounded-lg border border-line bg-panel2 text-center font-mono text-2xl tracking-[0.4em] outline-none placeholder:text-faint focus:border-court"
+        />
+      </div>
 
-      <SearchPanel busy={busy} onSelect={checkIn} />
+      <SearchPanel busy={busy} hasCode={code !== null} onSelect={checkIn} />
 
       {toast && <Toast message={toast} />}
     </Shell>
@@ -131,9 +110,11 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 function SearchPanel({
   busy,
+  hasCode,
   onSelect,
 }: {
   busy: boolean;
+  hasCode: boolean;
   onSelect: (member: IMember, consent: boolean) => Promise<void>;
 }) {
   const [query, setQuery] = useState('');
@@ -158,7 +139,7 @@ function SearchPanel({
 
   // 운영진 대리 등록분만 동의를 받는다 — 한 번 동의하면 다음 모임부턴 안 뜬다
   const needsConsent = selected !== null && !selected.consented;
-  const blocked = !selected || busy || (needsConsent && !consent);
+  const blocked = !selected || !hasCode || busy || (needsConsent && !consent);
 
   return (
     <>
@@ -230,9 +211,11 @@ function SearchPanel({
       >
         {!selected
           ? '본인을 선택해주세요'
-          : needsConsent && !consent
-            ? '동의 후 체크인할 수 있어요'
-            : `${selected.name}(으)로 체크인`}
+          : !hasCode
+            ? '코드 4자리를 입력해주세요'
+            : needsConsent && !consent
+              ? '동의 후 체크인할 수 있어요'
+              : `${selected.name}(으)로 체크인`}
       </button>
       <p className="text-center text-sm text-dim">
         이름이 안 보이면 운영진에게 등록을 요청해주세요

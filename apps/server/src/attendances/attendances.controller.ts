@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Ip,
   Param,
   Patch,
   Post,
@@ -16,19 +17,21 @@ import { ManualCheckInDto } from './dto/manual-check-in.dto';
 export class AttendancesController {
   constructor(private readonly attendancesService: AttendancesService) {}
 
-  // 체크인 — 모임원이 QR 진입 후 본인 선택으로 직접 호출 (가드 없음)
+  // 체크인 — 모임원이 코드 입력 후 본인 선택으로 직접 호출 (가드 없음)
+  // 코드 오입력 잠금은 서비스에서 IP 단위로 — 공용 와이파이를 고려해 실패만 센다
   @Post('sessions/:sessionId/attendances')
   async checkIn(
     @Param('sessionId') sessionId: string,
     @Body() dto: CheckInDto,
+    @Ip() ip: string,
   ): Promise<IApiResponse<IAttendance>> {
     return {
       success: true,
-      data: await this.attendancesService.checkIn(sessionId, dto),
+      data: await this.attendancesService.checkIn(sessionId, dto, ip),
     };
   }
 
-  // 수동 체크인 (운영진 전용) — QR 오픈 지연 등 예외 상황에서 운영진이 대신 체크인
+  // 수동 체크인 (운영진 전용) — 사전 등록·현장 대리 등 예외 상황에서 운영진이 대신 체크인
   @Post('sessions/:sessionId/attendances/manual')
   @UseGuards(AdminGuard)
   async manualCheckIn(

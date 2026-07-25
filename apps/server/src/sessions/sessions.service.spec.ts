@@ -39,7 +39,7 @@ describe('updateCheckInCode', () => {
 });
 
 describe('open — 코드 승계', () => {
-  it('새 모임은 직전 모임의 코드를 이어받는다 (인쇄한 QR이 계속 동작하도록)', async () => {
+  it('새 모임은 직전 모임의 코드를 이어받는다 (공지 월일 코드를 매번 다시 정하지 않도록)', async () => {
     const first = await service.open();
     await service.updateCheckInCode('1234');
     await service.close(first.id);

@@ -12,7 +12,7 @@ export class MembersService {
     // 게스트는 생년월일 없이 등록 (보내와도 무시하고 null 저장 — 게스트 정책)
     const birthDate = dto.isGuest || !dto.birthDate ? null : new Date(dto.birthDate);
 
-    // 이름+생년월일이 같으면 동일 인물로 간주 — QR 재스캔 등으로 인한 중복 등록 방지
+    // 이름+생년월일이 같으면 동일 인물로 간주 — 재체크인 등으로 인한 중복 등록 방지
     // 게스트는 이름+null 매칭이라 같은 이름 게스트 재등록도 걸린다
     const duplicate = await this.prisma.member.findFirst({
       where: {
