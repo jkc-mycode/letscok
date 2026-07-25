@@ -1610,6 +1610,7 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<MemberFilter>('ALL');
   const [editTarget, setEditTarget] = useState<IMemberSummary | null>(null);
+  const [registerOpen, setRegisterOpen] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1744,6 +1745,17 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
           ))}
         </div>
 
+        {/* 등록 — 체크인 없이 명단에만 추가 (모임 전 사전 등록용). 모임 중 즉석 등록+체크인은 [수동 체크인]의 [신규 등록] */}
+        <button
+          onClick={() => setRegisterOpen(true)}
+          className="mt-3 h-11 shrink-0 rounded-xl border border-sky/40 text-sm font-medium text-sky"
+        >
+          + 신규 등록
+        </button>
+
+        {registerOpen && (
+          <MemberRegisterSheet run={run} busy={busy} onClose={() => setRegisterOpen(false)} />
+        )}
         {editTarget && (
           <MemberEditSheet
             member={editTarget}
@@ -1761,6 +1773,152 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
           />
         )}
         {toast && <Toast message={toast} />}
+      </div>
+    </div>
+  );
+}
+
+// 신규 등록 시트 — 체크인 없이 명단에만 추가한다 (모임 전 사전 등록용, 세션 불필요)
+// 모임 중 지각자 등록+체크인은 [수동 체크인]의 [신규 등록]이 담당 — 여긴 원장 작업만
+function MemberRegisterSheet({
+  run,
+  busy,
+  onClose,
+}: {
+  run: (a: () => Promise<unknown>) => Promise<void>;
+  busy: boolean;
+  onClose: () => void;
+}) {
+  const [isGuest, setIsGuest] = useState(false); // 명단 정리 맥락은 정회원 등록이 기본 (현장 즉석과 반대)
+  const [name, setName] = useState('');
+  const [birth, setBirth] = useState('');
+  const [grade, setGrade] = useState<Grade | null>(null);
+  const [gender, setGender] = useState<Gender | null>(null);
+  const birthDate = parseBirthDate(birth);
+  const birthDigits = birth.replace(/\D/g, '');
+
+  const save = () => {
+    const trimmed = name.trim();
+    if (!trimmed || !grade || !gender || (!isGuest && !birthDate)) return;
+    void run(async () => {
+      await api('/members', {
+        method: 'POST',
+        admin: true,
+        body: {
+          name: trimmed,
+          ...(isGuest ? {} : { birthDate }),
+          grade,
+          gender,
+          isGuest,
+        },
+      });
+      onClose();
+    });
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      className="fade-in fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="flex max-h-[92dvh] w-full max-w-md flex-col gap-2.5 overflow-y-auto rounded-t-2xl border border-line bg-panel p-5 sm:rounded-2xl"
+      >
+        <div className="flex items-center">
+          <h3 className="font-bold text-sky">신규 등록</h3>
+          <p className="ml-2 text-[11px] text-faint">명단에만 추가 — 체크인 안 됨</p>
+          <button
+            onClick={onClose}
+            className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
+          >
+            닫기
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-1.5">
+          <button
+            onClick={() => setIsGuest(false)}
+            className={`h-10 rounded-lg border text-sm font-bold ${
+              !isGuest ? 'border-court bg-court/15 text-court' : 'border-line bg-panel2 text-dim'
+            }`}
+          >
+            정회원
+          </button>
+          <button
+            onClick={() => setIsGuest(true)}
+            className={`h-10 rounded-lg border text-sm font-bold ${
+              isGuest ? 'border-sky bg-sky/15 text-sky' : 'border-line bg-panel2 text-dim'
+            }`}
+          >
+            게스트
+          </button>
+        </div>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          maxLength={20}
+          placeholder="이름"
+          autoFocus
+          className="h-11 rounded-xl border border-line bg-panel2 px-4 text-sm outline-none focus:border-sky"
+        />
+        {!isGuest && (
+          <div>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={birth}
+              onChange={(e) => setBirth(formatBirthInput(e.target.value))}
+              placeholder="생년월일 8자리 (예: 19970312)"
+              className="h-11 w-full rounded-xl border border-line bg-panel2 px-4 text-sm outline-none focus:border-sky"
+            />
+            {birthDigits.length === 8 && !birthDate && (
+              <p className="mt-1 text-xs text-coral">날짜가 올바르지 않아요</p>
+            )}
+          </div>
+        )}
+        <div className="grid grid-cols-6 gap-1.5">
+          {GRADES.map((g) => (
+            <button
+              key={g}
+              onClick={() => setGrade(g)}
+              className={`h-10 rounded-lg border text-sm font-bold ${
+                grade === g ? 'border-sky bg-sky/15 text-sky' : 'border-line bg-panel2 text-dim'
+              }`}
+            >
+              {g}
+            </button>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          <button
+            onClick={() => setGender('MALE')}
+            className={`h-10 rounded-lg border text-sm font-bold ${
+              gender === 'MALE' ? 'border-sky bg-sky/15 text-sky' : 'border-line bg-panel2 text-dim'
+            }`}
+          >
+            ♂ 남
+          </button>
+          <button
+            onClick={() => setGender('FEMALE')}
+            className={`h-10 rounded-lg border text-sm font-bold ${
+              gender === 'FEMALE' ? 'border-pink bg-pink/15 text-pink' : 'border-line bg-panel2 text-dim'
+            }`}
+          >
+            ♀ 여
+          </button>
+        </div>
+        <button
+          onClick={save}
+          disabled={busy || !name.trim() || !grade || !gender || (!isGuest && !birthDate)}
+          className="h-11 rounded-xl bg-sky text-sm font-bold text-bg disabled:opacity-50"
+        >
+          등록
+        </button>
+        <p className="text-[11px] leading-relaxed text-faint">
+          개인정보 동의는 본인이 처음 코드로 체크인할 때 받아요. 등록은 본인에게 구두로 동의받아
+          주세요.
+        </p>
       </div>
     </div>
   );
@@ -2271,7 +2429,8 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
   {
     title: '모임원 관리',
     items: [
-      '[모임원 관리]에서 명단 조회·수정·정리를 해요. 모임 시작 전 화면에서도 열 수 있어요.',
+      '[모임원 관리]에서 명단 조회·등록·수정·정리를 해요. 모임 시작 전 화면에서도 열 수 있어요.',
+      '[신규 등록]은 명단에만 추가돼요(체크인 안 됨) — 모임 전에 미리 등록해두는 용도예요. 모임 중 지각자는 [수동 체크인]의 [신규 등록]으로 등록+체크인을 한 번에 하세요.',
       '이름·생년월일·급수·성별·역할(모임장/운영진/모임원)을 고칠 수 있어요. 급수는 게임 추천 품질에 바로 영향을 주니 실제 실력에 맞춰주세요.',
       '역할은 명단 표시용 구분이에요 — 관제판 접근 권한은 패스코드 하나로 같아요.',
       '자주 오는 게스트는 수정 화면에서 [정회원으로 승격]할 수 있어요 (생년월일 입력 필요).',
