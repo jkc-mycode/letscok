@@ -1203,7 +1203,10 @@ function ManualCheckInModal({
 }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<IMember[]>([]);
+  // 선택 목록은 검색어가 바뀌어도 유지돼야 해서 결과 배열이 아닌 별도 Map으로 들고 간다
+  const [selected, setSelected] = useState<Map<string, IMember>>(new Map());
   const [lastDone, setLastDone] = useState<string | null>(null); // 연속 입력용 직전 완료 표시
+  const [failed, setFailed] = useState<{ name: string; message: string }[]>([]);
   // 신규 등록 폼 — 현장 대리 등록은 게스트가 흔해서 기본 게스트. 정회원 선택 시 생년월일 입력 추가
   const [regOpen, setRegOpen] = useState(false);
   const [regIsGuest, setRegIsGuest] = useState(true);
@@ -1235,15 +1238,43 @@ function ManualCheckInModal({
     [attendances],
   );
 
-  const checkIn = (member: IMember) =>
-    run(async () => {
-      await api(`/sessions/${sessionId}/attendances/manual`, {
-        method: 'POST',
-        admin: true,
-        body: { memberId: member.id },
-      });
-      setLastDone(member.name); // 모달은 열어둔다 — 지각 시나리오는 보통 여러 명 연속 입력
+  const toggle = (member: IMember) =>
+    setSelected((prev) => {
+      const next = new Map(prev);
+      if (!next.delete(member.id)) next.set(member.id, member);
+      return next;
     });
+
+  // 선택한 인원을 한 번에 체크인 — 서버 엔드포인트가 1명 단위라 순차 호출한다
+  // run()의 공통 에러 토스트는 첫 실패에서 끊기므로 여기서 개별로 잡아 성공/실패를 나눠 보고
+  const checkInSelected = () => {
+    const targets = [...selected.values()];
+    if (targets.length === 0) return;
+    void run(async () => {
+      const errors: { name: string; message: string }[] = [];
+      const remaining = new Map<string, IMember>();
+      for (const member of targets) {
+        try {
+          await api(`/sessions/${sessionId}/attendances/manual`, {
+            method: 'POST',
+            admin: true,
+            body: { memberId: member.id },
+          });
+        } catch (e) {
+          errors.push({
+            name: member.name,
+            message: e instanceof ApiError ? e.message : '요청에 실패했습니다.',
+          });
+          remaining.set(member.id, member); // 실패한 사람만 선택으로 남겨 재시도하게
+        }
+      }
+      setSelected(remaining);
+      setFailed(errors);
+      const okCount = targets.length - errors.length;
+      // 모달은 열어둔다 — 지각 시나리오는 보통 여러 명 연속 입력
+      setLastDone(okCount > 0 ? `${okCount}명 체크인 완료` : null);
+    });
+  };
 
   // 등록+체크인 한 번에 — 개인정보 동의는 여기서 받지 않는다(대리 등록이라 본인 의사가 아님)
   // 본인이 QR·코드로 처음 들어올 때 /checkin에서 동의를 받아 기록한다
@@ -1267,7 +1298,8 @@ function ManualCheckInModal({
         admin: true,
         body: { memberId: created.id },
       });
-      setLastDone(`${created.name}${regIsGuest ? ' (게스트)' : ''}`);
+      setLastDone(`${created.name}${regIsGuest ? ' (게스트)' : ''}님 체크인 완료`);
+      setFailed([]);
       setRegOpen(false);
       setRegIsGuest(true);
       setRegName('');
@@ -1305,25 +1337,45 @@ function ManualCheckInModal({
           className="h-12 rounded-xl border border-line bg-panel2 px-4 outline-none focus:border-court"
         />
         <p className="pt-2 text-xs text-faint">
-          탭하면 바로 체크인돼요. 검색에 없으면 아래 [신규 등록]으로 바로 등록할 수 있어요.
+          탭해서 선택한 뒤 아래 [체크인] 버튼을 누르면 한 번에 처리돼요. 검색에 없으면 아래 [신규
+          등록]으로 바로 등록할 수 있어요.
         </p>
-        {lastDone && (
-          <p className="pt-1 text-xs font-medium text-court">{lastDone}님 체크인 완료</p>
+        {lastDone && <p className="pt-1 text-xs font-medium text-court">{lastDone}</p>}
+        {failed.length > 0 && (
+          <div className="pt-1">
+            {failed.map((f) => (
+              <p key={f.name} className="text-xs font-medium text-coral">
+                {f.name}님 실패 — {f.message}
+              </p>
+            ))}
+          </div>
         )}
 
         <div className="mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
           {results.map((member) => {
             const status = statusByMemberId.get(member.id);
             const present = status !== undefined && status !== 'LEFT';
+            const picked = selected.has(member.id);
             return (
               <button
                 key={member.id}
-                onClick={() => !present && void checkIn(member)}
-                disabled={present || busy}
+                onClick={() => !present && toggle(member)}
+                disabled={present}
                 className={`flex items-center gap-2 rounded-xl border p-3 text-left text-sm ${
-                  present ? 'border-line bg-panel2 opacity-50' : 'border-line bg-panel2'
+                  present
+                    ? 'border-line bg-panel2 opacity-50'
+                    : picked
+                      ? 'border-court bg-court/15'
+                      : 'border-line bg-panel2'
                 }`}
               >
+                <span
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[11px] font-bold ${
+                    picked ? 'border-court bg-court text-bg' : 'border-line text-transparent'
+                  }`}
+                >
+                  ✓
+                </span>
                 <GradeBadge grade={member.grade} />
                 <span className="truncate font-medium">{member.name}</span>
                 <GenderMarker gender={member.gender} />
@@ -1347,6 +1399,31 @@ function ManualCheckInModal({
             <p className="py-6 text-center text-sm text-faint">검색 결과가 없어요</p>
           )}
         </div>
+
+        {/* 선택 인원 — 검색어를 바꿔도 남으므로 여기서 전체를 확인하고 해제할 수 있게 */}
+        {selected.size > 0 && (
+          <div className="mt-3 flex flex-col gap-2 border-t border-line pt-3">
+            <div className="flex flex-wrap gap-1.5">
+              {[...selected.values()].map((member) => (
+                <button
+                  key={member.id}
+                  onClick={() => toggle(member)}
+                  className="flex items-center gap-1 rounded-lg border border-court/40 bg-court/10 px-2 py-1 text-xs font-medium text-court"
+                >
+                  {member.name}
+                  <span className="text-faint">✕</span>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={checkInSelected}
+              disabled={busy}
+              className="h-11 w-full rounded-xl bg-court text-sm font-bold text-bg disabled:opacity-50"
+            >
+              {selected.size}명 체크인
+            </button>
+          </div>
+        )}
 
         {/* 신규 대리 등록 — 검색에 없는 인원을 즉석 등록+체크인 (기본 게스트, 정회원은 생년월일 추가) */}
         <div className="mt-3 border-t border-line pt-3">
