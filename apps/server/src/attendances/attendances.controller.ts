@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Ip,
   Param,
   Patch,
@@ -44,6 +45,18 @@ export class AttendancesController {
         sessionId,
         dto.memberId,
       ),
+    };
+  }
+
+  // 출석 취소 (운영진 전용) — 사전 체크인 후 못 오게 된 사람(개인 사정·노쇼)을 집계 없이 제거. 콕 확인 전만 가능
+  @Delete('attendances/:id')
+  @UseGuards(AdminGuard)
+  async cancelCheckIn(
+    @Param('id') id: string,
+  ): Promise<IApiResponse<IAttendance>> {
+    return {
+      success: true,
+      data: await this.attendancesService.cancelCheckIn(id),
     };
   }
 

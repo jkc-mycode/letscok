@@ -151,6 +151,35 @@ export class AttendancesService {
     throw new ConflictException('이미 출석 처리된 모임원입니다.');
   }
 
+  // 출석 취소 — 사전 수동 체크인 후 개인 사정·노쇼 등으로 못 오게 된 사람용.
+  // 행을 아예 지워 출석·랭킹 집계에서 뺀다 (퇴장 처리는 "왔다 간 사람"이라 기록이 남는 것과 구분)
+  // 콕 확인 전만 허용: 확인 전엔 게임에 못 들어가는 구조라 지워도 얽힌 기록이 없다
+  async cancelCheckIn(id: string): Promise<IAttendance> {
+    const attendance = await this.findAttendanceOrThrow(id);
+    if (attendance.shuttleConfirmedAt) {
+      throw new ConflictException(
+        '콕 확인된 모임원입니다. 실제로 참석했다면 퇴장 처리를 사용해주세요.',
+      );
+    }
+    if (attendance.status !== 'CHECKED_IN') {
+      throw new ConflictException('대기 상태의 출석만 취소할 수 있습니다.');
+    }
+    // 콕 미확인은 게임에 못 들어가지만, 규칙이 바뀌어도 기록이 깨지지 않게 이중 안전망
+    const played = await this.prisma.gamePlayer.count({
+      where: { attendanceId: attendance.id },
+    });
+    if (played > 0) {
+      throw new ConflictException('게임 기록이 있는 출석은 취소할 수 없습니다.');
+    }
+
+    const removed = await this.prisma.attendance.delete({
+      where: { id: attendance.id },
+      include: { member: true },
+    });
+    this.realtime.broadcastSnapshot(attendance.sessionId);
+    return toAttendanceResponse(removed);
+  }
+
   async leave(id: string): Promise<IAttendance> {
     const attendance = await this.prisma.attendance.findUnique({
       where: { id },

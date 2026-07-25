@@ -377,3 +377,33 @@ describe('confirmShuttle / cancelShuttle (콕 제출 확인)', () => {
     );
   });
 });
+
+describe('cancelCheckIn (출석 취소 — 사전 체크인 노쇼)', () => {
+  it('콕 확인 전 출석은 행이 삭제되고, 다시 체크인하면 새 행으로 시작한다', async () => {
+    const session = await seedSession();
+    const member = await seedMember();
+    const attendance = await service.manualCheckIn(session.id, member.id);
+
+    await service.cancelCheckIn(attendance.id);
+
+    // 퇴장(LEFT)과 달리 흔적이 없다 — 출석·랭킹 집계에 안 잡힌다
+    expect(
+      await prisma.attendance.count({ where: { memberId: member.id } }),
+    ).toBe(0);
+
+    const again = await service.manualCheckIn(session.id, member.id);
+    expect(again.id).not.toBe(attendance.id);
+    expect(again.status).toBe('CHECKED_IN');
+  });
+
+  it('콕 확인된 출석은 409 — 실제 참석자는 퇴장 처리로', async () => {
+    const session = await seedSession();
+    const member = await seedMember();
+    const attendance = await service.manualCheckIn(session.id, member.id);
+    await service.confirmShuttle(attendance.id);
+
+    await expect(service.cancelCheckIn(attendance.id)).rejects.toThrow(
+      ConflictException,
+    );
+  });
+});

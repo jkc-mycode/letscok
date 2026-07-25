@@ -2421,7 +2421,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
       '코드는 소모임 [필독]공지사항의 작성월일 4자리예요 — 모임원이 이미 보는 정보라 따로 공지할 게 없어요. 공지를 새로 올렸으면 [체크인 코드] 모달의 [코드 변경]으로 같이 바꿔주세요.',
       '바꾼 코드는 다음 모임에도 그대로 이어져요. 코드를 여러 번 틀리면 그 폰은 잠시 막혀요(무작위 대입 방지).',
       '한 번 들어온 모임원은 다음 모임에도 본인 화면 주소만 열면 돼요. 홈 화면에 추가해두라고 안내해주세요.',
-      '모임 전에 참석자를 [수동 체크인]으로 미리 넣어두면 현장에서는 콕 확인만 하면 돼요.',
+      '모임 전에 참석자를 [수동 체크인]으로 미리 넣어두면 현장에서는 콕 확인만 하면 돼요. 미리 넣었는데 사정이 생겨 못 오게 되면 콕 확인 대기 줄의 [취소]로 지워요 — 출석 기록 없이 빠져요(퇴장과 달라요).',
       '명단에 없는 사람은 [수동 체크인] 안의 [신규 등록]으로 등록해요 — 게스트는 이름·급수·성별만(생년월일 안 받아요), 정회원은 생년월일 포함. 모임원이 스스로 가입하는 경로는 없어요(외부인 가짜 등록 차단).',
       '개인정보 동의는 본인이 처음 코드로 들어올 때 받아요 — 운영진이 대신 체크하지 않아요.',
     ],
@@ -2892,6 +2892,8 @@ function ShuttleRow({
   attendance: IAttendance;
   run: (a: () => Promise<unknown>) => Promise<void>;
 }) {
+  // 출석 취소(노쇼) 2탭 확인 — 행 전체가 콕 확인 버튼이라 오탭 한 번에 지워지면 안 된다
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const member = attendance.member;
   if (!member) return null;
   return (
@@ -2904,10 +2906,28 @@ function ShuttleRow({
       className="flex cursor-pointer items-center gap-2 rounded-xl border border-amber/40 bg-amber/5 p-3 transition-colors"
     >
       <GradeBadge grade={member.grade} />
-      <span className="font-medium">{member.name}</span>
+      <span className="truncate font-medium">{member.name}</span>
       <GenderMarker gender={member.gender} />
       {member.isGuest && <span className="text-[10px] text-sky">게스트</span>}
-      <span className="ml-auto shrink-0 rounded-lg bg-amber px-2.5 py-1 text-xs font-bold text-bg">
+      {/* 사전 체크인 취소 — 개인 사정·노쇼 등으로 못 오게 된 사람을 출석 기록 없이 제거 (퇴장과 다름) */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!confirmCancel) {
+            setConfirmCancel(true);
+            setTimeout(() => setConfirmCancel(false), 3000); // 잠시 뒤 원복 — 눌러둔 채 잊는 실수 방지
+            return;
+          }
+          void run(() => api(`/attendances/${attendance.id}`, { method: 'DELETE', admin: true }));
+        }}
+        title="체크인 취소 — 못 오게 된 사람을 출석 기록 없이 제거"
+        className={`ml-auto h-8 shrink-0 rounded-lg border px-2 text-xs font-medium ${
+          confirmCancel ? 'border-coral bg-coral/15 text-coral' : 'border-line text-faint'
+        }`}
+      >
+        {confirmCancel ? '한 번 더' : '취소'}
+      </button>
+      <span className="shrink-0 rounded-lg bg-amber px-2.5 py-1 text-xs font-bold text-bg">
         콕 확인
       </span>
     </MotionCard>
