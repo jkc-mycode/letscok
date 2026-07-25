@@ -150,6 +150,14 @@ export default function MyStatusPage() {
               </div>
               <PlayerGrid game={game} highlightMemberId={memberId} />
             </MotionCard>
+          ) : court.isShared && !court.ourTurn ? (
+            // 다른 모임 차례인 공유 코트 — "왜 비었는데 게임을 안 넣지" 오해 방지
+            <MotionCard key={court.id} className="rounded-xl border border-sky/40 bg-sky/5 p-4">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-sky">{court.courtNo}번 코트</span>
+                <span className="text-xs text-sky">다른 모임 차례</span>
+              </div>
+            </MotionCard>
           ) : (
             <MotionCard key={court.id} className="rounded-xl border border-dashed border-line p-4">
               <div className="flex items-center justify-between">

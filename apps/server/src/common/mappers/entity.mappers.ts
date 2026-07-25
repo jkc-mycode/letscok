@@ -51,6 +51,8 @@ export function toCourtResponse(court: Court): ICourt {
     sessionId: court.sessionId,
     courtNo: court.courtNo,
     status: court.status,
+    isShared: court.isShared,
+    ourTurn: court.ourTurn,
   };
 }
 

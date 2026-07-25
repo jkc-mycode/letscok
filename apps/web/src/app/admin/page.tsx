@@ -1707,6 +1707,15 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
     ],
   },
   {
+    title: '공유 코트 (다른 모임과 번갈아)',
+    items: [
+      '콕을 걸어 다른 모임과 순서를 나눠 쓰는 코트는 [코트 관리]에서 [공유]를 켜주세요.',
+      '공유 코트는 우리 게임이 끝나면 자동으로 [다른 모임 차례]가 돼요 — 상대 게임이 끝나면 코트 카드의 [우리 차례로]를 눌러주세요(앱이 상대 게임을 알 수 없어 이 탭 하나는 필요해요).',
+      '다른 모임 차례인 코트엔 배정이 막혀요 — 실수로 코트를 뺏는 걸 방지해요.',
+      '연속으로 두 번 치기로 했으면(퐁퐁당) 게임 종료 후 [우리 차례로]를 눌러 이어가면 돼요. 우리 차례를 양보할 땐 [다른 모임 차례로 넘기기].',
+    ],
+  },
+  {
     title: '게임 추천',
     items: [
       '[게임 추천]은 참고용 초안 3종 — 공정성(오래 기다린 순) / 새 조합(오늘 안 만난 사람) / 믹스.',
@@ -1851,6 +1860,24 @@ function CourtsManager({
             className="flex items-center gap-1 rounded-lg border border-line bg-panel2 px-3 py-1.5 text-sm"
           >
             {court.courtNo}번
+            {/* 공유 토글 — 다른 모임과 콕 걸고 번갈아 쓰는 코트. 게임 중에도 전환 가능(치는 도중 공유가 시작되기도) */}
+            <button
+              onClick={() =>
+                void run(() =>
+                  api(`/courts/${court.id}/shared`, {
+                    method: 'PATCH',
+                    admin: true,
+                    body: { isShared: !court.isShared },
+                  }),
+                )
+              }
+              title="다른 모임과 번갈아 쓰는 코트 지정/해제"
+              className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                court.isShared ? 'bg-sky/15 text-sky' : 'border border-line text-faint'
+              }`}
+            >
+              공유
+            </button>
             <button
               onClick={() => void run(() => api(`/courts/${court.id}`, { method: 'DELETE', admin: true }))}
               disabled={inGame}
@@ -1879,6 +1906,13 @@ function CourtsManager({
 
 // ===== 게임 중 구역 =====
 
+// 공유 코트 표시 — 다른 모임과 번갈아 쓰는 코트임을 카드 제목 옆에 알린다
+function SharedBadge() {
+  return (
+    <span className="rounded bg-sky/15 px-1.5 py-0.5 text-[10px] font-medium text-sky">공유</span>
+  );
+}
+
 function CourtCard({
   court,
   game,
@@ -1892,20 +1926,61 @@ function CourtCard({
   run: (a: () => Promise<unknown>) => Promise<void>;
   onReplace: (game: IGame) => void;
 }) {
+  // 공유 코트 차례 전환 — 우리→상대는 수동으로도 넘길 수 있고(양보 등), 상대→우리는 이 탭이 유일한 복귀로
+  const setTurn = (ourTurn: boolean) =>
+    run(() =>
+      api(`/courts/${court.id}/turn`, { method: 'PATCH', admin: true, body: { ourTurn } }),
+    );
+
   if (!game) {
+    // 상대 차례인 공유 코트 — 배정이 막히는 이유가 보이게 빈 코트와 구분해 크게 표시
+    if (court.isShared && !court.ourTurn) {
+      return (
+        <MotionCard className="rounded-xl border border-sky/40 bg-sky/5 p-4">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-bold text-sky">
+              {court.courtNo}번 코트 <SharedBadge />
+            </span>
+            <span className="text-xs text-sky">다른 모임 차례</span>
+          </div>
+          <button
+            onClick={() => void setTurn(true)}
+            title="상대 게임이 끝났으면 눌러주세요 — 배정이 다시 열려요"
+            className="mt-3 h-11 w-full rounded-lg border border-sky/40 text-sm font-bold text-sky"
+          >
+            우리 차례로
+          </button>
+        </MotionCard>
+      );
+    }
     return (
       <MotionCard className="rounded-xl border border-dashed border-line p-4">
-        <div className="flex items-center justify-between">
-          <span className="font-bold text-dim">{court.courtNo}번 코트</span>
-          <span className="text-xs text-faint">비어 있음 — 대기 조합에서 배정</span>
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-bold text-dim">
+            {court.courtNo}번 코트 {court.isShared && <SharedBadge />}
+          </span>
+          <span className="text-xs text-faint">
+            {court.isShared ? '렛츠콕 차례 — 대기 조합에서 배정' : '비어 있음 — 대기 조합에서 배정'}
+          </span>
         </div>
+        {court.isShared && (
+          <button
+            onClick={() => void setTurn(false)}
+            title="이번 차례를 다른 모임에 양보"
+            className="mt-3 h-9 w-full rounded-lg border border-line text-xs text-dim"
+          >
+            다른 모임 차례로 넘기기
+          </button>
+        )}
       </MotionCard>
     );
   }
   return (
     <MotionCard className="rounded-xl border border-court/40 bg-panel2 p-4">
-      <div className="flex items-center justify-between">
-        <span className="font-bold text-court">{court.courtNo}번 코트</span>
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-bold text-court">
+          {court.courtNo}번 코트 {court.isShared && <SharedBadge />}
+        </span>
         <span className="tabular font-mono text-2xl font-semibold text-court">
           {game.startedAt ? formatElapsed(game.startedAt, now) : '--:--'}
         </span>
@@ -2019,23 +2094,29 @@ function QueueCard({
           </span>
         ) : assignOpen ? (
           idleCourts.length > 0 ? (
-            idleCourts.map((court) => (
-              <button
-                key={court.id}
-                onClick={() =>
-                  void run(() =>
-                    api(`/games/${game.id}/assign`, {
-                      method: 'PATCH',
-                      admin: true,
-                      body: { courtId: court.id },
-                    }),
-                  )
-                }
-                className="h-11 flex-1 rounded-lg bg-amber text-sm font-bold text-bg"
-              >
-                {court.courtNo}번
-              </button>
-            ))
+            idleCourts.map((court) => {
+              // 상대 차례인 공유 코트 — 서버도 409로 막지만, 눌러보기 전에 이유가 보이게 비활성으로
+              const theirTurn = court.isShared && !court.ourTurn;
+              return (
+                <button
+                  key={court.id}
+                  onClick={() =>
+                    void run(() =>
+                      api(`/games/${game.id}/assign`, {
+                        method: 'PATCH',
+                        admin: true,
+                        body: { courtId: court.id },
+                      }),
+                    )
+                  }
+                  disabled={theirTurn}
+                  title={theirTurn ? '다른 모임 차례 — 코트 카드의 [우리 차례로]를 먼저' : undefined}
+                  className="h-11 flex-1 rounded-lg bg-amber text-sm font-bold text-bg disabled:bg-panel2 disabled:text-faint"
+                >
+                  {court.courtNo}번{theirTurn && ' (다른 모임)'}
+                </button>
+              );
+            })
           ) : (
             <span className="flex h-11 flex-1 items-center justify-center text-sm text-faint">
               빈 코트가 없어요

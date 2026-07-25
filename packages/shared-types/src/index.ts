@@ -74,6 +74,8 @@ export interface ICourt {
   sessionId: string;
   courtNo: number; // 체육관 실제 코트 번호
   status: CourtStatus;
+  isShared: boolean; // 다른 모임과 번갈아 쓰는 공유 코트 여부
+  ourTurn: boolean; // 공유 코트의 현재 차례 (비공유 코트는 항상 true)
 }
 
 export interface IAttendance {
@@ -153,6 +155,16 @@ export interface IUpdateCheckInCodeDto {
 
 export interface ICreateCourtDto {
   courtNo: number;
+}
+
+// 공유 코트 설정 — 다른 모임과 번갈아 쓰는 코트 지정/해제 (해제 시 차례도 우리로 리셋)
+export interface IUpdateCourtSharedDto {
+  isShared: boolean;
+}
+
+// 공유 코트 차례 변경 — 상대 게임이 끝나면 운영진이 우리 차례로 되돌린다 (멱등하게 값 지정)
+export interface IUpdateCourtTurnDto {
+  ourTurn: boolean;
 }
 
 export interface ICreateGameDto {

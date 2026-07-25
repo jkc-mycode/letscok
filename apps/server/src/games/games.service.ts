@@ -103,6 +103,12 @@ export class GamesService {
     if (court.status !== 'IDLE') {
       throw new ConflictException('이미 게임이 진행 중인 코트입니다.');
     }
+    // 공유 코트는 차례를 지킨다 — 상대 게임이 끝났으면 코트 카드의 [우리 차례] 탭이 먼저
+    if (court.isShared && !court.ourTurn) {
+      throw new ConflictException(
+        '다른 모임 차례인 코트입니다. 상대 게임이 끝났다면 코트의 [우리 차례]를 먼저 눌러주세요.',
+      );
+    }
 
     // 중복 대기 정책상 다른 코트에서 게임 중인 사람이 이 조합에 있을 수 있다 — PLAYING은 동시에 한 곳만
     const busyNames = game.players
@@ -148,9 +154,14 @@ export class GamesService {
 
     const attendanceIds = game.players.map((player) => player.attendanceId);
     const finished = await this.prisma.$transaction(async (tx) => {
-      await tx.court.update({
+      // 공유 코트면 우리 차례 소진 — 다음은 다른 모임 (퐁당퐁당). 연속으로 치기로 했으면
+      // 운영진이 코트 카드에서 [우리 차례]로 되돌린다 (퐁퐁당도 이 조작으로 커버)
+      const court = await tx.court.findUniqueOrThrow({
         where: { id: game.courtId as string }, // PLAYING 게임은 항상 코트를 갖는다
-        data: { status: 'IDLE' },
+      });
+      await tx.court.update({
+        where: { id: court.id },
+        data: { status: 'IDLE', ...(court.isShared ? { ourTurn: false } : {}) },
       });
       // 전원 공통: 방금 뛰었으므로 대기 시간 리셋(대기 목록 맨 뒤) + 게임 횟수 +1
       await tx.attendance.updateMany({

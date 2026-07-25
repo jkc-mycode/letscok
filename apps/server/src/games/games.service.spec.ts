@@ -217,6 +217,26 @@ describe('assign', () => {
       ConflictException,
     );
   });
+
+  it('공유 코트가 다른 모임 차례면 배정 불가(409), 우리 차례로 돌리면 배정된다', async () => {
+    const session = await seedSession();
+    const court = await prisma.court.create({
+      data: { sessionId: session.id, courtNo: 4, isShared: true, ourTurn: false },
+    });
+    const [a, b, c, d] = await seedFour(session.id);
+    const game = await service.create(session.id, {
+      attendanceIds: [a.id, b.id, c.id, d.id],
+    });
+
+    await expect(service.assign(game.id, { courtId: court.id })).rejects.toThrow(
+      ConflictException,
+    );
+
+    // 상대 게임 종료 후 운영진이 [우리 차례로]를 누른 상황
+    await prisma.court.update({ where: { id: court.id }, data: { ourTurn: true } });
+    const assigned = await service.assign(game.id, { courtId: court.id });
+    expect(assigned.status).toBe('PLAYING');
+  });
 });
 
 // ===== finish (게임 종료) =====
@@ -260,6 +280,29 @@ describe('finish', () => {
 
     expect(await statusOf(a.id)).toBe('MATCHED'); // 남은 조합 유지
     expect(await statusOf(b.id)).toBe('CHECKED_IN'); // 완전히 자유
+  });
+
+  it('공유 코트에서 게임이 끝나면 다른 모임 차례로 자동 전환, 비공유 코트는 그대로', async () => {
+    const session = await seedSession();
+    const shared = await prisma.court.create({
+      data: { sessionId: session.id, courtNo: 4, isShared: true, ourTurn: true },
+    });
+    const normal = await seedCourt(session.id, 5);
+
+    for (const court of [shared, normal]) {
+      const [a, b, c, d] = await seedFour(session.id);
+      const game = await service.create(session.id, {
+        attendanceIds: [a.id, b.id, c.id, d.id],
+      });
+      await service.assign(game.id, { courtId: court.id });
+      await service.finish(game.id);
+    }
+
+    const sharedAfter = await prisma.court.findUniqueOrThrow({ where: { id: shared.id } });
+    expect(sharedAfter.status).toBe('IDLE');
+    expect(sharedAfter.ourTurn).toBe(false); // 퐁당퐁당 — 다음은 다른 모임
+    const normalAfter = await prisma.court.findUniqueOrThrow({ where: { id: normal.id } });
+    expect(normalAfter.ourTurn).toBe(true); // 비공유는 차례 개념 없음
   });
 });
 

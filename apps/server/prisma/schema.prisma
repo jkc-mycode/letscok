@@ -100,6 +100,8 @@ model Court {
   sessionId String
   courtNo   Int
   status    CourtStatus @default(IDLE)
+  isShared  Boolean     @default(false) // 다른 모임과 콕 걸고 번갈아 쓰는 코트 (체육관 불문율)
+  ourTurn   Boolean     @default(true) // 공유 코트의 현재 차례 — 우리 게임 종료 시 false, 운영진 탭으로 true 복귀. 비공유엔 무의미
   createdAt DateTime    @default(now())
   deletedAt DateTime? // soft-delete — 하드 삭제하면 이 코트에서 끝난 게임의 FK가 깨짐. 같은 번호 재등록 시 복구
 
