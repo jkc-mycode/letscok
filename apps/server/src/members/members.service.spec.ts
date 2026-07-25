@@ -1,13 +1,19 @@
 import { ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { MembersService } from './members.service';
 
 // 회원 등록 통합 테스트 — 실제 Prisma+테스트 DB로 검증한다
 // (게스트 정책: 생년월일 없이 등록, 정회원은 기존대로 생년월일 포함)
 
+// 브로드캐스트는 원장 변경과 무관 — 소켓 없이 서비스만 조립하기 위한 스텁
+const realtimeStub = {
+  broadcastSnapshot: () => undefined,
+} as unknown as RealtimeService;
+
 const prisma = new PrismaService();
-const service = new MembersService(prisma);
+const service = new MembersService(prisma, realtimeStub);
 
 const memberDto = (over: Partial<CreateMemberDto> = {}): CreateMemberDto => ({
   name: '홍길동',

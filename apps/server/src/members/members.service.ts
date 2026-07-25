@@ -7,12 +7,16 @@ import { IMember, IMemberSummary } from '@letscok/shared-types';
 import { toMemberResponse } from '../common/mappers/entity.mappers';
 import { toDateString } from '../common/utils/date.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 
 @Injectable()
 export class MembersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   async create(dto: CreateMemberDto): Promise<IMember> {
     // 게스트는 생년월일 없이 등록 (보내와도 무시하고 null 저장 — 게스트 정책)
@@ -141,6 +145,9 @@ export class MembersService {
         ...(promoting && { isGuest: false }),
       },
     });
+    // 진행 중 모임에 출석 중이면 보드에도 즉시 반영 — 급수 배지가 이전 값으로 남지 않게
+    // (급수는 게임 추천에도 쓰이므로 화면과 실제가 어긋나면 운영진이 헷갈린다)
+    await this.broadcastIfInOpenSession(member.id);
     return toMemberResponse(updated);
   }
 
@@ -217,6 +224,16 @@ export class MembersService {
         '이미 등록된 모임원입니다. 이름 검색으로 본인을 선택해주세요.',
       );
     }
+  }
+
+  // 회원 정보가 바뀐 사람이 진행 중 모임에 출석 중이면 스냅샷 재전파
+  // 삭제·익명화는 체크인 중이면 애초에 막히므로(assertNotInOpenSession) 수정 경로만 필요하다
+  private async broadcastIfInOpenSession(memberId: string) {
+    const active = await this.prisma.attendance.findFirst({
+      where: { memberId, session: { status: 'OPEN' } },
+      select: { sessionId: true },
+    });
+    if (active) this.realtime.broadcastSnapshot(active.sessionId);
   }
 
   private async assertNotInOpenSession(memberId: string) {
