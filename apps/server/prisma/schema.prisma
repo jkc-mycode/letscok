@@ -48,6 +48,13 @@ enum GameStatus {
   CANCELED // 조합 해체
 }
 
+// 모임 내 역할 — 표시·명단 관리용 구분. 인증은 단일 패스코드 그대로(별도 권한 단계 없음)
+enum MemberRole {
+  LEADER // 모임장
+  MANAGER // 운영진
+  MEMBER // 모임원
+}
+
 // 회원 원장 — 세션과 무관하게 누적되는 기본 정보
 model Member {
   id        String    @id @default(cuid())
@@ -56,6 +63,7 @@ model Member {
   grade       Grade
   gender      Gender? // 복식 종목(남복/여복/혼복) 구성용 — 기존 회원은 null(미지정), 신규 등록은 필수
   isGuest     Boolean   @default(false)
+  role        MemberRole @default(MEMBER) // 모임장/운영진/모임원 — 게스트는 항상 MEMBER
   consentedAt DateTime? // 개인정보 수집 동의 시각 — 등록 시 기록 (도입 전 기존 데이터는 null)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

@@ -159,6 +159,18 @@ describe('getRanking', () => {
     });
   });
 
+  it('삭제된 회원은 랭킹에서 빠진다 (지난 모임 상세는 attendance 경유라 영향 없음)', async () => {
+    const session = await seedClosedSession('2026-01-01');
+    const stay = await seedMember('가잔류');
+    const gone = await seedMember('나삭제');
+    await seedAttendance(session.id, stay.id, 1);
+    await seedAttendance(session.id, gone.id, 1);
+    await prisma.member.update({ where: { id: gone.id }, data: { deletedAt: new Date() } });
+
+    const ranking = await service.getRanking();
+    expect(ranking.map((r) => r.name)).toEqual(['가잔류']);
+  });
+
   it('완전 동률은 이름 가나다순으로 안정 정렬한다', async () => {
     const session = await seedClosedSession('2026-01-01');
     const b = await seedMember('나다라');

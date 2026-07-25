@@ -11,7 +11,9 @@ import {
   IHistorySessionDetail,
   IGameRecommendation,
   IMember,
+  IMemberSummary,
   ISessionSnapshot,
+  MemberRole,
   RecommendationCategory,
   RecommendationKind,
 } from '@letscok/shared-types';
@@ -99,6 +101,8 @@ function StartScreen({
   busy: boolean;
   toast: string | null;
 }) {
+  // 명단 정리는 모임 전이 한가하다 — 세션 없이도 모임원 관리에 들어갈 수 있게
+  const [membersOpen, setMembersOpen] = useState(false);
   return (
     <main className="fade-in flex min-h-dvh flex-col items-center justify-center gap-8">
       <div className="text-center">
@@ -118,6 +122,13 @@ function StartScreen({
       >
         오늘 모임 시작
       </button>
+      <button
+        onClick={() => setMembersOpen(true)}
+        className="h-11 rounded-xl border border-line px-6 text-sm font-medium text-dim"
+      >
+        모임원 관리
+      </button>
+      {membersOpen && <MembersManagerModal onClose={() => setMembersOpen(false)} />}
       {toast && <Toast message={toast} />}
     </main>
   );
@@ -148,6 +159,7 @@ function BoardBody({
   const [codeOpen, setCodeOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false); // 운영진 수동 체크인 (사전 등록·현장 대리 등 예외용)
+  const [membersOpen, setMembersOpen] = useState(false); // 모임원 관리 (명단 조회·수정·정리)
   const [gamesLogOpen, setGamesLogOpen] = useState(false); // 오늘 완료 게임 조회·이름 검색
   // 폰(<md)에서는 3구역을 한 번에 못 보여주므로 탭 전환 — 조작 시작점인 대기 인원이 기본
   const [mobileTab, setMobileTab] = useState<MobileTab>('waiting');
@@ -269,6 +281,12 @@ function BoardBody({
       key: 'log',
       label: '게임 기록',
       onClick: () => setGamesLogOpen(true),
+      cls: 'border-line text-dim',
+    },
+    {
+      key: 'members',
+      label: '모임원 관리',
+      onClick: () => setMembersOpen(true),
       cls: 'border-line text-dim',
     },
     {
@@ -559,6 +577,7 @@ function BoardBody({
         />
       )}
       {codeOpen && <CheckInCodeModal onClose={() => setCodeOpen(false)} />}
+      {membersOpen && <MembersManagerModal onClose={() => setMembersOpen(false)} />}
       {manualOpen && (
         <ManualCheckInModal
           sessionId={session.id}
@@ -1545,6 +1564,549 @@ function ManualCheckInModal({
   );
 }
 
+// ===== 모임원 관리 모달 =====
+
+// 명단 조회·수정·정리 — 자가 가입을 막은 대가로 명단 관리가 전적으로 운영진 책임이라 이 화면이 필요하다
+// 세션과 무관한 회원 원장 작업이라 Board 밖(StartScreen)에서도 열 수 있게 스냅샷·run에 의존하지 않는다
+const ROLE_LABEL: Record<MemberRole, string> = {
+  LEADER: '모임장',
+  MANAGER: '운영진',
+  MEMBER: '모임원',
+};
+const STALE_GUEST_DAYS = 90; // 이 기간 미출석 게스트를 "오래 안 온" 정리 대상으로 본다
+
+function RoleBadge({ role }: { role: MemberRole }) {
+  if (role === 'MEMBER') return null; // 대다수가 모임원 — 배지는 예외(모임장·운영진)만
+  return (
+    <span
+      className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+        role === 'LEADER' ? 'bg-amber/15 text-amber' : 'bg-court/15 text-court'
+      }`}
+    >
+      {ROLE_LABEL[role]}
+    </span>
+  );
+}
+
+// 마지막 출석일 압축 표기 — 좁은 폰 한 줄에 들어가야 해서 연도는 다를 때만
+function formatLastAttended(date: string | null): string {
+  if (!date) return '출석 없음';
+  const [y, m, d] = date.split('-');
+  const thisYear = String(new Date().getFullYear());
+  return y === thisYear ? `${Number(m)}/${Number(d)}` : `${y.slice(2)}.${Number(m)}.${Number(d)}`;
+}
+
+function isStaleGuest(member: IMemberSummary): boolean {
+  if (!member.isGuest || member.deletedAt) return false;
+  if (!member.lastAttendedAt) return true; // 등록만 되고 한 번도 안 온 게스트
+  const last = new Date(member.lastAttendedAt).getTime();
+  return Date.now() - last > STALE_GUEST_DAYS * 24 * 60 * 60 * 1000;
+}
+
+type MemberFilter = 'ALL' | 'REGULAR' | 'GUEST' | 'DELETED';
+
+function MembersManagerModal({ onClose }: { onClose: () => void }) {
+  const [members, setMembers] = useState<IMemberSummary[] | null>(null); // null=로딩
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<MemberFilter>('ALL');
+  const [editTarget, setEditTarget] = useState<IMemberSummary | null>(null);
+  const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const refetch = useCallback(
+    () =>
+      api<IMemberSummary[]>('/members', { admin: true })
+        .then(setMembers)
+        .catch(() => setToast('명단을 불러오지 못했습니다.')),
+    [],
+  );
+  useEffect(() => {
+    void refetch();
+  }, [refetch]);
+
+  // 모달 전용 실행기 — Board의 run은 스냅샷 refetch까지 묶여 있어 세션 없는 화면에선 못 쓴다
+  const run = async (action: () => Promise<unknown>) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await action();
+      await refetch();
+    } catch (e) {
+      setToast(e instanceof ApiError ? e.message : '요청에 실패했습니다.');
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const staleGuests = useMemo(() => (members ?? []).filter(isStaleGuest), [members]);
+
+  const visible = useMemo(() => {
+    const trimmed = query.trim();
+    return (members ?? []).filter((member) => {
+      if (trimmed && !member.name.includes(trimmed)) return false;
+      // 삭제 회원은 전용 탭에서만 — 평소 목록을 어지럽히지 않는다
+      if (filter === 'DELETED') return member.deletedAt !== null;
+      if (member.deletedAt) return false;
+      if (filter === 'REGULAR') return !member.isGuest;
+      if (filter === 'GUEST') return member.isGuest;
+      return true;
+    });
+  }, [members, query, filter]);
+
+  const FILTER_TABS: { value: MemberFilter; label: string }[] = [
+    { value: 'ALL', label: '전체' },
+    { value: 'REGULAR', label: '정회원' },
+    { value: 'GUEST', label: '게스트' },
+    { value: 'DELETED', label: '삭제됨' },
+  ];
+
+  return (
+    <div
+      onClick={onClose}
+      className="fade-in fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-2 sm:p-4"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="flex max-h-[92dvh] w-full max-w-2xl flex-col rounded-2xl border border-line bg-panel p-4 sm:p-5"
+      >
+        <div className="flex items-center pb-3">
+          <h2 className="text-lg font-bold text-court">모임원 관리</h2>
+          {members && (
+            <span className="ml-2 text-xs text-faint">
+              {members.filter((m) => !m.deletedAt).length}명
+            </span>
+          )}
+          <button
+            onClick={onClose}
+            className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
+          >
+            닫기
+          </button>
+        </div>
+
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="이름으로 검색"
+          className="h-11 rounded-xl border border-line bg-panel2 px-4 text-sm outline-none focus:border-court"
+        />
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {FILTER_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              onClick={() => setFilter(tab.value)}
+              className={`h-8 rounded-lg border px-3 text-xs font-medium ${
+                filter === tab.value
+                  ? 'border-court bg-court/15 text-court'
+                  : 'border-line bg-panel2 text-dim'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+          {staleGuests.length > 0 && (
+            <button
+              onClick={() => setCleanupOpen(true)}
+              className="ml-auto h-8 rounded-lg border border-amber/40 px-3 text-xs font-medium text-amber"
+            >
+              오래 안 온 게스트 정리 ({staleGuests.length})
+            </button>
+          )}
+        </div>
+
+        <div className="mt-3 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto">
+          {members === null && <p className="py-8 text-center text-sm text-dim">불러오는 중...</p>}
+          {members !== null && visible.length === 0 && (
+            <p className="py-8 text-center text-sm text-faint">
+              {filter === 'DELETED' ? '삭제된 모임원이 없어요' : '검색 결과가 없어요'}
+            </p>
+          )}
+          {visible.map((member) => (
+            <button
+              key={member.id}
+              onClick={() => setEditTarget(member)}
+              className={`flex items-center gap-2 rounded-xl border border-line bg-panel2 p-3 text-left text-sm ${
+                member.deletedAt ? 'opacity-50' : ''
+              }`}
+            >
+              <GradeBadge grade={member.grade} />
+              <span className="truncate font-medium">{member.name}</span>
+              <GenderMarker gender={member.gender} />
+              {member.isGuest && <span className="shrink-0 text-[10px] text-sky">게스트</span>}
+              <RoleBadge role={member.role} />
+              <span className="ml-auto flex shrink-0 flex-col items-end text-[11px] leading-tight text-dim">
+                <span>{formatLastAttended(member.lastAttendedAt)}</span>
+                <span className="text-faint">{member.totalGames}게임</span>
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {editTarget && (
+          <MemberEditSheet
+            member={editTarget}
+            run={run}
+            busy={busy}
+            onClose={() => setEditTarget(null)}
+          />
+        )}
+        {cleanupOpen && (
+          <StaleGuestCleanupSheet
+            guests={staleGuests}
+            run={run}
+            busy={busy}
+            onClose={() => setCleanupOpen(false)}
+          />
+        )}
+        {toast && <Toast message={toast} />}
+      </div>
+    </div>
+  );
+}
+
+// 수정 시트 — 목록 위에 겹쳐 뜬다 (폰에서 한 화면에 폼과 목록을 같이 두기엔 좁다)
+function MemberEditSheet({
+  member,
+  run,
+  busy,
+  onClose,
+}: {
+  member: IMemberSummary;
+  run: (a: () => Promise<unknown>) => Promise<void>;
+  busy: boolean;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(member.name);
+  const [birth, setBirth] = useState(formatBirthInput(member.birthDate ?? ''));
+  const [grade, setGrade] = useState<Grade>(member.grade);
+  const [gender, setGender] = useState<Gender | null>(member.gender);
+  const [role, setRole] = useState<MemberRole>(member.role);
+  const [promote, setPromote] = useState(false); // 게스트→정회원 승격 의사
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmAnon, setConfirmAnon] = useState(false);
+  const birthDate = parseBirthDate(birth);
+  const birthDigits = birth.replace(/\D/g, '');
+  const deleted = member.deletedAt !== null;
+
+  // 게스트는 승격을 켰을 때만 생년월일·역할을 다룬다 (게스트 정책: 생년월일 미수집, 역할 불가)
+  const asRegular = !member.isGuest || promote;
+
+  const save = () => {
+    const dto: Record<string, unknown> = {};
+    if (name.trim() && name.trim() !== member.name) dto.name = name.trim();
+    if (asRegular && birthDate && birthDate !== member.birthDate) dto.birthDate = birthDate;
+    if (grade !== member.grade) dto.grade = grade;
+    if (gender && gender !== member.gender) dto.gender = gender;
+    if (asRegular && role !== member.role) dto.role = role;
+    if (promote) dto.isGuest = false;
+    if (Object.keys(dto).length === 0) {
+      onClose();
+      return;
+    }
+    void run(async () => {
+      await api(`/members/${member.id}`, { method: 'PATCH', admin: true, body: dto });
+      onClose();
+    });
+  };
+
+  const blocked =
+    busy || !name.trim() || (promote && !birthDate) || (asRegular && birthDigits.length === 8 && !birthDate);
+
+  return (
+    <div
+      onClick={onClose}
+      className="fade-in fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="flex max-h-[92dvh] w-full max-w-md flex-col gap-2.5 overflow-y-auto rounded-t-2xl border border-line bg-panel p-5 sm:rounded-2xl"
+      >
+        <div className="flex items-center">
+          <h3 className="font-bold text-court">{member.name}</h3>
+          {member.isGuest && <span className="ml-2 text-[10px] text-sky">게스트</span>}
+          {deleted && <span className="ml-2 text-[10px] text-coral">삭제됨</span>}
+          <button
+            onClick={onClose}
+            className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
+          >
+            닫기
+          </button>
+        </div>
+        <p className="text-[11px] text-faint">
+          출석 {member.totalSessions}회 · {member.totalGames}게임 · 최근{' '}
+          {formatLastAttended(member.lastAttendedAt)}
+        </p>
+
+        {!deleted && (
+          <>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={20}
+              placeholder="이름"
+              className="h-11 rounded-xl border border-line bg-panel2 px-4 text-sm outline-none focus:border-court"
+            />
+
+            {member.isGuest && (
+              <button
+                onClick={() => setPromote((v) => !v)}
+                className={`h-10 rounded-lg border text-sm font-bold ${
+                  promote ? 'border-court bg-court/15 text-court' : 'border-line bg-panel2 text-dim'
+                }`}
+              >
+                {promote ? '정회원으로 승격 — 생년월일을 입력해주세요' : '정회원으로 승격하기'}
+              </button>
+            )}
+
+            {asRegular && (
+              <div>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={birth}
+                  onChange={(e) => setBirth(formatBirthInput(e.target.value))}
+                  placeholder="생년월일 8자리 (예: 19970312)"
+                  className="h-11 w-full rounded-xl border border-line bg-panel2 px-4 text-sm outline-none focus:border-court"
+                />
+                {birthDigits.length === 8 && !birthDate && (
+                  <p className="mt-1 text-xs text-coral">날짜가 올바르지 않아요</p>
+                )}
+              </div>
+            )}
+
+            <div className="grid grid-cols-6 gap-1.5">
+              {GRADES.map((g) => (
+                <button
+                  key={g}
+                  onClick={() => setGrade(g)}
+                  className={`h-10 rounded-lg border text-sm font-bold ${
+                    grade === g ? 'border-court bg-court/15 text-court' : 'border-line bg-panel2 text-dim'
+                  }`}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                onClick={() => setGender('MALE')}
+                className={`h-10 rounded-lg border text-sm font-bold ${
+                  gender === 'MALE' ? 'border-sky bg-sky/15 text-sky' : 'border-line bg-panel2 text-dim'
+                }`}
+              >
+                ♂ 남
+              </button>
+              <button
+                onClick={() => setGender('FEMALE')}
+                className={`h-10 rounded-lg border text-sm font-bold ${
+                  gender === 'FEMALE' ? 'border-pink bg-pink/15 text-pink' : 'border-line bg-panel2 text-dim'
+                }`}
+              >
+                ♀ 여
+              </button>
+            </div>
+
+            {/* 역할 — 표시·명단 구분용. 권한은 단일 패스코드 그대로라 접근이 달라지진 않는다 */}
+            {asRegular && (
+              <div className="grid grid-cols-3 gap-1.5">
+                {(Object.keys(ROLE_LABEL) as MemberRole[]).map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => setRole(r)}
+                    className={`h-10 rounded-lg border text-sm font-bold ${
+                      role === r
+                        ? r === 'LEADER'
+                          ? 'border-amber bg-amber/15 text-amber'
+                          : 'border-court bg-court/15 text-court'
+                        : 'border-line bg-panel2 text-dim'
+                    }`}
+                  >
+                    {ROLE_LABEL[r]}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <button
+              onClick={save}
+              disabled={blocked}
+              className="h-11 rounded-xl bg-court text-sm font-bold text-bg disabled:opacity-50"
+            >
+              저장
+            </button>
+          </>
+        )}
+
+        {/* 위험 구역 — 삭제·익명화는 2탭 확인 (단일 패스코드 구조라 권한 대신 실수 방지로 지킨다) */}
+        <div className="mt-1 flex flex-col gap-1.5 border-t border-line pt-3">
+          {deleted ? (
+            <button
+              onClick={() =>
+                void run(async () => {
+                  await api(`/members/${member.id}/restore`, { method: 'PATCH', admin: true });
+                  onClose();
+                })
+              }
+              disabled={busy}
+              className="h-11 rounded-xl border border-court/40 text-sm font-bold text-court disabled:opacity-50"
+            >
+              복구 — 명단에 다시 표시
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                if (!confirmDelete) {
+                  setConfirmDelete(true);
+                  return;
+                }
+                void run(async () => {
+                  await api(`/members/${member.id}`, { method: 'DELETE', admin: true });
+                  onClose();
+                });
+              }}
+              disabled={busy}
+              className={`h-11 rounded-xl border text-sm font-medium disabled:opacity-50 ${
+                confirmDelete ? 'border-coral bg-coral/15 text-coral' : 'border-line text-dim'
+              }`}
+            >
+              {confirmDelete ? '한 번 더 누르면 삭제돼요 (복구 가능)' : '명단에서 삭제'}
+            </button>
+          )}
+          <button
+            onClick={() => {
+              if (!confirmAnon) {
+                setConfirmAnon(true);
+                return;
+              }
+              void run(async () => {
+                await api(`/members/${member.id}/anonymize`, { method: 'PATCH', admin: true });
+                onClose();
+              });
+            }}
+            disabled={busy}
+            className={`h-11 rounded-xl border text-sm font-medium disabled:opacity-50 ${
+              confirmAnon ? 'border-coral bg-coral/15 text-coral' : 'border-line text-faint'
+            }`}
+          >
+            {confirmAnon ? '한 번 더 누르면 개인정보가 지워져요 (복구 불가)' : '개인정보 삭제 (본인 요청 시)'}
+          </button>
+          <p className="text-[11px] leading-relaxed text-faint">
+            삭제는 명단에서만 감춰요(기록 유지·복구 가능). 개인정보 삭제는 이름·생년월일·성별을
+            지우고 출석·게임 기록만 남겨요 — 본인이 요청했을 때만 사용하세요.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 오래 안 온 게스트 일괄 정리 — 자동 삭제는 하지 않는다(조용히 사라지면 현장에서 "왜 이름이 없지"가 된다)
+// 운영진이 목록을 보고 골라서 지운다. 삭제는 soft라 실수해도 [삭제됨] 탭에서 복구 가능
+function StaleGuestCleanupSheet({
+  guests,
+  run,
+  busy,
+  onClose,
+}: {
+  guests: IMemberSummary[];
+  run: (a: () => Promise<unknown>) => Promise<void>;
+  busy: boolean;
+  onClose: () => void;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(guests.map((g) => g.id)), // 기본 전체 선택 — 이미 조건으로 걸러진 명단이고 2탭 확인이 남아 있다
+  );
+  const [confirm, setConfirm] = useState(false);
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+
+  const removeSelected = () => {
+    if (!confirm) {
+      setConfirm(true);
+      return;
+    }
+    void run(async () => {
+      // 서버 엔드포인트가 1명 단위라 순차 호출 — 수동 체크인 다중 선택과 같은 패턴
+      for (const id of selected) {
+        await api(`/members/${id}`, { method: 'DELETE', admin: true });
+      }
+      onClose();
+    });
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      className="fade-in fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="flex max-h-[92dvh] w-full max-w-md flex-col rounded-t-2xl border border-line bg-panel p-5 sm:rounded-2xl"
+      >
+        <div className="flex items-center pb-2">
+          <h3 className="font-bold text-amber">오래 안 온 게스트 정리</h3>
+          <button
+            onClick={onClose}
+            className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
+          >
+            닫기
+          </button>
+        </div>
+        <p className="pb-3 text-xs leading-relaxed text-dim">
+          {STALE_GUEST_DAYS}일 이상 안 온 게스트예요. 체크인 검색을 어지럽히지 않게 정리하세요 —
+          삭제해도 지난 기록은 남고, [삭제됨] 탭에서 복구할 수 있어요.
+        </p>
+
+        <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto">
+          {guests.map((guest) => {
+            const picked = selected.has(guest.id);
+            return (
+              <button
+                key={guest.id}
+                onClick={() => toggle(guest.id)}
+                className={`flex items-center gap-2 rounded-xl border p-3 text-left text-sm ${
+                  picked ? 'border-amber bg-amber/10' : 'border-line bg-panel2'
+                }`}
+              >
+                <span
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[11px] font-bold ${
+                    picked ? 'border-amber bg-amber text-bg' : 'border-line text-transparent'
+                  }`}
+                >
+                  ✓
+                </span>
+                <GradeBadge grade={guest.grade} />
+                <span className="truncate font-medium">{guest.name}</span>
+                <GenderMarker gender={guest.gender} />
+                <span className="ml-auto shrink-0 text-[11px] text-dim">
+                  {formatLastAttended(guest.lastAttendedAt)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          onClick={removeSelected}
+          disabled={busy || selected.size === 0}
+          className={`mt-3 h-11 rounded-xl border text-sm font-bold disabled:opacity-50 ${
+            confirm ? 'border-coral bg-coral/15 text-coral' : 'border-amber/40 text-amber'
+          }`}
+        >
+          {confirm ? `한 번 더 누르면 ${selected.size}명이 삭제돼요` : `${selected.size}명 삭제`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ===== 오늘 게임 기록 모달 =====
 
 // 완료(FINISHED) 게임만 — 진행 중은 코트 구역에 이미 보이므로 중복 노출 안 함
@@ -1704,6 +2266,18 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
       '모임 전에 참석자를 [수동 체크인]으로 미리 넣어두면 현장에서는 콕 확인만 하면 돼요.',
       '명단에 없는 사람은 [수동 체크인] 안의 [신규 등록]으로 등록해요 — 게스트는 이름·급수·성별만(생년월일 안 받아요), 정회원은 생년월일 포함. 모임원이 스스로 가입하는 경로는 없어요(외부인 가짜 등록 차단).',
       '개인정보 동의는 본인이 처음 코드로 들어올 때 받아요 — 운영진이 대신 체크하지 않아요.',
+    ],
+  },
+  {
+    title: '모임원 관리',
+    items: [
+      '[모임원 관리]에서 명단 조회·수정·정리를 해요. 모임 시작 전 화면에서도 열 수 있어요.',
+      '이름·생년월일·급수·성별·역할(모임장/운영진/모임원)을 고칠 수 있어요. 급수는 게임 추천 품질에 바로 영향을 주니 실제 실력에 맞춰주세요.',
+      '역할은 명단 표시용 구분이에요 — 관제판 접근 권한은 패스코드 하나로 같아요.',
+      '자주 오는 게스트는 수정 화면에서 [정회원으로 승격]할 수 있어요 (생년월일 입력 필요).',
+      '삭제는 명단에서만 감춰요 — 지난 기록은 남고 [삭제됨] 탭에서 복구돼요. 진행 중 모임에 체크인된 사람은 퇴장 처리가 먼저예요.',
+      '[오래 안 온 게스트 정리]로 90일 이상 미출석 게스트를 골라서 한 번에 지울 수 있어요.',
+      '본인이 개인정보 삭제를 요청하면 [개인정보 삭제]를 쓰세요 — 이름·생년월일·성별이 지워지고 복구할 수 없어요.',
     ],
   },
   {

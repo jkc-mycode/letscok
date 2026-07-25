@@ -19,6 +19,14 @@ export const Gender = {
 } as const;
 export type Gender = (typeof Gender)[keyof typeof Gender];
 
+// 모임 내 역할 — 표시·명단 관리용 구분. 인증 권한은 단일 패스코드 그대로(별도 권한 단계 없음)
+export const MemberRole = {
+  LEADER: 'LEADER', // 모임장
+  MANAGER: 'MANAGER', // 운영진
+  MEMBER: 'MEMBER', // 모임원
+} as const;
+export type MemberRole = (typeof MemberRole)[keyof typeof MemberRole];
+
 export const SessionStatus = {
   OPEN: 'OPEN',
   CLOSED: 'CLOSED',
@@ -57,8 +65,27 @@ export interface IMember {
   grade: Grade;
   gender: Gender | null; // null = 미지정 (도입 전 기존 회원)
   isGuest: boolean;
+  role: MemberRole; // 모임장/운영진/모임원 — 게스트는 항상 MEMBER
   consented: boolean; // 개인정보 동의 이력 — false면 첫 체크인 때 본인 동의를 받아야 한다
   createdAt: string;
+}
+
+// 명단 관리 목록 행 — 회원 정보 + 출석 집계 (관제판 [모임원 관리] 전용, AdminGuard 뒤)
+export interface IMemberSummary extends IMember {
+  deletedAt: string | null; // 삭제된 회원도 목록에 실어 복구를 지원한다
+  lastAttendedAt: string | null; // 마지막 출석 세션 날짜 (YYYY-MM-DD) — 없으면 미출석
+  totalSessions: number;
+  totalGames: number;
+}
+
+// 회원 정보 수정 — 모든 필드 선택적(보낸 것만 반영). isGuest는 false만 허용(게스트→정회원 승격 전용)
+export interface IUpdateMemberDto {
+  name?: string;
+  birthDate?: string; // YYYY-MM-DD
+  grade?: Grade;
+  gender?: Gender;
+  role?: MemberRole;
+  isGuest?: boolean;
 }
 
 export interface ISession {

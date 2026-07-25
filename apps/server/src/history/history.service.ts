@@ -116,7 +116,12 @@ export class HistoryService {
     }
 
     const [members, attendances] = await Promise.all([
-      this.prisma.member.findMany({ orderBy: { name: 'asc' } }),
+      // 삭제(익명화 포함) 회원 제외 — 명단 삭제 기능이 생기며 표면화된 기존 버그 수정.
+      // 지난 모임 상세의 게임 기록에는 계속 남는다(기록 보존, attendance 경유라 이 필터와 무관)
+      this.prisma.member.findMany({
+        where: { deletedAt: null },
+        orderBy: { name: 'asc' },
+      }),
       this.prisma.attendance.findMany({
         where: since ? { session: { date: { gte: since } } } : {},
         include: { session: { select: { date: true } } },
