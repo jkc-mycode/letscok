@@ -20,7 +20,7 @@ import {
 import { AnimatePresence } from 'motion/react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LoginGate } from '@/components/admin-gate';
 import { GenderMarker, GradeBadge, PlayerGrid, Toast } from '@/components/badges';
 import { MotionCard } from '@/components/motion-card';
@@ -160,6 +160,23 @@ function BoardBody({
   const [helpOpen, setHelpOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false); // 운영진 수동 체크인 (사전 등록·현장 대리 등 예외용)
   const [membersOpen, setMembersOpen] = useState(false); // 모임원 관리 (명단 조회·수정·정리)
+
+  // 이스터에그 — 대기 인원 헤더의 [수동 체크인] 왼쪽 빈 영역 13연타 (현장 태블릿용 서프라이즈)
+  // 연타 카운트는 리렌더와 무관한 ref로, 1초 이상 쉬면 리셋(누적 탭 우연 발동 방지)
+  const cheerTapCount = useRef(0);
+  const cheerLastTapAt = useRef(0);
+  const [cheer, setCheer] = useState(false);
+  const closeCheer = useCallback(() => setCheer(false), []);
+  const handleCheerTap = () => {
+    const at = Date.now();
+    if (at - cheerLastTapAt.current > CHEER_TAP_GAP_MS) cheerTapCount.current = 0;
+    cheerLastTapAt.current = at;
+    cheerTapCount.current += 1;
+    if (cheerTapCount.current >= CHEER_TAPS) {
+      cheerTapCount.current = 0;
+      setCheer(true);
+    }
+  };
   const [gamesLogOpen, setGamesLogOpen] = useState(false); // 오늘 완료 게임 조회·이름 검색
   // 폰(<md)에서는 3구역을 한 번에 못 보여주므로 탭 전환 — 조작 시작점인 대기 인원이 기본
   const [mobileTab, setMobileTab] = useState<MobileTab>('waiting');
@@ -468,6 +485,12 @@ function BoardBody({
                   게임 중 포함
                 </button>
               )}
+              {/* 이스터에그 히든 존 — [수동 체크인]과 같은 크기의 보이지 않는 영역, 13연타로 발동 */}
+              <span
+                onClick={handleCheerTap}
+                aria-hidden
+                className="h-7 w-[74px] cursor-default"
+              />
               <button
                 onClick={() => setManualOpen(true)}
                 className="h-7 rounded-lg border border-line px-2.5 text-xs font-medium text-faint"
@@ -578,6 +601,7 @@ function BoardBody({
       )}
       {codeOpen && <CheckInCodeModal onClose={() => setCodeOpen(false)} />}
       {membersOpen && <MembersManagerModal onClose={() => setMembersOpen(false)} />}
+      {cheer && <CheerEasterEgg onDone={closeCheer} />}
       {manualOpen && (
         <ManualCheckInModal
           sessionId={session.id}
@@ -1189,6 +1213,51 @@ function MemoPanel({
         </button>
       </div>
     </section>
+  );
+}
+
+// ===== 이스터에그 — 대기 인원 헤더 히든 존 13연타 시 모임장 응원 =====
+
+const CHEER_TAPS = 13;
+const CHEER_TAP_GAP_MS = 1000; // 이 간격 안에 이어서 눌러야 카운트 유지
+
+function CheerEasterEgg({ onDone }: { onDone: () => void }) {
+  // 반짝이 파티클 — 마운트 시 한 번만 랜덤 생성
+  const sparkles = useMemo(
+    () =>
+      Array.from({ length: 24 }, (_, i) => ({
+        id: i,
+        left: Math.random() * 100,
+        delay: Math.random() * 0.9,
+        size: 14 + Math.random() * 18,
+        emoji: ['✨', '🌟', '💫', '🏸'][i % 4],
+      })),
+    [],
+  );
+  useEffect(() => {
+    const timer = setTimeout(onDone, 3200); // 반짝이 낙하가 끝나면 스스로 닫힌다
+    return () => clearTimeout(timer);
+  }, [onDone]);
+  return (
+    <div
+      onClick={onDone}
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/40"
+    >
+      {sparkles.map((s) => (
+        <span
+          key={s.id}
+          className="sparkle-fall absolute top-0"
+          style={{ left: `${s.left}%`, animationDelay: `${s.delay}s`, fontSize: s.size }}
+        >
+          {s.emoji}
+        </span>
+      ))}
+      {/* 폰에서는 두 줄, 태블릿 이상은 한 줄 — 긴 문구가 좁은 화면에서 깨지지 않게 */}
+      <p className="cheer-pop text-center text-4xl font-bold text-white drop-shadow-lg sm:text-5xl">
+        <span className="block sm:inline">김강민</span>{' '}
+        <span className="block sm:inline">화이팅!!</span>
+      </p>
+    </div>
   );
 }
 

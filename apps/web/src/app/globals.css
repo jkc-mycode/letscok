@@ -88,3 +88,37 @@ button:not(:disabled):active {
     transform: none;
   }
 }
+
+/* 이스터에그 — 내 상태 배너 13연타 시 반짝이 낙하 (/m) */
+.sparkle-fall {
+  animation: sparkle-fall 2.2s ease-in both;
+}
+@keyframes sparkle-fall {
+  0% {
+    opacity: 0;
+    transform: translateY(-10dvh) rotate(0deg) scale(0.6);
+  }
+  15% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(105dvh) rotate(320deg) scale(1.1);
+  }
+}
+.cheer-pop {
+  animation: cheer-pop 0.45s cubic-bezier(0.18, 1.4, 0.4, 1) both;
+}
+@keyframes cheer-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
