@@ -1220,28 +1220,44 @@ function MemoPanel({
 
 const CHEER_TAPS = 13;
 const CHEER_TAP_GAP_MS = 1000; // 이 간격 안에 이어서 눌러야 카운트 유지
+const CHEER_DURATION_MS = 10_000; // 이 동안은 탭을 삼켜 유지 — 연타 여운으로 바로 닫히던 문제 해결
 
 function CheerEasterEgg({ onDone }: { onDone: () => void }) {
-  // 반짝이 파티클 — 마운트 시 한 번만 랜덤 생성
+  // 낙하 반짝이 — 마운트 시 한 번만 랜덤 생성(무한 반복이라 10초 내내 쏟아진다)
   const sparkles = useMemo(
     () =>
-      Array.from({ length: 24 }, (_, i) => ({
+      Array.from({ length: 36 }, (_, i) => ({
         id: i,
         left: Math.random() * 100,
-        delay: Math.random() * 0.9,
-        size: 14 + Math.random() * 18,
-        emoji: ['✨', '🌟', '💫', '🏸'][i % 4],
+        delay: Math.random() * 2.6,
+        size: 14 + Math.random() * 20,
+        emoji: ['✨', '🌟', '💫', '🏸', '⭐', '🎉'][i % 6],
+      })),
+    [],
+  );
+  // 글자 주변 제자리 반짝임 — 촌스러운 후광 연출용
+  const twinkles = useMemo(
+    () =>
+      Array.from({ length: 14 }, (_, i) => ({
+        id: i,
+        top: -20 + Math.random() * 140,
+        left: -10 + Math.random() * 120,
+        delay: Math.random() * 1.1,
+        size: 12 + Math.random() * 16,
+        emoji: ['✨', '⭐', '💖', '🌟'][i % 4],
       })),
     [],
   );
   useEffect(() => {
-    const timer = setTimeout(onDone, 3200); // 반짝이 낙하가 끝나면 스스로 닫힌다
+    const timer = setTimeout(onDone, CHEER_DURATION_MS);
     return () => clearTimeout(timer);
   }, [onDone]);
   return (
+    // 클릭/터치를 전부 삼킨다 — 10초 동안 화면이 눌리지 않게 (닫기는 타이머만)
     <div
-      onClick={onDone}
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/40"
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.preventDefault()}
+      className="fixed inset-0 z-50 flex touch-none select-none items-center justify-center overflow-hidden bg-black/50"
     >
       {sparkles.map((s) => (
         <span
@@ -1252,11 +1268,29 @@ function CheerEasterEgg({ onDone }: { onDone: () => void }) {
           {s.emoji}
         </span>
       ))}
-      {/* 폰에서는 두 줄, 태블릿 이상은 한 줄 — 긴 문구가 좁은 화면에서 깨지지 않게 */}
-      <p className="cheer-pop text-center text-4xl font-bold text-white drop-shadow-lg sm:text-5xl">
-        <span className="block sm:inline">김강민</span>{' '}
-        <span className="block sm:inline">화이팅!!</span>
-      </p>
+      <div className="relative">
+        {/* 회전하는 무지개 후광 — 글자 뒤 */}
+        <div className="cheer-glow absolute -inset-x-12 -inset-y-8 rounded-full" />
+        {twinkles.map((t) => (
+          <span
+            key={t.id}
+            className="cheer-twinkle absolute"
+            style={{
+              top: `${t.top}%`,
+              left: `${t.left}%`,
+              animationDelay: `${t.delay}s`,
+              fontSize: t.size,
+            }}
+          >
+            {t.emoji}
+          </span>
+        ))}
+        {/* 폰에서는 두 줄, 태블릿 이상은 한 줄 — 긴 문구가 좁은 화면에서 깨지지 않게 */}
+        <p className="cheer-pop relative text-center text-4xl font-bold sm:text-5xl">
+          <span className="block sm:inline">김강민</span>{' '}
+          <span className="block sm:inline">화이팅!!</span>
+        </p>
+      </div>
     </div>
   );
 }

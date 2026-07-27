@@ -89,9 +89,10 @@ button:not(:disabled):active {
   }
 }
 
-/* 이스터에그 — 내 상태 배너 13연타 시 반짝이 낙하 (/m) */
+/* 이스터에그 — 대기 인원 헤더 13연타 시 반짝이 낙하 (관제판)
+   10초 내내 쏟아져야 해서 무한 반복 (개별 지연으로 흩뿌린다) */
 .sparkle-fall {
-  animation: sparkle-fall 2.2s ease-in both;
+  animation: sparkle-fall 2.6s linear infinite both;
 }
 @keyframes sparkle-fall {
   0% {
@@ -110,7 +111,9 @@ button:not(:disabled):active {
   }
 }
 .cheer-pop {
-  animation: cheer-pop 0.45s cubic-bezier(0.18, 1.4, 0.4, 1) both;
+  animation:
+    cheer-pop 0.45s cubic-bezier(0.18, 1.4, 0.4, 1) both,
+    cheer-rainbow 1.6s linear 0.45s infinite;
 }
 @keyframes cheer-pop {
   from {
@@ -120,5 +123,70 @@ button:not(:disabled):active {
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+/* 촌스러운 무지개 글자색 — 90년대 나이트클럽 감성 (의도된 촌스러움) */
+@keyframes cheer-rainbow {
+  0% {
+    color: #fff2a8;
+    text-shadow: 0 0 12px #ffb224, 0 0 26px #ff6b57;
+  }
+  33% {
+    color: #b8f5ff;
+    text-shadow: 0 0 12px #6db8ff, 0 0 26px #3ecf7a;
+  }
+  66% {
+    color: #ffd6ec;
+    text-shadow: 0 0 12px #ff8fab, 0 0 26px #ffb224;
+  }
+  100% {
+    color: #fff2a8;
+    text-shadow: 0 0 12px #ffb224, 0 0 26px #ff6b57;
+  }
+}
+
+/* 텍스트 뒤 회전하는 무지개 광선 — blur로 뭉개 후광처럼 */
+.cheer-glow {
+  background: conic-gradient(
+    from 0deg,
+    #ffb224,
+    #ff6b57,
+    #ff8fab,
+    #6db8ff,
+    #3ecf7a,
+    #fff2a8,
+    #ffb224
+  );
+  filter: blur(28px);
+  animation: cheer-glow 3.2s linear infinite;
+}
+@keyframes cheer-glow {
+  0% {
+    transform: rotate(0deg) scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: rotate(180deg) scale(1.18);
+    opacity: 0.8;
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+    opacity: 0.55;
+  }
+}
+
+/* 글자 주변에서 깜빡이는 별 — 제자리 반짝임 (낙하 반짝이와 별개) */
+.cheer-twinkle {
+  animation: cheer-twinkle 1.1s ease-in-out infinite both;
+}
+@keyframes cheer-twinkle {
+  0%,
+  100% {
+    opacity: 0.15;
+    transform: scale(0.6) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.25) rotate(25deg);
   }
 }
