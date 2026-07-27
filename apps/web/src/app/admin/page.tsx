@@ -1270,7 +1270,7 @@ function CheerEasterEgg({ onDone }: { onDone: () => void }) {
       ))}
       <div className="relative">
         {/* 회전하는 무지개 후광 — 글자 뒤 */}
-        <div className="cheer-glow absolute -inset-x-12 -inset-y-8 rounded-full" />
+        <div className="cheer-glow absolute -inset-x-20 -inset-y-14 rounded-full" />
         {twinkles.map((t) => (
           <span
             key={t.id}
@@ -1286,7 +1286,8 @@ function CheerEasterEgg({ onDone }: { onDone: () => void }) {
           </span>
         ))}
         {/* 폰에서는 두 줄, 태블릿 이상은 한 줄 — 긴 문구가 좁은 화면에서 깨지지 않게 */}
-        <p className="cheer-pop relative text-center text-4xl font-bold sm:text-5xl">
+        {/* 폰은 vw로 상한을 둬 좁은 기기(320px)에서도 안 잘리게, 태블릿 이상은 고정 크기 */}
+        <p className="cheer-pop relative text-center text-[clamp(3rem,15vw,4.5rem)] leading-tight font-bold sm:text-[6rem]">
           <span className="block sm:inline">김강민</span>{' '}
           <span className="block sm:inline">화이팅!!</span>
         </p>
