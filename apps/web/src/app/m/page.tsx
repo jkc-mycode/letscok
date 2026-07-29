@@ -8,6 +8,7 @@ import { AnimatePresence } from 'motion/react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { GenderMarker, GradeBadge, MeChip, PlayerGrid, Toast } from '@/components/badges';
+import { InstallPrompt } from '@/components/install-prompt';
 import { MotionCard } from '@/components/motion-card';
 import { api, ApiError } from '@/lib/api';
 import { getMemberId } from '@/lib/member';
@@ -313,6 +314,8 @@ function Empty({ children }: { children: React.ReactNode }) {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <main className="fade-in mx-auto flex min-h-dvh w-full max-w-md flex-col gap-2 p-4">
+      {/* 설치 배너는 /m의 모든 상태(로딩·모임 전·미체크인·참여 중)에서 같은 자리에 뜬다 */}
+      <InstallPrompt />
       {children}
     </main>
   );
