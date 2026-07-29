@@ -6,6 +6,7 @@
 import { IAttendance } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
 import Link from 'next/link';
+import { HomeLink } from '@/components/home-link';
 import { useEffect, useMemo, useState } from 'react';
 import { GenderMarker, GradeBadge, MeChip, PlayerGrid, Toast } from '@/components/badges';
 import { InstallPrompt } from '@/components/install-prompt';
@@ -68,7 +69,7 @@ export default function MyStatusPage() {
       <Shell>
         <Centered title="체크인이 필요해요" desc="셔틀콕 내고 코드 입력하셨나요?" />
         <Link
-          href="/checkin"
+          href="/m/checkin"
           className="flex h-14 items-center justify-center rounded-xl bg-court text-lg font-bold text-bg"
         >
           체크인하러 가기
@@ -99,12 +100,9 @@ export default function MyStatusPage() {
   return (
     <Shell>
       {/* 로고 = 홈 링크 (스크롤하면 아래 sticky 배너가 상단을 대체) */}
-      <Link
-        href="/"
-        className="self-center text-[11px] font-medium tracking-[0.3em] text-court/70 transition-opacity hover:opacity-70"
-      >
+      <HomeLink className="self-center text-[11px] font-medium tracking-[0.3em] text-court/70 transition-opacity hover:opacity-70">
         LETSCOK
-      </Link>
+      </HomeLink>
       <MyBanner me={me} waiting={waiting} now={now} />
 
       {/* 콕 미확인 안내 — 이게 없으면 "왜 나만 게임에 안 넣어주지" 오해로 운영진 문의가 늘어난다 */}
@@ -324,12 +322,9 @@ function Shell({ children }: { children: React.ReactNode }) {
 function Centered({ title, desc }: { title: string; desc: string }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
-      <Link
-        href="/"
-        className="text-xs font-medium tracking-[0.3em] text-court transition-opacity hover:opacity-70"
-      >
+      <HomeLink className="text-xs font-medium tracking-[0.3em] text-court transition-opacity hover:opacity-70">
         LETSCOK
-      </Link>
+      </HomeLink>
       <h1 className="text-2xl font-bold">{title}</h1>
       <p className="text-dim">{desc}</p>
     </div>

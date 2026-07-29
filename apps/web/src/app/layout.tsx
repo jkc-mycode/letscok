@@ -19,6 +19,8 @@ export const metadata: Metadata = {
   title: '렛츠콕',
   description: '배드민턴 모임 인원·코트 관리',
   applicationName: '렛츠콕',
+  // 기본은 모임원 앱 — 관제판 경로는 app/admin/layout.tsx가 자기 manifest로 덮어쓴다
+  manifest: '/manifest/member',
   // 홈 화면에 설치됐을 때의 동작 — capable이 있어야 주소창 없이 뜬다
   // black-translucent는 상태바를 콘텐츠 위에 겹치므로 아래 safe-area 패딩이 짝을 이룬다
   appleWebApp: {

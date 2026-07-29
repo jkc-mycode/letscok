@@ -2,6 +2,7 @@
 
 import { IHistoryRankingEntry } from '@letscok/shared-types';
 import Link from 'next/link';
+import { HomeLink } from '@/components/home-link';
 import { useEffect, useMemo, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
 import { GenderMarker, GradeBadge } from '@/components/badges';
@@ -57,12 +58,9 @@ function Ranking() {
   return (
     <main className="fade-in mx-auto flex min-h-dvh w-full max-w-lg flex-col gap-4 p-6">
       <header>
-        <Link
-          href="/"
-          className="text-sm font-medium tracking-[0.3em] text-court transition-opacity hover:opacity-70"
-        >
+        <HomeLink className="text-sm font-medium tracking-[0.3em] text-court transition-opacity hover:opacity-70">
           LETSCOK
-        </Link>
+        </HomeLink>
         <h1 className="mt-1 text-2xl font-bold">참여 랭킹</h1>
         <p className="mt-1 text-xs text-faint">승패가 아니라 출석·게임 수 기준이에요</p>
       </header>
@@ -101,7 +99,7 @@ function Ranking() {
         {sorted?.map((entry, index) => (
           <Link
             key={entry.memberId}
-            href={`/history/members/${entry.memberId}`}
+            href={`/admin/history/members/${entry.memberId}`}
             className={`flex items-center gap-2 rounded-xl border bg-panel p-3 transition-colors hover:border-court/50 ${
               entry.totalSessions === 0 ? 'border-line opacity-60' : 'border-line'
             }`}

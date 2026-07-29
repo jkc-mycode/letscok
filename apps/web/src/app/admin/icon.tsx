@@ -1,12 +1,11 @@
 import { ImageResponse } from 'next/og';
 import { ICON_THEME, shuttleDataUri } from '@/lib/shuttle-icon';
 
-// 브라우저 탭 파비콘 — 32px에선 결이 뭉개지므로 셔틀콕만 크게 채운다
-// (관제판 경로는 app/admin/icon.tsx가 덮어써서 초록 아이콘이 뜬다)
+// 관제판 경로의 탭 파비콘 — 태블릿에서 탭을 여러 개 열어둬도 관제판을 바로 찾게
 export const size = { width: 32, height: 32 };
 export const contentType = 'image/png';
 
-export default function Icon() {
+export default function AdminIcon() {
   return new ImageResponse(
     (
       <div
@@ -16,10 +15,10 @@ export default function Icon() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: ICON_THEME.member.background,
+          background: ICON_THEME.admin.background,
         }}
       >
-        <img src={shuttleDataUri('member')} width={28} height={28} alt="" />
+        <img src={shuttleDataUri('admin')} width={28} height={28} alt="" />
       </div>
     ),
     size,

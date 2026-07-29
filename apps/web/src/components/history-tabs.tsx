@@ -2,11 +2,11 @@
 
 import Link from 'next/link';
 
-// 히스토리 허브 상단 탭 — /history(모임 목록)와 /history/ranking(참여 랭킹)을 오간다
+// 히스토리 허브 상단 탭 — /admin/history(모임 목록)와 /admin/history/ranking(참여 랭킹)을 오간다
 export function HistoryTabs({ current }: { current: 'sessions' | 'ranking' }) {
   const tabs = [
-    { key: 'sessions', label: '모임', href: '/history' },
-    { key: 'ranking', label: '랭킹', href: '/history/ranking' },
+    { key: 'sessions', label: '모임', href: '/admin/history' },
+    { key: 'ranking', label: '랭킹', href: '/admin/history/ranking' },
   ] as const;
 
   return (

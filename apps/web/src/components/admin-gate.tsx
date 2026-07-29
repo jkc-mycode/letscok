@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import { HomeLink } from '@/components/home-link';
 import { useEffect, useState } from 'react';
 import { api, ApiError, clearPasscode, getPasscode, savePasscode } from '@/lib/api';
 
@@ -39,12 +39,9 @@ export function LoginGate({
   return (
     <main className="fade-in flex min-h-dvh flex-col items-center justify-center gap-8 p-6">
       <div className="text-center">
-        <Link
-          href="/"
-          className="inline-block text-sm font-medium tracking-[0.3em] text-court transition-opacity hover:opacity-70"
-        >
+        <HomeLink className="inline-block text-sm font-medium tracking-[0.3em] text-court transition-opacity hover:opacity-70">
           LETSCOK
-        </Link>
+        </HomeLink>
         <h1 className="mt-2 text-4xl font-bold">{title}</h1>
         <p className="mt-2 text-dim">{subtitle ?? '운영진 패스코드를 입력해주세요'}</p>
       </div>

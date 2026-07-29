@@ -1,7 +1,7 @@
 import { ImageResponse } from 'next/og';
-import { ICON_BG, SHUTTLE_DATA_URI } from '@/lib/shuttle-icon';
+import { ICON_THEME, shuttleDataUri, type IconApp } from '@/lib/shuttle-icon';
 
-// manifest가 참조하는 아이콘 — 빌드 시 PNG로 미리 생성된다(force-static)
+// 두 manifest가 참조하는 아이콘 — 빌드 시 PNG로 미리 생성된다(force-static)
 // maskable은 Android가 기기 테마에 맞춰 원형·스퀘어클로 깎아내므로,
 // 안전 영역(가운데 80%) 안에 들어오도록 글리프를 더 작게 그린다
 const VARIANTS: Record<string, { size: number; ratio: number }> = {
@@ -10,21 +10,24 @@ const VARIANTS: Record<string, { size: number; ratio: number }> = {
   'maskable-512': { size: 512, ratio: 0.52 },
 };
 
+const APPS: IconApp[] = ['member', 'admin'];
+
 export const dynamic = 'force-static';
 
 export function generateStaticParams() {
-  return Object.keys(VARIANTS).map((variant) => ({ variant }));
+  return APPS.flatMap((app) => Object.keys(VARIANTS).map((variant) => ({ app, variant })));
 }
 
 export async function GET(
   _request: Request,
-  { params }: { params: Promise<{ variant: string }> },
+  { params }: { params: Promise<{ app: string; variant: string }> },
 ) {
-  const { variant } = await params;
+  const { app, variant } = await params;
   const spec = VARIANTS[variant];
-  if (!spec) {
+  if (!spec || !APPS.includes(app as IconApp)) {
     return new Response('Not Found', { status: 404 });
   }
+  const theme = ICON_THEME[app as IconApp];
   const glyph = Math.round(spec.size * spec.ratio);
 
   return new ImageResponse(
@@ -36,10 +39,10 @@ export async function GET(
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: ICON_BG,
+          background: theme.background,
         }}
       >
-        <img src={SHUTTLE_DATA_URI} width={glyph} height={glyph} alt="" />
+        <img src={shuttleDataUri(app as IconApp)} width={glyph} height={glyph} alt="" />
       </div>
     ),
     { width: spec.size, height: spec.size },

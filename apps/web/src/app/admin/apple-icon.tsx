@@ -1,12 +1,11 @@
 import { ImageResponse } from 'next/og';
 import { ICON_THEME, shuttleDataUri } from '@/lib/shuttle-icon';
 
-// 브라우저 탭 파비콘 — 32px에선 결이 뭉개지므로 셔틀콕만 크게 채운다
-// (관제판 경로는 app/admin/icon.tsx가 덮어써서 초록 아이콘이 뜬다)
-export const size = { width: 32, height: 32 };
+// iOS 홈 화면 아이콘(관제판 앱) — 모임원 앱과 나란히 놓이므로 색을 반전해 구분한다
+export const size = { width: 180, height: 180 };
 export const contentType = 'image/png';
 
-export default function Icon() {
+export default function AdminAppleIcon() {
   return new ImageResponse(
     (
       <div
@@ -16,10 +15,10 @@ export default function Icon() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: ICON_THEME.member.background,
+          background: ICON_THEME.admin.background,
         }}
       >
-        <img src={shuttleDataUri('member')} width={28} height={28} alt="" />
+        <img src={shuttleDataUri('admin')} width={130} height={130} alt="" />
       </div>
     ),
     size,

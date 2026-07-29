@@ -18,8 +18,7 @@ import {
   RecommendationKind,
 } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { HomeLink } from '@/components/home-link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LoginGate } from '@/components/admin-gate';
 import { GenderMarker, GradeBadge, PlayerGrid, Toast } from '@/components/badges';
@@ -106,12 +105,9 @@ function StartScreen({
   return (
     <main className="fade-in flex min-h-dvh flex-col items-center justify-center gap-8">
       <div className="text-center">
-        <Link
-          href="/"
-          className="inline-block text-sm font-medium tracking-[0.3em] text-court transition-opacity hover:opacity-70"
-        >
+        <HomeLink className="inline-block text-sm font-medium tracking-[0.3em] text-court transition-opacity hover:opacity-70">
           LETSCOK
-        </Link>
+        </HomeLink>
         <h1 className="mt-2 text-4xl font-bold">아직 모임 전이에요</h1>
         <p className="mt-2 text-dim">모임을 시작하면 체크인을 받을 수 있어요</p>
       </div>
@@ -151,7 +147,6 @@ function BoardBody({
   onLogout: () => void;
 }) {
   const now = useNow();
-  const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [courtsOpen, setCourtsOpen] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
@@ -267,11 +262,11 @@ function BoardBody({
       setTimeout(() => setConfirmClose(false), 4000); // 4초 내 재탭 시 종료
       return;
     }
-    // 모임 종료 = 그날 운영 끝 → 패스코드 삭제 후 홈으로 (잠금은 게이트에 머무는 것과 다름)
+    // 모임 종료 = 그날 운영 끝 → 패스코드를 지우고 게이트로 되돌린다
+    // (예전엔 홈으로 보냈지만, 홈은 관제판 앱 scope 밖이라 설치 상태에선 앱을 벗어나 버린다)
     void run(async () => {
       await api(`/sessions/${session.id}/close`, { method: 'PATCH', admin: true });
-      clearPasscode();
-      router.push('/');
+      onLogout();
     });
   };
 
@@ -341,11 +336,11 @@ function BoardBody({
     <main className="fade-in flex h-dvh flex-col p-2 md:p-4">
       {/* 헤더 */}
       <header className="flex items-center gap-2 pb-2 md:gap-4 md:pb-3">
-        <Link href="/" className="shrink-0 transition-opacity hover:opacity-70" title="홈으로">
+        <HomeLink className="shrink-0 transition-opacity hover:opacity-70" title="홈으로">
           <h1 className="text-base font-bold md:text-xl">
             렛츠콕 <span className="text-court">관제판</span>
           </h1>
-        </Link>
+        </HomeLink>
         <p className="truncate text-xs text-dim md:text-sm">
           {session.date} · 출석 {presentCount}명
         </p>

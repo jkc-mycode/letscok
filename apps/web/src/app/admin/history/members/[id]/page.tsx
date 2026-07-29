@@ -30,7 +30,7 @@ function MemberStats() {
   return (
     <main className="fade-in mx-auto flex min-h-dvh w-full max-w-lg flex-col gap-5 p-6">
       <header>
-        <Link href="/history" className="text-sm text-dim transition-opacity hover:opacity-70">
+        <Link href="/admin/history" className="text-sm text-dim transition-opacity hover:opacity-70">
           ← 모임 목록
         </Link>
         {stats && (
@@ -78,7 +78,7 @@ function MemberStats() {
               {stats.topPartners.map((partner, index) => (
                 <Link
                   key={partner.memberId}
-                  href={`/history/members/${partner.memberId}`}
+                  href={`/admin/history/members/${partner.memberId}`}
                   className="flex items-center gap-3 rounded-xl border border-line bg-panel p-3 transition-colors hover:border-court/50"
                 >
                   <span className="w-4 text-center text-xs font-bold text-faint">{index + 1}</span>

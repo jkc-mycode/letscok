@@ -2,6 +2,7 @@
 
 import { IHistorySessionListResponse } from '@letscok/shared-types';
 import Link from 'next/link';
+import { HomeLink } from '@/components/home-link';
 import { useEffect, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
 import { HistoryTabs } from '@/components/history-tabs';
@@ -37,12 +38,9 @@ function HistoryList() {
   return (
     <main className="fade-in mx-auto flex min-h-dvh w-full max-w-lg flex-col gap-4 p-6">
       <header>
-        <Link
-          href="/"
-          className="text-sm font-medium tracking-[0.3em] text-court transition-opacity hover:opacity-70"
-        >
+        <HomeLink className="text-sm font-medium tracking-[0.3em] text-court transition-opacity hover:opacity-70">
           LETSCOK
-        </Link>
+        </HomeLink>
         <h1 className="mt-1 text-2xl font-bold">지난 모임 기록</h1>
         {data && <p className="mt-1 text-sm text-dim">총 {data.total}번의 모임</p>}
       </header>
@@ -59,7 +57,7 @@ function HistoryList() {
         {data?.sessions.map((session) => (
           <Link
             key={session.id}
-            href={`/history/${session.id}`}
+            href={`/admin/history/${session.id}`}
             className="flex items-center gap-3 rounded-xl border border-line bg-panel p-4 transition-colors hover:border-court/50"
           >
             <span className="font-bold">{session.date}</span>

@@ -44,14 +44,14 @@ export default function HomePage() {
             운영진 관제판
           </Link>
           <Link
-            href="/checkin"
+            href="/m/checkin"
             className="flex h-14 items-center rounded-xl border border-court px-8 font-bold text-court"
           >
             모임원 체크인
           </Link>
         </div>
         <Link
-          href="/history"
+          href="/admin/history"
           className="flex h-11 items-center rounded-xl border border-line px-6 text-sm font-medium text-dim transition-colors hover:border-court/50"
         >
           🔒 지난 모임 기록

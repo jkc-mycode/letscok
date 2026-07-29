@@ -37,7 +37,7 @@ function HistoryDetail() {
   return (
     <main className="fade-in mx-auto flex min-h-dvh w-full max-w-lg flex-col gap-5 p-6">
       <header>
-        <Link href="/history" className="text-sm text-dim transition-opacity hover:opacity-70">
+        <Link href="/admin/history" className="text-sm text-dim transition-opacity hover:opacity-70">
           ← 모임 목록
         </Link>
         <h1 className="mt-1 text-2xl font-bold">{detail?.session.date ?? '모임 상세'}</h1>
@@ -61,7 +61,7 @@ function HistoryDetail() {
               {detail.attendees.map((attendee) => (
                 <Link
                   key={attendee.memberId}
-                  href={`/history/members/${attendee.memberId}`}
+                  href={`/admin/history/members/${attendee.memberId}`}
                   className="flex items-center gap-2 rounded-xl border border-line bg-panel p-3 transition-colors hover:border-court/50"
                 >
                   <GradeBadge grade={attendee.grade} />
