@@ -6,7 +6,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
 import { GenderMarker, GradeBadge } from '@/components/badges';
 import { HistoryTabs } from '@/components/history-tabs';
-import { HomeLink } from '@/components/home-link';
 import { api, ApiError } from '@/lib/api';
 
 // 기간 필터 — months 값이 null이면 전체 누적
@@ -58,9 +57,9 @@ function Ranking() {
   return (
     <main className="fade-in mx-auto flex min-h-dvh w-full max-w-lg flex-col gap-4 p-6">
       <header>
-        <HomeLink className="text-sm font-medium tracking-[0.3em] text-court transition-opacity hover:opacity-70">
-          LETSCOK
-        </HomeLink>
+        <Link href="/admin" className="text-sm text-dim transition-opacity hover:opacity-70">
+          ← 관제판
+        </Link>
         <h1 className="mt-1 text-2xl font-bold">참여 랭킹</h1>
         <p className="mt-1 text-xs text-faint">승패가 아니라 출석·게임 수 기준이에요</p>
       </header>

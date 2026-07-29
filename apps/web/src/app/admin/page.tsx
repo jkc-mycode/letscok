@@ -18,7 +18,16 @@ import {
   RecommendationKind,
 } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type TouchEvent as ReactTouchEvent,
+} from 'react';
 import { LoginGate } from '@/components/admin-gate';
 import { GenderMarker, GradeBadge, PlayerGrid, Toast } from '@/components/badges';
 import { HomeLink } from '@/components/home-link';
@@ -118,12 +127,22 @@ function StartScreen({
       >
         오늘 모임 시작
       </button>
-      <button
-        onClick={() => setMembersOpen(true)}
-        className="h-11 rounded-xl border border-line px-6 text-sm font-medium text-dim"
-      >
-        모임원 관리
-      </button>
+      {/* 모임 전이 한가하니 명단 정리·기록 열람을 여기서 바로 들어가게 둔다
+          (지난 기록은 원래 홈에만 링크가 있었는데, 홈은 관제판 앱 scope 밖이라 설치본에선 못 간다) */}
+      <div className="flex gap-3">
+        <button
+          onClick={() => setMembersOpen(true)}
+          className="h-11 rounded-xl border border-line px-6 text-sm font-medium text-dim"
+        >
+          모임원 관리
+        </button>
+        <Link
+          href="/admin/history"
+          className="flex h-11 items-center rounded-xl border border-line px-6 text-sm font-medium text-dim"
+        >
+          지난 기록
+        </Link>
+      </div>
       {membersOpen && <MembersManagerModal onClose={() => setMembersOpen(false)} />}
       {toast && <Toast message={toast} />}
     </main>
@@ -132,6 +151,9 @@ function StartScreen({
 
 // 폰 전용 구역 탭 — md 이상에서는 전부 동시에 보이므로 무시된다
 type MobileTab = 'courts' | 'queue' | 'waiting' | 'memo';
+
+const SWIPE_MIN_PX = 50; // 이 이상 가로로 움직여야 탭 전환 (짧은 흔들림은 무시)
+const SWIPE_EDGE_GUARD = 20; // 화면 가장자리 시작 스와이프는 시스템 제스처에 양보
 
 function BoardBody({
   snapshot,
@@ -146,6 +168,7 @@ function BoardBody({
   toast: string | null;
   onLogout: () => void;
 }) {
+  const router = useRouter();
   const now = useNow();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [courtsOpen, setCourtsOpen] = useState(false);
@@ -175,6 +198,7 @@ function BoardBody({
   const [gamesLogOpen, setGamesLogOpen] = useState(false); // 오늘 완료 게임 조회·이름 검색
   // 폰(<md)에서는 3구역을 한 번에 못 보여주므로 탭 전환 — 조작 시작점인 대기 인원이 기본
   const [mobileTab, setMobileTab] = useState<MobileTab>('waiting');
+  const swipeStart = useRef<{ x: number; y: number } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false); // 폰 헤더 햄버거
   const [replaceGameId, setReplaceGameId] = useState<string | null>(null); // 선수 교체 대상 게임
 
@@ -296,6 +320,12 @@ function BoardBody({
       cls: 'border-line text-dim',
     },
     {
+      key: 'history',
+      label: '지난 기록',
+      onClick: () => router.push('/admin/history'),
+      cls: 'border-line text-dim',
+    },
+    {
       key: 'members',
       label: '모임원 관리',
       onClick: () => setMembersOpen(true),
@@ -331,6 +361,32 @@ function BoardBody({
     { value: 'waiting', label: '대기', count: waiting.length },
     { value: 'memo', label: '메모' },
   ];
+
+  // 폰에서 구역 간 가로 스와이프 이동 — 매번 탭을 누르지 않아도 되게
+  // (md 이상은 구역이 동시에 보여 mobileTab 자체가 무시되므로 영향 없음)
+  const onTouchStart = (e: ReactTouchEvent<HTMLDivElement>) => {
+    const touch = e.touches[0];
+    // 화면 가장자리에서 시작한 스와이프는 iOS 시스템 뒤로가기 몫이라 건드리지 않는다
+    if (touch.clientX < SWIPE_EDGE_GUARD || touch.clientX > window.innerWidth - SWIPE_EDGE_GUARD) {
+      swipeStart.current = null;
+      return;
+    }
+    swipeStart.current = { x: touch.clientX, y: touch.clientY };
+  };
+
+  const onTouchEnd = (e: ReactTouchEvent<HTMLDivElement>) => {
+    const start = swipeStart.current;
+    swipeStart.current = null;
+    if (!start) return;
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    // 세로 스크롤과 구분 — 가로 이동이 세로보다 크고 충분히 움직였을 때만 전환
+    if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) <= Math.abs(dy)) return;
+    const index = MOBILE_TABS.findIndex((tab) => tab.value === mobileTab);
+    const next = MOBILE_TABS[index + (dx < 0 ? 1 : -1)]; // 양 끝에서는 undefined라 그대로 멈춘다
+    if (next) setMobileTab(next.value);
+  };
 
   return (
     <main className="fade-in flex h-dvh flex-col p-2 md:p-4">
@@ -411,7 +467,11 @@ function BoardBody({
       </div>
 
       {/* 3구역 — 폰: 탭 1구역 / 태블릿 세로: 2열(게임 중 | 조합+대기) / 데스크톱: 3열 */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-1 gap-3 md:grid-cols-2 md:grid-rows-2 lg:grid-cols-[1.15fr_1fr_1fr] lg:grid-rows-1">
+      <div
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+        className="grid min-h-0 flex-1 grid-cols-1 grid-rows-1 gap-3 md:grid-cols-2 md:grid-rows-2 lg:grid-cols-[1.15fr_1fr_1fr] lg:grid-rows-1"
+      >
         <div className={`${pane('courts')} md:row-span-2 lg:row-span-1`}>
         <Zone title="게임 중" accent="text-court" count={playingByCourt.size} className="flex-1">
           {courts.length === 0 && <Empty>코트 관리에서 사용할 코트를 등록해주세요</Empty>}

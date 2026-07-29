@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
 import { HistoryTabs } from '@/components/history-tabs';
-import { HomeLink } from '@/components/home-link';
 import { api, ApiError } from '@/lib/api';
 
 const PAGE_SIZE = 20;
@@ -38,9 +37,11 @@ function HistoryList() {
   return (
     <main className="fade-in mx-auto flex min-h-dvh w-full max-w-lg flex-col gap-4 p-6">
       <header>
-        <HomeLink className="text-sm font-medium tracking-[0.3em] text-court transition-opacity hover:opacity-70">
-          LETSCOK
-        </HomeLink>
+        {/* 설치된 관제판 앱에는 브라우저 뒤로가기가 없다 — 홈 로고도 scope 밖이라 링크가 아니어서
+            이 링크가 없으면 관제판으로 돌아갈 방법이 사라진다 */}
+        <Link href="/admin" className="text-sm text-dim transition-opacity hover:opacity-70">
+          ← 관제판
+        </Link>
         <h1 className="mt-1 text-2xl font-bold">지난 모임 기록</h1>
         {data && <p className="mt-1 text-sm text-dim">총 {data.total}번의 모임</p>}
       </header>
