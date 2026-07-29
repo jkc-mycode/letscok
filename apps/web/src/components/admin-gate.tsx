@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { HomeLink } from '@/components/home-link';
+import { InstallPrompt } from '@/components/install-prompt';
 import { api, ApiError, clearPasscode, getPasscode, savePasscode } from '@/lib/api';
 
 // 운영진 패스코드 게이트 — /admin과 /history 계열이 공유
@@ -38,6 +39,11 @@ export function LoginGate({
 
   return (
     <main className="fade-in flex min-h-dvh flex-col items-center justify-center gap-8 p-6">
+      {/* 관제판 설치 안내 — 운영진이 /admin에 처음 들어오는 자리가 여기다
+          (보드 안쪽은 화면이 빽빽해서 배너를 끼울 자리가 마땅치 않다) */}
+      <div className="w-full max-w-sm">
+        <InstallPrompt app="admin" />
+      </div>
       <div className="text-center">
         <HomeLink className="inline-block text-sm font-medium tracking-[0.3em] text-court transition-opacity hover:opacity-70">
           LETSCOK

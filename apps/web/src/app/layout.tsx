@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { IBM_Plex_Mono, IBM_Plex_Sans_KR } from 'next/font/google';
+import Script from 'next/script';
 import { SwRegister } from '@/components/sw-register';
 import './globals.css';
 
@@ -44,6 +45,12 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ko" className={`${plexKr.variable} ${plexMono.variable}`}>
+      {/* beforeinstallprompt는 로드 직후 딱 한 번 발생한다 — React 하이드레이션을 기다렸다
+          useEffect에서 리스너를 붙이면 이미 지나가 버려 [홈 화면에 추가] 버튼이 영영 안 뜬다.
+          하이드레이션보다 먼저 실행해 이벤트를 붙잡아 두고, 컴포넌트는 이 값을 주워 쓴다 */}
+      <Script id="capture-install-prompt" strategy="beforeInteractive">
+        {`window.__letscokInstallEvent=null;window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__letscokInstallEvent=e;window.dispatchEvent(new Event('letscok:installable'))});`}
+      </Script>
       <body className="court-bg min-h-dvh font-sans antialiased">
         {children}
         <SwRegister />
