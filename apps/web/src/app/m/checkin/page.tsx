@@ -7,10 +7,11 @@
 // 체크인 성공 시 memberId를 저장하고 내 상태 화면(/m)으로 이동
 
 import { IAttendance, IMember } from '@letscok/shared-types';
-import { HomeLink } from '@/components/home-link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { GenderMarker, GradeBadge, Toast } from '@/components/badges';
+import { HomeLink } from '@/components/home-link';
+import { InstallPrompt } from '@/components/install-prompt';
 import { api, ApiError } from '@/lib/api';
 import { saveMemberId } from '@/lib/member';
 import { useSnapshot } from '@/lib/use-snapshot';
@@ -98,6 +99,10 @@ export default function CheckinPage() {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <main className="fade-in mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-6 p-6">
+      {/* 설치 안내는 /m뿐 아니라 여기에도 필요하다 — 구 /checkin 링크로 바로 들어오는 사람이 있고,
+          무엇보다 카톡 인앱 브라우저에서 체크인하면 memberId가 카톡 저장소에만 남아
+          나중에 앱·사파리로 열었을 때 "체크인이 필요해요"가 뜬다 */}
+      <InstallPrompt />
       {children}
     </main>
   );

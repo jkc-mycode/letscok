@@ -2,11 +2,11 @@
 
 import { IHistoryRankingEntry } from '@letscok/shared-types';
 import Link from 'next/link';
-import { HomeLink } from '@/components/home-link';
 import { useEffect, useMemo, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
 import { GenderMarker, GradeBadge } from '@/components/badges';
 import { HistoryTabs } from '@/components/history-tabs';
+import { HomeLink } from '@/components/home-link';
 import { api, ApiError } from '@/lib/api';
 
 // 기간 필터 — months 값이 null이면 전체 누적

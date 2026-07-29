@@ -18,10 +18,10 @@ import {
   RecommendationKind,
 } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
-import { HomeLink } from '@/components/home-link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LoginGate } from '@/components/admin-gate';
 import { GenderMarker, GradeBadge, PlayerGrid, Toast } from '@/components/badges';
+import { HomeLink } from '@/components/home-link';
 import { MotionCard } from '@/components/motion-card';
 import { api, ApiError, clearPasscode, getPasscode } from '@/lib/api';
 import { formatBirthInput, parseBirthDate } from '@/lib/birth-input';

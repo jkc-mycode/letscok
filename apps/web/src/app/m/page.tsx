@@ -6,9 +6,9 @@
 import { IAttendance } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
 import Link from 'next/link';
-import { HomeLink } from '@/components/home-link';
 import { useEffect, useMemo, useState } from 'react';
 import { GenderMarker, GradeBadge, MeChip, PlayerGrid, Toast } from '@/components/badges';
+import { HomeLink } from '@/components/home-link';
 import { InstallPrompt } from '@/components/install-prompt';
 import { MotionCard } from '@/components/motion-card';
 import { api, ApiError } from '@/lib/api';

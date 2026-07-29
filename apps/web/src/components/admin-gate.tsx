@@ -1,7 +1,7 @@
 'use client';
 
-import { HomeLink } from '@/components/home-link';
 import { useEffect, useState } from 'react';
+import { HomeLink } from '@/components/home-link';
 import { api, ApiError, clearPasscode, getPasscode, savePasscode } from '@/lib/api';
 
 // 운영진 패스코드 게이트 — /admin과 /history 계열이 공유
