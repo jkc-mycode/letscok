@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { HomeLink } from '@/components/home-link';
 import { InstallPrompt } from '@/components/install-prompt';
-import { api, ApiError, clearPasscode, getPasscode, savePasscode } from '@/lib/api';
+import { api, ApiError, API_URL, clearPasscode, getPasscode, savePasscode } from '@/lib/api';
 
 // 운영진 패스코드 게이트 — /admin과 /history 계열이 공유
 // 저장된 패스코드(localStorage)가 있으면 바로 통과, 없으면 입력 화면
@@ -20,14 +20,32 @@ export function LoginGate({
   const [passcode, setPasscode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [slow, setSlow] = useState(false);
+
+  // 화면이 열리자마자 서버를 깨워 둔다 — Render 무료 인스턴스는 잠들면 깨는 데 최대 1분
+  // (패스코드를 입력하는 동안 기동이 진행돼 실제 대기가 줄어든다. 결과는 쓰지 않음)
+  useEffect(() => {
+    fetch(`${API_URL}/health`).catch(() => {});
+  }, []);
+
+  // 확인이 3초 넘게 걸리면 서버 기동 중이라고 알린다
+  useEffect(() => {
+    if (!busy) return;
+    const timer = setTimeout(() => setSlow(true), 3000);
+    return () => {
+      clearTimeout(timer);
+      setSlow(false);
+    };
+  }, [busy]);
 
   const submit = async () => {
     if (!passcode || busy) return;
     setBusy(true);
     setError(null);
-    savePasscode(passcode); // api()가 저장된 값을 헤더로 보내므로 먼저 저장 후 검증
     try {
-      await api('/auth/admin/verify', { method: 'POST', admin: true });
+      // 검증이 끝나기 전에 저장하면, 대기 중 새로고침 시 틀린 패스코드로 게이트를 통과한다
+      await api('/auth/admin/verify', { method: 'POST', passcode });
+      savePasscode(passcode);
       onSuccess();
     } catch (e) {
       clearPasscode();
@@ -67,6 +85,11 @@ export function LoginGate({
         >
           {busy ? '확인 중...' : '입장'}
         </button>
+        {slow && (
+          <p className="text-center text-sm text-dim">
+            서버를 깨우는 중이에요. 최대 1분 정도 걸릴 수 있어요.
+          </p>
+        )}
         {error && <p className="text-center text-sm text-coral">{error}</p>}
       </div>
     </main>

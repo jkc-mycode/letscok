@@ -32,12 +32,14 @@ interface ApiOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
   admin?: boolean; // true면 저장된 패스코드를 헤더에 실어 보낸다
+  passcode?: string; // 저장 전 검증용 — 지정하면 저장된 값 대신 이 값을 보낸다
 }
 
 export async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const headers: Record<string, string> = {};
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
-  if (options.admin) headers['x-admin-passcode'] = getPasscode() ?? '';
+  if (options.passcode !== undefined) headers['x-admin-passcode'] = options.passcode;
+  else if (options.admin) headers['x-admin-passcode'] = getPasscode() ?? '';
 
   const res = await fetch(`${API_URL}${path}`, {
     method: options.method ?? 'GET',
