@@ -1307,6 +1307,25 @@ function CheerEasterEgg({ onDone }: { onDone: () => void }) {
     const timer = setTimeout(onDone, CHEER_DURATION_MS);
     return () => clearTimeout(timer);
   }, [onDone]);
+  // 응원 대상 = 모임원 관리에서 역할이 모임장인 사람 (여럿이면 전원, 없거나 조회 실패면 "모임장")
+  // null = 조회 중 — 문구를 바꿔치기하며 깜빡이지 않도록 이름이 정해진 뒤에 띄운다
+  const [leaderName, setLeaderName] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    api<IMemberSummary[]>('/members', { admin: true })
+      .then((members) => {
+        const names = members
+          .filter((m) => m.role === MemberRole.LEADER && !m.deletedAt)
+          .map((m) => m.name);
+        if (!cancelled) setLeaderName(names.length > 0 ? names.join('·') : '모임장');
+      })
+      .catch(() => {
+        if (!cancelled) setLeaderName('모임장');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   return (
     // 클릭/터치를 전부 삼킨다 — 10초 동안 화면이 눌리지 않게 (닫기는 타이머만)
     <div
@@ -1342,10 +1361,12 @@ function CheerEasterEgg({ onDone }: { onDone: () => void }) {
         ))}
         {/* 폰에서는 두 줄, 태블릿 이상은 한 줄 — 긴 문구가 좁은 화면에서 깨지지 않게 */}
         {/* 폰은 vw로 상한을 둬 좁은 기기(320px)에서도 안 잘리게, 태블릿 이상은 고정 크기 */}
-        <p className="cheer-pop relative text-center text-[clamp(3rem,15vw,4.5rem)] leading-tight font-bold sm:text-[6rem]">
-          <span className="block sm:inline">김강민</span>{' '}
-          <span className="block sm:inline">화이팅!!</span>
-        </p>
+        {leaderName !== null && (
+          <p className="cheer-pop relative text-center text-[clamp(3rem,15vw,4.5rem)] leading-tight font-bold sm:text-[6rem]">
+            <span className="block sm:inline">{leaderName}</span>{' '}
+            <span className="block sm:inline">화이팅!!</span>
+          </p>
+        )}
       </div>
     </div>
   );
