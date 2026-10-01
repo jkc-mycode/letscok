@@ -23,3 +23,6 @@ docs/
 
 # typescript 증분 빌드 캐시
 *.tsbuildinfo
+
+# oh-my-claudecode 실행 상태
+.omc/
