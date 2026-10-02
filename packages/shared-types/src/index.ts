@@ -342,6 +342,35 @@ export interface ISessionSnapshot {
   games: IGame[]; // QUEUED + PLAYING (오늘 FINISHED 포함 여부는 쿼리 옵션)
 }
 
+// ===== 웹 푸시 (/push/*) =====
+
+// 서버 비활성(VAPID 키 없음)이면 null — 웹은 구독 UI를 숨긴다
+export interface IPushPublicKey {
+  publicKey: string | null;
+}
+
+// 구독 등록 — 브라우저 PushSubscription을 평평하게 펼쳐 보낸다
+// (중첩 객체는 ValidationPipe whitelist가 검증 데코레이터 없는 필드를 조용히 지우므로 피한다)
+export interface ISubscribePushDto {
+  memberId: string;
+  endpoint: string;
+  p256dh: string; // subscription.toJSON().keys.p256dh
+  auth: string; // subscription.toJSON().keys.auth
+}
+
+// 구독 해지 — endpoint 자체가 추측 불가능한 값이라 이것으로 소유를 증명한다
+export interface IUnsubscribePushDto {
+  endpoint: string;
+}
+
+// 서비스워커가 받아 그대로 알림으로 띄우는 내용
+export interface IPushPayload {
+  title: string;
+  body: string;
+  tag: string; // 같은 tag의 이전 알림을 대체 — 알림 센터에 쌓이지 않게
+  url: string; // 알림을 누르면 열 경로
+}
+
 // ===== 공통 응답 래퍼 =====
 
 export interface IApiResponse<T> {

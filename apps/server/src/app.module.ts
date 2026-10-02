@@ -12,6 +12,7 @@ import { HistoryModule } from './history/history.module';
 import { MembersModule } from './members/members.module';
 import { MemosModule } from './memos/memos.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { PushModule } from './push/push.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { SessionsModule } from './sessions/sessions.module';
 
@@ -26,6 +27,7 @@ import { SessionsModule } from './sessions/sessions.module';
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
     PrismaModule,
     RealtimeModule,
+    PushModule,
     MembersModule,
     SessionsModule,
     AttendancesModule,

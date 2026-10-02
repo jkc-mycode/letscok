@@ -29,13 +29,15 @@
     "helmet": "^8.2.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "socket.io": "^4.8.0"
+    "socket.io": "^4.8.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.0.0",
+    "@types/web-push": "^3.6.4",
     "jest": "^30.4.2",
     "prisma": "^7.0.0",
     "ts-jest": "^29.4.11",

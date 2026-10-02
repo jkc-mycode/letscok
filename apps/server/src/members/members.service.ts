@@ -156,10 +156,14 @@ export class MembersService {
     const member = await this.findActiveMemberOrThrow(id);
     await this.assertNotInOpenSession(member.id);
 
-    const removed = await this.prisma.member.update({
-      where: { id: member.id },
-      data: { deletedAt: new Date() },
-    });
+    // 푸시 구독도 함께 정리 — 삭제된 사람에게 알림이 가면 안 된다 (복구 시엔 본인이 다시 켠다)
+    const [, removed] = await this.prisma.$transaction([
+      this.prisma.pushSubscription.deleteMany({ where: { memberId: member.id } }),
+      this.prisma.member.update({
+        where: { id: member.id },
+        data: { deletedAt: new Date() },
+      }),
+    ]);
     return toMemberResponse(removed);
   }
 
@@ -190,17 +194,21 @@ export class MembersService {
       await this.assertNotInOpenSession(member.id);
     }
 
-    const anonymized = await this.prisma.member.update({
-      where: { id: member.id },
-      data: {
-        name: '탈퇴한 모임원',
-        birthDate: null,
-        gender: null,
-        role: 'MEMBER',
-        consentedAt: null,
-        deletedAt: member.deletedAt ?? new Date(),
-      },
-    });
+    // 기기 주소(푸시 구독)도 본인을 가리키는 정보라 함께 지운다
+    const [, anonymized] = await this.prisma.$transaction([
+      this.prisma.pushSubscription.deleteMany({ where: { memberId: member.id } }),
+      this.prisma.member.update({
+        where: { id: member.id },
+        data: {
+          name: '탈퇴한 모임원',
+          birthDate: null,
+          gender: null,
+          role: 'MEMBER',
+          consentedAt: null,
+          deletedAt: member.deletedAt ?? new Date(),
+        },
+      }),
+    ]);
     return toMemberResponse(anonymized);
   }
 
