@@ -58,3 +58,39 @@ self.addEventListener('fetch', (event) => {
     );
   }
 });
+
+// ===== 웹 푸시 =====
+
+// 푸시 수신 — 화면이 꺼져 있어도 운영체제가 이 워커를 깨워 실행한다
+// iOS는 알림을 띄우지 않는 푸시(무음)를 허용하지 않고 반복되면 구독을 끊으므로,
+// 내용이 비어 있어도 반드시 waitUntil 안에서 알림까지 띄운다
+self.addEventListener('push', (event) => {
+  let data = { title: '렛츠콕', body: '', tag: 'letscok-game', url: '/m' };
+  try {
+    data = { ...data, ...event.data?.json() };
+  } catch {
+    // 형식이 깨진 페이로드도 기본 알림으로 처리
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      tag: data.tag, // 같은 tag의 이전 알림을 대체 — 조합 알림 뒤 배정 알림이 오면 최신 것만 남는다
+      renotify: true, // 대체될 때도 다시 울린다
+      icon: '/pwa-icon/member/192',
+      badge: '/pwa-icon/member/192',
+      data: { url: data.url },
+    }),
+  );
+});
+
+// 알림 탭 — 열려 있는 모임원 앱 창이 있으면 그 창으로, 없으면 새로 연다
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url ?? '/m';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const client = clients.find((c) => new URL(c.url).pathname.startsWith('/m'));
+      return client ? client.focus() : self.clients.openWindow(url);
+    }),
+  );
+});

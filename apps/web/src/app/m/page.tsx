@@ -11,6 +11,7 @@ import { GenderMarker, GradeBadge, MeChip, PlayerGrid, Toast } from '@/component
 import { HomeLink } from '@/components/home-link';
 import { InstallPrompt } from '@/components/install-prompt';
 import { MotionCard } from '@/components/motion-card';
+import { PushToggle } from '@/components/push-toggle';
 import { api, ApiError } from '@/lib/api';
 import { getMemberId } from '@/lib/member';
 import {
@@ -104,6 +105,7 @@ export default function MyStatusPage() {
         LETSCOK
       </HomeLink>
       <MyBanner me={me} waiting={waiting} now={now} />
+      <PushToggle memberId={me.memberId} />
 
       {/* 콕 미확인 안내 — 이게 없으면 "왜 나만 게임에 안 넣어주지" 오해로 운영진 문의가 늘어난다 */}
       {!me.shuttleConfirmedAt && me.status !== 'LEFT' && (

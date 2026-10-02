@@ -29,9 +29,15 @@ function isDismissed(app: string): boolean {
 
 // 이미 홈 화면 앱으로 실행 중이면 설치를 권할 이유가 없다
 // (iOS 사파리는 display-mode를 제대로 안 알려줘 navigator.standalone도 같이 본다)
-function isInstalled(): boolean {
+export function isInstalled(): boolean {
   if (window.matchMedia('(display-mode: standalone)').matches) return true;
   return (navigator as Navigator & { standalone?: boolean }).standalone === true;
+}
+
+// iPadOS 13+는 UA를 Macintosh로 위장해서 터치 지원 여부로 한 번 더 거른다
+export function isIos(): boolean {
+  const ua = navigator.userAgent;
+  return /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
 }
 
 // 문구만 갈라진다 — 모임원은 폰, 운영진은 체육관 태블릿이라 설치 이유가 서로 다르다
@@ -58,11 +64,7 @@ export function InstallPrompt({ app = 'member' }: { app?: keyof typeof COPY }) {
       setMode('kakao');
       return;
     }
-    // iPadOS 13+는 UA를 Macintosh로 위장해서 터치 지원 여부로 한 번 더 거른다
-    const isIos =
-      /iPad|iPhone|iPod/.test(ua) ||
-      (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-    if (isIos) {
+    if (isIos()) {
       setMode('ios');
       return;
     }
