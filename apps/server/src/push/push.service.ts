@@ -13,6 +13,9 @@ const MAX_SUBSCRIPTIONS_PER_MEMBER = 5;
 // 5분 지나 도착한 "코트로 오세요"는 오히려 혼란 — 푸시 서비스가 그 뒤엔 버린다
 const PUSH_TTL_SECONDS = 300;
 
+// 게임 관련 알림은 tag 하나를 공유 — 조합 알림 뒤 배정 알림이 오면 알림 센터에 최신 것만 남는다
+const GAME_TAG = 'letscok-game';
+
 export interface IPushMessage {
   memberId: string;
   payload: IPushPayload;
@@ -82,6 +85,59 @@ export class PushService {
   async unsubscribe(endpoint: string): Promise<{ deleted: number }> {
     const { count } = await this.prisma.pushSubscription.deleteMany({ where: { endpoint } });
     return { deleted: count };
+  }
+
+  // 게임 알림 — 코트 배정·대기 조합 등록·교체 투입 공용. 게임 상태로 문구가 갈린다
+  // onlyAttendanceId: 교체로 들어온 1명에게만 보낼 때
+  notifyGame(gameId: string, onlyAttendanceId?: string): void {
+    if (!this.publicKey) return;
+    this.gameMessages(gameId, onlyAttendanceId)
+      .then((messages) => this.deliver(messages))
+      .catch((error: Error) => this.logger.error('게임 알림 발송 실패', error.stack));
+  }
+
+  notifyShuttleConfirmed(memberId: string): void {
+    this.notify([
+      {
+        memberId,
+        payload: { title: '콕 확인 완료', body: '이제 게임에 들어갈 수 있어요', tag: GAME_TAG, url: '/m' },
+      },
+    ]);
+  }
+
+  // 커밋 후 게임을 다시 읽어 받는 사람별 문구를 만든다 — 함께 뛰는 사람은 본인을 뺀 3명
+  async gameMessages(gameId: string, onlyAttendanceId?: string): Promise<IPushMessage[]> {
+    const game = await this.prisma.game.findUnique({
+      where: { id: gameId },
+      include: { court: true, players: { include: { attendance: { include: { member: true } } } } },
+    });
+    if (!game || (game.status !== 'PLAYING' && game.status !== 'QUEUED')) return [];
+
+    let title: string;
+    let lead: string | null = null;
+    if (game.status === 'PLAYING') {
+      title = `🏸 ${game.court?.courtNo ?? ''}번 코트로 오세요`;
+    } else {
+      // 대기 순번 = 이 조합보다 앞서거나 같은 순서의 대기 조합 수
+      const position = await this.prisma.game.count({
+        where: { sessionId: game.sessionId, status: 'QUEUED', queueOrder: { lte: game.queueOrder ?? 0 } },
+      });
+      title = '다음 게임 조합에 들어갔어요';
+      lead = `대기 ${position}번째`;
+    }
+
+    return game.players
+      .filter((player) => !onlyAttendanceId || player.attendanceId === onlyAttendanceId)
+      .map((player) => {
+        const others = game.players
+          .filter((other) => other.id !== player.id)
+          .map((other) => other.attendance.member.name);
+        const body = [lead, `함께: ${others.join(', ')}`].filter(Boolean).join('\n');
+        return {
+          memberId: player.attendance.memberId,
+          payload: { title, body, tag: GAME_TAG, url: '/m' },
+        };
+      });
   }
 
   // 변경을 일으킨 서비스가 응답을 기다리지 않게 fire-and-forget (broadcastSnapshot과 같은 원칙)

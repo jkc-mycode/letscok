@@ -9,6 +9,7 @@ import {
 import { IAttendance } from '@letscok/shared-types';
 import { toAttendanceResponse } from '../common/mappers/entity.mappers';
 import { PrismaService } from '../prisma/prisma.service';
+import { PushService } from '../push/push.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { SessionsService } from '../sessions/sessions.service';
 import { CheckInDto } from './dto/check-in.dto';
@@ -32,6 +33,7 @@ export class AttendancesService {
     private readonly prisma: PrismaService,
     private readonly sessionsService: SessionsService,
     private readonly realtime: RealtimeService,
+    private readonly push: PushService,
   ) {}
 
   async checkIn(
@@ -269,6 +271,7 @@ export class AttendancesService {
       include: { member: true },
     });
     this.realtime.broadcastSnapshot(attendance.sessionId);
+    this.push.notifyShuttleConfirmed(confirmed.memberId); // 더블탭(이미 확인됨)은 위에서 반환돼 재발송 없음
     return toAttendanceResponse(confirmed);
   }
 

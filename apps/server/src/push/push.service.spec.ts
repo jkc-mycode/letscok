@@ -176,3 +176,78 @@ describe('회원 삭제와 구독', () => {
     expect(await prisma.pushSubscription.count()).toBe(0);
   });
 });
+
+describe('게임 알림 문구', () => {
+  // 회원 4명 + 출석 + 게임(players) 시드 — 상태·코트·대기 순서를 지정한다
+  async function seedGame(opts: { status: 'PLAYING' | 'QUEUED'; courtNo?: number; queueOrder?: number; names: string[]; sessionId?: string }) {
+    const sessionId =
+      opts.sessionId ?? (await prisma.session.create({ data: { date: new Date('2026-01-01') } })).id;
+    const court = opts.courtNo
+      ? await prisma.court.create({ data: { sessionId, courtNo: opts.courtNo, status: 'IN_GAME' } })
+      : null;
+    const attendances = [];
+    for (const name of opts.names) {
+      const member = await createMember(name);
+      attendances.push(await prisma.attendance.create({ data: { sessionId, memberId: member.id } }));
+    }
+    const game = await prisma.game.create({
+      data: {
+        sessionId,
+        status: opts.status,
+        courtId: court?.id ?? null,
+        queueOrder: opts.queueOrder ?? null,
+        players: { createMany: { data: attendances.map((a) => ({ attendanceId: a.id })) } },
+      },
+    });
+    return { game, attendances, sessionId };
+  }
+
+  it('코트 배정 — 4명 각자에게 코트 번호와 본인을 뺀 3명 이름', async () => {
+    const { game, attendances } = await seedGame({
+      status: 'PLAYING',
+      courtNo: 3,
+      names: ['김하나', '이두울', '박세엣', '최네엣'],
+    });
+
+    const messages = await createService().gameMessages(game.id);
+
+    expect(messages).toHaveLength(4);
+    const mine = messages.find((m) => m.memberId === attendances[0].memberId)!;
+    expect(mine.payload).toEqual({
+      title: '🏸 3번 코트로 오세요',
+      body: '함께: 이두울, 박세엣, 최네엣',
+      tag: 'letscok-game',
+      url: '/m',
+    });
+  });
+
+  it('대기 조합 — 대기 순번이 실린다 (앞선 조합 수 + 1)', async () => {
+    const first = await seedGame({ status: 'QUEUED', queueOrder: 1, names: ['가', '나', '다', '라'] });
+    const { game } = await seedGame({
+      status: 'QUEUED',
+      queueOrder: 2,
+      names: ['마', '바', '사', '아'],
+      sessionId: first.sessionId,
+    });
+
+    const [message] = await createService().gameMessages(game.id);
+
+    expect(message.payload.title).toBe('다음 게임 조합에 들어갔어요');
+    expect(message.payload.body.split('\n')[0]).toBe('대기 2번째');
+  });
+
+  it('교체 투입 — 지정한 1명에게만', async () => {
+    const { game, attendances } = await seedGame({ status: 'PLAYING', courtNo: 1, names: ['가', '나', '다', '라'] });
+
+    const messages = await createService().gameMessages(game.id, attendances[2].id);
+
+    expect(messages.map((m) => m.memberId)).toEqual([attendances[2].memberId]);
+  });
+
+  it('이미 끝난 게임이면 보내지 않는다 (발송 전에 종료된 경우)', async () => {
+    const { game } = await seedGame({ status: 'PLAYING', courtNo: 1, names: ['가', '나', '다', '라'] });
+    await prisma.game.update({ where: { id: game.id }, data: { status: 'FINISHED' } });
+
+    expect(await createService().gameMessages(game.id)).toEqual([]);
+  });
+});

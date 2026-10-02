@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { PushService } from '../push/push.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { SessionsService } from '../sessions/sessions.service';
 import { AttendancesService } from './attendances.service';
@@ -18,7 +19,14 @@ const realtimeStub = {
 
 const prisma = new PrismaService();
 const sessionsService = new SessionsService(prisma, realtimeStub);
-const service = new AttendancesService(prisma, sessionsService, realtimeStub);
+// 알림은 호출 여부만 본다 — 문구·발송은 push.service.spec이 검증
+const pushStub = { notifyShuttleConfirmed: jest.fn() };
+const service = new AttendancesService(
+  prisma,
+  sessionsService,
+  realtimeStub,
+  pushStub as unknown as PushService,
+);
 
 let seq = 0; // 회원 이름 중복 방지용 일련번호
 
@@ -345,6 +353,18 @@ describe('confirmShuttle / cancelShuttle (콕 제출 확인)', () => {
     const second = await service.confirmShuttle(checkedIn.id);
 
     expect(second.shuttleConfirmedAt).toBe(first.shuttleConfirmedAt);
+  });
+
+  it('처음 확인할 때만 본인에게 알림 — 더블탭은 재발송 없음, 취소는 알림 없음', async () => {
+    pushStub.notifyShuttleConfirmed.mockClear();
+    const checkedIn = await seedCheckedIn();
+
+    await service.confirmShuttle(checkedIn.id);
+    await service.confirmShuttle(checkedIn.id);
+    await service.cancelShuttle(checkedIn.id);
+
+    expect(pushStub.notifyShuttleConfirmed).toHaveBeenCalledTimes(1);
+    expect(pushStub.notifyShuttleConfirmed).toHaveBeenCalledWith(checkedIn.memberId);
   });
 
   it('취소하면 다시 미확인으로 돌아간다', async () => {

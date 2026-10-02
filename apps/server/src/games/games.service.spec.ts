@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { PushService } from '../push/push.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { SessionsService } from '../sessions/sessions.service';
 import { GamesService } from './games.service';
@@ -14,7 +15,14 @@ const realtimeStub = {
 
 const prisma = new PrismaService();
 const sessionsService = new SessionsService(prisma, realtimeStub);
-const service = new GamesService(prisma, sessionsService, realtimeStub);
+// 알림은 호출 여부만 본다 — 문구·발송은 push.service.spec이 검증
+const pushStub = { notifyGame: jest.fn() };
+const service = new GamesService(
+  prisma,
+  sessionsService,
+  realtimeStub,
+  pushStub as unknown as PushService,
+);
 
 // ===== 시드 헬퍼 =====
 
@@ -495,5 +503,42 @@ describe('replacePlayer', () => {
     });
 
     expect(await statusOf(a.id)).toBe('MATCHED'); // 남은 조합 기준으로 재계산
+  });
+});
+
+describe('게임 알림 호출', () => {
+  beforeEach(() => pushStub.notifyGame.mockClear());
+
+  it('조합 생성·코트 배정 시 그 게임으로 알림을 보낸다', async () => {
+    const session = await seedSession();
+    const court = await seedCourt(session.id);
+    const four = await seedFour(session.id);
+
+    const game = await service.create(session.id, { attendanceIds: [four[0].id, four[1].id, four[2].id, four[3].id] });
+    expect(pushStub.notifyGame).toHaveBeenLastCalledWith(game.id);
+
+    await service.assign(game.id, { courtId: court.id });
+    expect(pushStub.notifyGame).toHaveBeenLastCalledWith(game.id);
+    expect(pushStub.notifyGame).toHaveBeenCalledTimes(2);
+  });
+
+  it('교체는 새로 들어온 1명에게만, 종료·해체는 알림 없음', async () => {
+    const session = await seedSession();
+    const court = await seedCourt(session.id);
+    const four = await seedFour(session.id);
+    const sub = await seedAttendance(session.id);
+    const game = await service.create(session.id, { attendanceIds: [four[0].id, four[1].id, four[2].id, four[3].id] });
+    await service.assign(game.id, { courtId: court.id });
+    pushStub.notifyGame.mockClear();
+
+    await service.replacePlayer(game.id, { outAttendanceId: four[0].id, inAttendanceId: sub.id });
+    expect(pushStub.notifyGame).toHaveBeenCalledWith(game.id, sub.id);
+
+    pushStub.notifyGame.mockClear();
+    await service.finish(game.id);
+    const second = await service.create(session.id, { attendanceIds: [four[0].id, four[1].id, four[2].id, four[3].id] });
+    pushStub.notifyGame.mockClear();
+    await service.cancel(second.id);
+    expect(pushStub.notifyGame).not.toHaveBeenCalled();
   });
 });

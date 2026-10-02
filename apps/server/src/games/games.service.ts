@@ -8,6 +8,7 @@ import { IGame } from '@letscok/shared-types';
 import { Prisma } from '../generated/prisma/client';
 import { toGameResponse } from '../common/mappers/entity.mappers';
 import { PrismaService } from '../prisma/prisma.service';
+import { PushService } from '../push/push.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { SessionsService } from '../sessions/sessions.service';
 import {
@@ -28,6 +29,7 @@ export class GamesService {
     private readonly prisma: PrismaService,
     private readonly sessionsService: SessionsService,
     private readonly realtime: RealtimeService,
+    private readonly push: PushService,
   ) {}
 
   // 조합 생성: 4명 → QUEUED 게임. 중복 대기 허용 정책 —
@@ -84,6 +86,7 @@ export class GamesService {
       return created;
     });
     this.realtime.broadcastSnapshot(sessionId);
+    this.push.notifyGame(game.id); // 4명에게 "다음 게임 조합에 들어갔어요"
     return toGameResponse(game);
   }
 
@@ -142,6 +145,7 @@ export class GamesService {
       });
     });
     this.realtime.broadcastSnapshot(game.sessionId);
+    this.push.notifyGame(id); // 4명에게 "N번 코트로 오세요"
     return toGameResponse(assigned);
   }
 
@@ -340,6 +344,7 @@ export class GamesService {
       return tx.game.findUniqueOrThrow({ where: { id }, include: GAME_INCLUDE });
     });
     this.realtime.broadcastSnapshot(game.sessionId);
+    this.push.notifyGame(id, dto.inAttendanceId); // 새로 들어온 1명에게만 — 게임 상태에 맞는 문구
     return toGameResponse(replaced);
   }
 
