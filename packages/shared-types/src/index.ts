@@ -363,6 +363,11 @@ export interface IUnsubscribePushDto {
   endpoint: string;
 }
 
+// 운영진 호출·다시 알림 결과 — devices가 0이면 알림을 등록하지 않은 사람(직접 불러야 함)
+export interface IPushCallResult {
+  devices: number;
+}
+
 // 서비스워커가 받아 그대로 알림으로 띄우는 내용
 export interface IPushPayload {
   title: string;

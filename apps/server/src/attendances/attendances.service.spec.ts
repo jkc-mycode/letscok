@@ -20,7 +20,7 @@ const realtimeStub = {
 const prisma = new PrismaService();
 const sessionsService = new SessionsService(prisma, realtimeStub);
 // 알림은 호출 여부만 본다 — 문구·발송은 push.service.spec이 검증
-const pushStub = { notifyShuttleConfirmed: jest.fn() };
+const pushStub = { notifyShuttleConfirmed: jest.fn(), callMember: jest.fn() };
 const service = new AttendancesService(
   prisma,
   sessionsService,
@@ -427,3 +427,36 @@ describe('cancelCheckIn (출석 취소 — 사전 체크인 노쇼)', () => {
     );
   });
 });
+
+describe('call (운영진 호출)', () => {
+  async function seedCheckedIn() {
+    const session = await seedSession();
+    const member = await seedMember();
+    return service.manualCheckIn(session.id, member.id);
+  }
+
+  it('본인 회원에게 호출을 보내고 받은 기기 수를 돌려준다', async () => {
+    pushStub.callMember.mockReset().mockResolvedValue(2);
+    const attendance = await seedCheckedIn();
+
+    expect(await service.call(attendance.id)).toEqual({ devices: 2 });
+    expect(pushStub.callMember).toHaveBeenCalledWith(attendance.memberId);
+  });
+
+  it('같은 사람을 30초 안에 다시 부르면 429', async () => {
+    pushStub.callMember.mockReset().mockResolvedValue(0);
+    const attendance = await seedCheckedIn();
+    await service.call(attendance.id);
+
+    await expect(service.call(attendance.id)).rejects.toMatchObject({ status: 429 });
+    expect(pushStub.callMember).toHaveBeenCalledTimes(1);
+  });
+
+  it('퇴장한 사람은 호출할 수 없다 (409)', async () => {
+    const attendance = await seedCheckedIn();
+    await service.leave(attendance.id);
+
+    await expect(service.call(attendance.id)).rejects.toThrow(ConflictException);
+  });
+});
+

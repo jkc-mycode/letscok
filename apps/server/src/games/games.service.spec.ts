@@ -16,7 +16,7 @@ const realtimeStub = {
 const prisma = new PrismaService();
 const sessionsService = new SessionsService(prisma, realtimeStub);
 // 알림은 호출 여부만 본다 — 문구·발송은 push.service.spec이 검증
-const pushStub = { notifyGame: jest.fn() };
+const pushStub = { notifyGame: jest.fn(), resendGame: jest.fn() };
 const service = new GamesService(
   prisma,
   sessionsService,
@@ -542,3 +542,23 @@ describe('게임 알림 호출', () => {
     expect(pushStub.notifyGame).not.toHaveBeenCalled();
   });
 });
+
+describe('renotify (코트 다시 알림)', () => {
+  it('게임 중인 코트만 다시 알리고, 30초 안 재시도는 429', async () => {
+    pushStub.resendGame.mockReset().mockResolvedValue(3);
+    const session = await seedSession();
+    const court = await seedCourt(session.id);
+    const four = await seedFour(session.id);
+    const game = await service.create(session.id, {
+      attendanceIds: [four[0].id, four[1].id, four[2].id, four[3].id],
+    });
+
+    await expect(service.renotify(game.id)).rejects.toThrow(ConflictException); // 아직 대기 조합
+
+    await service.assign(game.id, { courtId: court.id });
+    expect(await service.renotify(game.id)).toEqual({ devices: 3 });
+    await expect(service.renotify(game.id)).rejects.toMatchObject({ status: 429 });
+    expect(pushStub.resendGame).toHaveBeenCalledTimes(1);
+  });
+});
+

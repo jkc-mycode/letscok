@@ -105,6 +105,22 @@ export class PushService {
     ]);
   }
 
+  // 운영진 호출 — 결과(받은 기기 수)를 운영진에게 보여줘야 해서 기다렸다 돌려준다
+  // tag를 게임 알림과 분리: 뒤이은 게임 알림에 덮여 사라지면 안 된다
+  callMember(memberId: string): Promise<number> {
+    return this.deliver([
+      {
+        memberId,
+        payload: { title: '운영진이 찾고 있어요', body: '관제판 쪽으로 와주세요', tag: 'letscok-call', url: '/m' },
+      },
+    ]);
+  }
+
+  // 코트 [다시 알림] — 배정 알림을 4명에게 다시 보낸다
+  async resendGame(gameId: string): Promise<number> {
+    return this.deliver(await this.gameMessages(gameId));
+  }
+
   // 커밋 후 게임을 다시 읽어 받는 사람별 문구를 만든다 — 함께 뛰는 사람은 본인을 뺀 3명
   async gameMessages(gameId: string, onlyAttendanceId?: string): Promise<IPushMessage[]> {
     const game = await this.prisma.game.findUnique({

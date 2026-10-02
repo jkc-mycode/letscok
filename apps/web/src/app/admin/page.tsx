@@ -12,6 +12,7 @@ import {
   IGameRecommendation,
   IMember,
   IMemberSummary,
+  IPushCallResult,
   ISessionSnapshot,
   MemberRole,
   RecommendationCategory,
@@ -2637,6 +2638,15 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
     ],
   },
   {
+    title: '알림 (호출 · 다시 알림)',
+    items: [
+      '모임원이 내 상태 화면에서 [게임 알림 받기]를 켜 두면, 조합 등록·코트 배정·교체 투입·콕 확인 때 폰으로 알림이 가요. 화면이 꺼져 있어도 와요.',
+      '대기 인원 행의 [호출] = 그 사람에게 "운영진이 찾고 있어요". 코트 카드의 [다시 알림] = 그 게임 4명에게 코트 알림을 다시 보내요.',
+      '결과가 버튼에 잠깐 떠요 — "N대 전송"이면 보낸 것, "알림 미등록"이면 알림을 안 켠 분이라 직접 불러야 해요. 같은 대상은 30초에 한 번만.',
+      '아이폰은 홈 화면에 추가한 앱에서만 알림을 받을 수 있어요. 알림은 보조 수단이라 늦거나 빠질 수 있어요 — 현장 호명을 대신하진 않아요.',
+    ],
+  },
+  {
     title: '겹침 · 게임 중 배지',
     items: [
       '한 사람이 여러 대기 조합에 들어갈 수 있어요 (잔여 인원을 미리 조합할 때 유용) — 두 곳 이상이면 "겹침" 배지.',
@@ -2913,6 +2923,13 @@ function CourtCard({
         >
           대기로
         </button>
+        <CallButton
+          path={`/games/${game.id}/renotify`}
+          label="다시 알림"
+          title="배정됐는데 안 오는 사람이 있을 때 — 4명에게 코트 알림을 다시 보내요"
+          className="h-11 rounded-lg border border-line px-3 text-sm"
+          idleCls="text-dim"
+        />
         <button
           onClick={() => onReplace(game)}
           title="부상·급한 일로 한 명만 바꾸기 (타이머 유지)"
@@ -3114,6 +3131,62 @@ function ShuttleRow({
   );
 }
 
+// 운영진 호출·코트 다시 알림 공용 버튼 — 결과를 버튼 자리에 3초 보여준다
+// (보드 토스트는 에러 전용 색이라, "몇 대에 보냈는지 / 알림 미등록"은 버튼 안에서 바로 확인)
+function CallButton({
+  path,
+  label,
+  title,
+  className,
+  idleCls,
+}: {
+  path: string;
+  label: string;
+  title: string;
+  className: string; // 크기·테두리만 — 글자색은 상태별로 갈리므로 idleCls로 따로 받는다
+  idleCls: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<{ text: string; cls: string } | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+
+  const show = (text: string, cls: string) => {
+    setFeedback({ text, cls });
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setFeedback(null), 3000);
+  };
+
+  const call = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // 대기 행 선택 토글과 분리
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { devices } = await api<IPushCallResult>(path, { method: 'POST', admin: true });
+      // 0대 = 알림을 등록하지 않은 사람 — 직접 불러야 한다
+      if (devices > 0) show(`${devices}대 전송`, 'text-court');
+      else show('알림 미등록', 'text-amber');
+    } catch (err) {
+      show(err instanceof ApiError && err.status === 429 ? '잠시 후' : '실패', 'text-coral');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={(e) => void call(e)}
+      disabled={busy}
+      title={feedback?.text === '알림 미등록' ? '알림을 등록하지 않은 분이에요 — 직접 불러주세요' : title}
+      className={`${className} disabled:opacity-50 ${feedback?.cls ?? idleCls}`}
+    >
+      {feedback?.text ?? label}
+    </button>
+  );
+}
+
 function WaitingRow({
   attendance,
   now,
@@ -3163,6 +3236,13 @@ function WaitingRow({
       <span className="tabular ml-auto font-mono text-xs text-dim">
         {attendance.gamesPlayed}게임 · {formatWaitingMinutes(attendance.waitingSince, now)}
       </span>
+      <CallButton
+        path={`/attendances/${attendance.id}/call`}
+        label="호출"
+        title="이 분 폰으로 '운영진이 찾고 있어요' 알림을 보내요"
+        className="h-8 shrink-0 rounded-lg px-1.5 text-xs"
+        idleCls="text-faint hover:text-court"
+      />
       {resting && (
         <button
           onClick={(e) => {

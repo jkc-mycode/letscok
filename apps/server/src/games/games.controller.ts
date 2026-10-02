@@ -8,7 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { IApiResponse, IGame, IGameRecommendation } from '@letscok/shared-types';
+import { IApiResponse, IGame, IGameRecommendation, IPushCallResult } from '@letscok/shared-types';
 import { AdminGuard } from '../common/guards/admin.guard';
 import {
   AssignGameDto,
@@ -71,6 +71,12 @@ export class GamesController {
   @Patch('games/:id/cancel')
   async cancel(@Param('id') id: string): Promise<IApiResponse<IGame>> {
     return { success: true, data: await this.gamesService.cancel(id) };
+  }
+
+  // 코트 [다시 알림] — 배정 알림을 4명에게 다시 푸시
+  @Post('games/:id/renotify')
+  async renotify(@Param('id') id: string): Promise<IApiResponse<IPushCallResult>> {
+    return { success: true, data: await this.gamesService.renotify(id) };
   }
 
   // 선수 교체 — 게임 중·대기 조합에서 한 명만 바꿈 (타이머·큐 순서 유지)

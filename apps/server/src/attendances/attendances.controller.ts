@@ -8,7 +8,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { IApiResponse, IAttendance } from '@letscok/shared-types';
+import { IApiResponse, IAttendance, IPushCallResult } from '@letscok/shared-types';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { AttendancesService } from './attendances.service';
 import { CheckInDto } from './dto/check-in.dto';
@@ -65,6 +65,13 @@ export class AttendancesController {
   @UseGuards(AdminGuard)
   async leave(@Param('id') id: string): Promise<IApiResponse<IAttendance>> {
     return { success: true, data: await this.attendancesService.leave(id) };
+  }
+
+  // 운영진 호출 (운영진 전용) — 해당 모임원 폰으로 "운영진이 찾고 있어요" 푸시
+  @Post('attendances/:id/call')
+  @UseGuards(AdminGuard)
+  async call(@Param('id') id: string): Promise<IApiResponse<IPushCallResult>> {
+    return { success: true, data: await this.attendancesService.call(id) };
   }
 
   // 잠깐 휴식/복귀 — 본인이 /m에서 직접 쓰는 셀프 액션이라 가드 없음(체크인과 같은 신뢰 모델)

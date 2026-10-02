@@ -1,12 +1,15 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { IGame } from '@letscok/shared-types';
+import { IGame, IPushCallResult } from '@letscok/shared-types';
 import { Prisma } from '../generated/prisma/client';
 import { toGameResponse } from '../common/mappers/entity.mappers';
+import { createCooldown } from '../common/utils/cooldown.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from '../push/push.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -22,6 +25,9 @@ import {
 const GAME_INCLUDE = {
   players: { include: { attendance: { include: { member: true } } } },
 } as const;
+
+// 코트 [다시 알림] — 같은 게임을 30초 안에 다시 보내면 막는다 (운영진 호출과 같은 기준)
+const renotifyCooldown = createCooldown(30_000);
 
 @Injectable()
 export class GamesService {
@@ -346,6 +352,18 @@ export class GamesService {
     this.realtime.broadcastSnapshot(game.sessionId);
     this.push.notifyGame(id, dto.inAttendanceId); // 새로 들어온 1명에게만 — 게임 상태에 맞는 문구
     return toGameResponse(replaced);
+  }
+
+  // 코트 [다시 알림] — 배정됐는데 안 오는 사람이 있을 때 4명에게 배정 알림을 다시 보낸다
+  async renotify(id: string): Promise<IPushCallResult> {
+    const game = await this.findGameOrThrow(id);
+    if (game.status !== 'PLAYING') {
+      throw new ConflictException('코트에 배정된 게임만 다시 알릴 수 있습니다.');
+    }
+    if (!renotifyCooldown.tryAcquire(id)) {
+      throw new HttpException('방금 알렸어요. 30초 뒤에 다시 시도해주세요.', HttpStatus.TOO_MANY_REQUESTS);
+    }
+    return { devices: await this.push.resendGame(id) };
   }
 
   // 대기 조합 순서 변경 — 클라이언트가 계산한 목표 순서를 그대로 반영

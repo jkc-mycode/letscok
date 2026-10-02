@@ -6,8 +6,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { IAttendance } from '@letscok/shared-types';
+import { IAttendance, IPushCallResult } from '@letscok/shared-types';
 import { toAttendanceResponse } from '../common/mappers/entity.mappers';
+import { createCooldown } from '../common/utils/cooldown.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from '../push/push.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -19,6 +20,9 @@ import { CheckInDto } from './dto/check-in.dto';
 // 전역 rate limit만으로 막으면 정상 체크인이 같이 걸린다
 const CODE_FAIL_LIMIT = 10;
 const CODE_FAIL_WINDOW_MS = 10 * 60_000;
+
+// 운영진 호출 — 같은 사람을 30초 안에 다시 부르면 막는다 (연타로 폰이 계속 울리는 것 방지)
+const callCooldown = createCooldown(30_000);
 
 @Injectable()
 export class AttendancesService {
@@ -295,6 +299,19 @@ export class AttendancesService {
     });
     this.realtime.broadcastSnapshot(attendance.sessionId);
     return toAttendanceResponse(cancelled);
+  }
+
+  // 운영진 호출 — 배정 알림을 놓친 사람을 다시 부른다. 받은 기기 수를 돌려줘 운영진이 판단하게 한다
+  // (0이면 알림 미등록 → 직접 불러야 함)
+  async call(id: string): Promise<IPushCallResult> {
+    const attendance = await this.findAttendanceOrThrow(id);
+    if (attendance.status === 'LEFT') {
+      throw new ConflictException('퇴장 처리된 모임원입니다.');
+    }
+    if (!callCooldown.tryAcquire(id)) {
+      throw new HttpException('방금 호출했어요. 30초 뒤에 다시 시도해주세요.', HttpStatus.TOO_MANY_REQUESTS);
+    }
+    return { devices: await this.push.callMember(attendance.memberId) };
   }
 
   private async findAttendanceOrThrow(id: string) {

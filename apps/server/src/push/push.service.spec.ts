@@ -251,3 +251,22 @@ describe('게임 알림 문구', () => {
     expect(await createService().gameMessages(game.id)).toEqual([]);
   });
 });
+
+describe('호출과 다시 알림', () => {
+  it('운영진 호출은 게임 알림과 다른 tag로 보낸다 — 뒤이은 게임 알림에 덮이지 않게', async () => {
+    const service = createService();
+    const member = await createMember();
+    await service.subscribe({ memberId: member.id, endpoint: 'https://push.example/1', ...keys });
+
+    expect(await service.callMember(member.id)).toBe(1);
+    const [, body] = sendNotification.mock.calls[0];
+    expect(JSON.parse(body as string)).toMatchObject({ title: '운영진이 찾고 있어요', tag: 'letscok-call' });
+  });
+
+  it('구독이 없으면 0 — 운영진이 "직접 불러주세요"를 보게 된다', async () => {
+    const member = await createMember();
+
+    expect(await createService().callMember(member.id)).toBe(0);
+  });
+});
+
