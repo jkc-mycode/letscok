@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { IBM_Plex_Mono, IBM_Plex_Sans_KR } from 'next/font/google';
 import Script from 'next/script';
 import { SwRegister } from '@/components/sw-register';
+import { UpdateBanner } from '@/components/update-banner';
 import './globals.css';
 
 // 계기판 느낌의 산업적 서체 조합 — 본문 Plex Sans KR, 타이머/숫자 Plex Mono
@@ -54,6 +55,7 @@ export default function RootLayout({
       <body className="court-bg min-h-dvh font-sans antialiased">
         {children}
         <SwRegister />
+        <UpdateBanner />
       </body>
     </html>
   );

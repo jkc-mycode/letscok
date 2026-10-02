@@ -1,7 +1,12 @@
 import type { NextConfig } from 'next';
 import { withSentryConfig } from '@sentry/nextjs';
 
+// 배포마다 달라지는 값 — 화면 번들(빌드 시점)과 /version(지금 배포)을 비교해 새 배포를 감지한다
+// Vercel 빌드에선 커밋 SHA, 그 밖(로컬 빌드)은 빌드 시각이라 빌드마다 달라진다
+const BUILD_ID = process.env.VERCEL_GIT_COMMIT_SHA ?? `local-${Date.now()}`;
+
 const nextConfig: NextConfig = {
+  env: { NEXT_PUBLIC_BUILD_ID: BUILD_ID },
   // PWA를 모임원 앱(/m)과 관제판 앱(/admin)으로 나누면서 경로를 각 앱 아래로 모았다
   // (PWA scope는 경로 접두사라 한 앱에 속한 화면이 같은 접두사 아래 있어야 한다)
   // 카톡·공지에 이미 뿌려진 구 링크가 죽지 않도록 영구 리다이렉트로 살려둔다
