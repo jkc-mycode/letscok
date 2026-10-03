@@ -145,16 +145,21 @@ function SearchPanel({
 
   return (
     <>
-      <input
+      {/* 한 줄 textarea — 안드로이드 크롬은 <input>마다 키보드 위 자동완성 막대(열쇠·카드·지도핀)를 띄우고 autocomplete="off"도 무시한다 */}
+      <textarea
+        rows={1}
         autoComplete="off"
         value={query}
         onChange={(e) => {
-          setQuery(e.target.value);
+          setQuery(e.target.value.replace(/[\r\n]+/g, ' '));
           setSelected(null);
           setConsent(false);
         }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.preventDefault(); // 줄바꿈 막기 (붙여넣은 줄바꿈은 onChange에서 공백으로)
+        }}
         placeholder="이름을 입력하세요"
-        className="h-14 rounded-xl border border-line bg-panel px-5 text-lg outline-none focus:border-court"
+        className="h-14 resize-none overflow-hidden rounded-xl border border-line bg-panel px-5 py-3.5 text-lg leading-7 outline-none focus:border-court"
       />
 
       <div className="flex flex-col gap-2">
