@@ -29,11 +29,11 @@ import {
   useState,
   type TouchEvent as ReactTouchEvent,
 } from 'react';
-import { LoginGate } from '@/components/admin-gate';
+import { LoginGate, useAdminAuth } from '@/components/admin-gate';
 import { GenderMarker, GradeBadge, PlayerGrid, Toast } from '@/components/badges';
 import { HomeLink } from '@/components/home-link';
 import { MotionCard } from '@/components/motion-card';
-import { api, ApiError, clearPasscode, getPasscode } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { formatBirthInput, parseBirthDate } from '@/lib/birth-input';
 import {
   formatElapsed,
@@ -45,19 +45,13 @@ import {
 // ===== 페이지 루트: 패스코드 게이트 → 보드 =====
 
 export default function AdminPage() {
-  // null = 판정 전 — localStorage는 클라이언트에만 있어서 SSR 첫 렌더와
-  // 어긋나면 hydration 에러가 나므로 마운트 후에 읽는다
-  const [authed, setAuthed] = useState<boolean | null>(null);
-  useEffect(() => {
-    setAuthed(Boolean(getPasscode()));
-  }, []);
+  const { authed, notice, login, logout } = useAdminAuth();
 
   if (authed === null) return null;
   return authed ? (
-    // 잠금 = 저장된 패스코드까지 삭제해야 새로고침으로 재입장되지 않는 진짜 로그아웃
-    <Board onLogout={() => { clearPasscode(); setAuthed(false); }} />
+    <Board onLogout={logout} />
   ) : (
-    <LoginGate title="렛츠콕 관제판" onSuccess={() => setAuthed(true)} />
+    <LoginGate title="렛츠콕 관제판" notice={notice} onSuccess={login} />
   );
 }
 

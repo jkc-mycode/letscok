@@ -5,6 +5,9 @@ export const API_URL =
 
 const PASSCODE_KEY = 'letscok:admin-passcode';
 
+// 저장된 패스코드가 서버에서 거부됐을 때 게이트들이 듣는 이벤트
+export const ADMIN_UNAUTHORIZED_EVENT = 'letscok:admin-unauthorized';
+
 // 운영진 패스코드는 태블릿 localStorage에 유지 (개인 소모임 규모의 보안 수준으로 충분)
 export function getPasscode(): string | null {
   if (typeof window === 'undefined') return null;
@@ -50,6 +53,14 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   const json = (await res.json().catch(() => null)) as
     | { data?: T; message?: string | string[] }
     | null;
+
+  // 저장된 패스코드로 보낸 요청이 401 = 저장값이 틀렸다(검증 전 저장되던 시절의 값 등)
+  // 저장값을 지우고 게이트에 알려 입력 화면으로 돌려보낸다 — 안 그러면 보드는 보이는데 모든 조작이 막힌 채 갇힌다
+  // (로그인 화면의 검증 요청은 passcode를 직접 넘기므로 해당 없음 — 틀리면 그 화면에서 에러만 보여준다)
+  if (res.status === 401 && options.admin && options.passcode === undefined) {
+    clearPasscode();
+    window.dispatchEvent(new Event(ADMIN_UNAUTHORIZED_EVENT));
+  }
 
   if (!res.ok) {
     // NestJS 에러 응답의 message는 문자열 또는 (ValidationPipe의) 배열

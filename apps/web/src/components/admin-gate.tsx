@@ -3,18 +3,61 @@
 import { useEffect, useState } from 'react';
 import { HomeLink } from '@/components/home-link';
 import { InstallPrompt } from '@/components/install-prompt';
-import { api, ApiError, API_URL, clearPasscode, getPasscode, savePasscode } from '@/lib/api';
+import {
+  ADMIN_UNAUTHORIZED_EVENT,
+  api,
+  ApiError,
+  API_URL,
+  clearPasscode,
+  getPasscode,
+  savePasscode,
+} from '@/lib/api';
 
 // 운영진 패스코드 게이트 — /admin과 /history 계열이 공유
 // 저장된 패스코드(localStorage)가 있으면 바로 통과, 없으면 입력 화면
 
+// 게이트 판정 상태 — /admin과 AdminGate가 공유
+// 저장값이 있다는 것만으로 통과시키므로, 서버가 그 값을 거부하면(api()가 401 이벤트를 쏨) 입력 화면으로 되돌린다
+export function useAdminAuth() {
+  // null = 판정 전 — localStorage는 클라이언트에만 있어 SSR 첫 렌더와 어긋나면
+  // hydration 에러가 나므로 마운트 후에 읽는다
+  const [authed, setAuthed] = useState<boolean | null>(null);
+  const [rejected, setRejected] = useState(false);
+  useEffect(() => {
+    setAuthed(Boolean(getPasscode()));
+    const onUnauthorized = () => {
+      setRejected(true);
+      setAuthed(false);
+    };
+    window.addEventListener(ADMIN_UNAUTHORIZED_EVENT, onUnauthorized);
+    return () => window.removeEventListener(ADMIN_UNAUTHORIZED_EVENT, onUnauthorized);
+  }, []);
+
+  return {
+    authed,
+    // 저장값이 거부돼 돌아온 경우 입력 화면에 띄울 안내
+    notice: rejected ? '저장된 패스코드가 맞지 않아요. 다시 입력해주세요.' : undefined,
+    login: () => {
+      setRejected(false);
+      setAuthed(true);
+    },
+    // 잠금 = 저장된 패스코드까지 삭제해야 새로고침으로 재입장되지 않는 진짜 로그아웃
+    logout: () => {
+      clearPasscode();
+      setAuthed(false);
+    },
+  };
+}
+
 export function LoginGate({
   title,
   subtitle,
+  notice,
   onSuccess,
 }: {
   title: string;
   subtitle?: string;
+  notice?: string;
   onSuccess: () => void;
 }) {
   const [passcode, setPasscode] = useState('');
@@ -90,6 +133,8 @@ export function LoginGate({
             서버를 깨우는 중이에요. 최대 1분 정도 걸릴 수 있어요.
           </p>
         )}
+        {/* 새로 입력해 실패한 에러가 있으면 그쪽이 더 최신 정보라 안내는 숨긴다 */}
+        {notice && !error && <p className="text-center text-sm text-amber">{notice}</p>}
         {error && <p className="text-center text-sm text-coral">{error}</p>}
       </div>
     </main>
@@ -99,14 +144,9 @@ export function LoginGate({
 // 자식을 패스코드 게이트로 감싸는 래퍼 — 읽기 전용 화면(/history)처럼
 // 로그아웃 버튼이 필요 없는 곳용. /admin은 잠금 흐름 때문에 자체 상태를 유지한다
 export function AdminGate({ title, children }: { title: string; children: React.ReactNode }) {
-  // null = 판정 전 — localStorage는 클라이언트에만 있어 SSR 첫 렌더와 어긋나면
-  // hydration 에러가 나므로 마운트 후에 읽는다
-  const [authed, setAuthed] = useState<boolean | null>(null);
-  useEffect(() => {
-    setAuthed(Boolean(getPasscode()));
-  }, []);
+  const { authed, notice, login } = useAdminAuth();
 
   if (authed === null) return null;
-  if (!authed) return <LoginGate title={title} onSuccess={() => setAuthed(true)} />;
+  if (!authed) return <LoginGate title={title} notice={notice} onSuccess={login} />;
   return <>{children}</>;
 }
