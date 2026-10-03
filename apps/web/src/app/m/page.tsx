@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { GenderMarker, GradeBadge, MeChip, PlayerGrid, Toast } from '@/components/badges';
 import { HomeLink } from '@/components/home-link';
+import { ExitGuard } from '@/components/exit-guard';
 import { InstallPrompt } from '@/components/install-prompt';
 import { MotionCard } from '@/components/motion-card';
 import { PushToggle } from '@/components/push-toggle';
@@ -317,6 +318,8 @@ function Shell({ children }: { children: React.ReactNode }) {
       {/* 설치 배너는 /m의 모든 상태(로딩·모임 전·미체크인·참여 중)에서 같은 자리에 뜬다 */}
       <InstallPrompt />
       {children}
+      {/* 설치 앱에서 첫 화면 뒤로가기 = "한 번 더 누르면 종료" */}
+      <ExitGuard />
     </main>
   );
 }

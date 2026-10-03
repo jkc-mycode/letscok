@@ -4,6 +4,7 @@ import { IMemberSummary } from '@letscok/shared-types';
 import { useEffect, useMemo, useState } from 'react';
 import { GenderMarker, GradeBadge } from '@/components/badges';
 import { api } from '@/lib/api';
+import { useBackClose } from '@/lib/back-stack';
 
 // 모임원 생일 캘린더 — 운영진 전용 명단(GET /members)의 생년월일로 그린다 (서버 변경 없음)
 // 게스트는 생년월일을 받지 않는 정책이라 정회원만 나온다
@@ -51,6 +52,7 @@ function MemberLine({ member, note }: { member: IMemberSummary; note?: string })
 }
 
 export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
+  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 팝업 닫기
   const today = useMemo(startOfToday, []);
   const [members, setMembers] = useState<IMemberSummary[] | null>(null); // null = 로딩
   const [failed, setFailed] = useState(false);

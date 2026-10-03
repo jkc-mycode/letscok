@@ -32,11 +32,13 @@ import {
 import { LoginGate, useAdminAuth } from '@/components/admin-gate';
 import { AiCheckInPanel } from '@/components/ai-check-in-panel';
 import { BirthdayCalendarModal } from '@/components/birthday-calendar';
+import { ExitGuard } from '@/components/exit-guard';
 import { GenderMarker, GradeBadge, PlayerGrid, Toast } from '@/components/badges';
 import { HomeLink } from '@/components/home-link';
 import { MotionCard } from '@/components/motion-card';
 import { GRADES, MultiMemberForm, NewMemberBody } from '@/components/multi-member-form';
 import { api, ApiError } from '@/lib/api';
+import { useBackClose } from '@/lib/back-stack';
 import { formatBirthInput, parseBirthDate } from '@/lib/birth-input';
 import {
   formatElapsed,
@@ -52,7 +54,10 @@ export default function AdminPage() {
 
   if (authed === null) return null;
   return authed ? (
-    <Board onLogout={logout} />
+    <>
+      <Board onLogout={logout} />
+      <ExitGuard />
+    </>
   ) : (
     <LoginGate title="렛츠콕 관제판" notice={notice} onSuccess={login} />
   );
@@ -763,6 +768,7 @@ function RecommendModal({
   busy: boolean;
   onClose: () => void;
 }) {
+  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 팝업 닫기
   const [category, setCategory] = useState<RecommendationCategory>('ALL');
   const [candidates, setCandidates] = useState<IGameRecommendation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -913,6 +919,7 @@ function RecommendModal({
 // 모임원이 /checkin에서 입력하는 코드 — 소모임 공지사항의 작성월일(MMDD)에 맞춰 운영진이 관리
 // 코드는 운영진 전용 엔드포인트에서 취득(공개 스냅샷엔 없음)
 function CheckInCodeModal({ onClose }: { onClose: () => void }) {
+  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 팝업 닫기
   const [code, setCode] = useState<string | null | undefined>(undefined); // undefined=로딩, null=코드없음
   const [error, setError] = useState<string | null>(null);
 
@@ -1058,6 +1065,7 @@ function ReplacePlayerModal({
   busy: boolean;
   onClose: () => void;
 }) {
+  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 팝업 닫기
   const [outId, setOutId] = useState<string | null>(null);
   const [inId, setInId] = useState<string | null>(null);
 
@@ -1416,6 +1424,7 @@ function ManualCheckInModal({
   busy: boolean;
   onClose: () => void;
 }) {
+  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 팝업 닫기
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<IMember[]>([]);
   // 선택 목록은 검색어가 바뀌어도 유지돼야 해서 결과 배열이 아닌 별도 Map으로 들고 간다
@@ -1697,6 +1706,7 @@ function isStaleGuest(member: IMemberSummary): boolean {
 type MemberFilter = 'ALL' | 'REGULAR' | 'GUEST' | 'DELETED';
 
 function MembersManagerModal({ onClose }: { onClose: () => void }) {
+  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 팝업 닫기
   const [members, setMembers] = useState<IMemberSummary[] | null>(null); // null=로딩
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<MemberFilter>('ALL');
@@ -1878,6 +1888,7 @@ function MemberRegisterSheet({
   onRegistered: () => Promise<unknown>; // 명단 다시 불러오기
   onClose: () => void;
 }) {
+  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 팝업 닫기
   const [notice, setNotice] = useState<string | null>(null);
 
   return (
@@ -1935,6 +1946,7 @@ function MemberEditSheet({
   busy: boolean;
   onClose: () => void;
 }) {
+  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 팝업 닫기
   const [name, setName] = useState(member.name);
   const [birth, setBirth] = useState(formatBirthInput(member.birthDate ?? ''));
   const [grade, setGrade] = useState<Grade>(member.grade);
@@ -2172,6 +2184,7 @@ function StaleGuestCleanupSheet({
   busy: boolean;
   onClose: () => void;
 }) {
+  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 팝업 닫기
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(guests.map((g) => g.id)), // 기본 전체 선택 — 이미 조건으로 걸러진 명단이고 2탭 확인이 남아 있다
   );
@@ -2277,6 +2290,7 @@ function TodayGamesModal({
   snapshot: ISessionSnapshot;
   onClose: () => void;
 }) {
+  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 팝업 닫기
   const [detail, setDetail] = useState<IHistorySessionDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -2491,6 +2505,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
 ];
 
 function HelpModal({ onClose }: { onClose: () => void }) {
+  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 팝업 닫기
   return (
     <div
       onClick={onClose}
