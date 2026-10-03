@@ -604,7 +604,7 @@ function BoardBody({
           {pendingShuttle.length > 0 && (
             <>
               <p className="pb-1 text-center text-[11px] font-medium text-amber">
-                콕 확인 대기 {pendingShuttle.length}명 — 탭하면 대기 인원으로 내려가요
+                콕 확인 대기 {pendingShuttle.length}명 — [콕 확인]을 누르면 대기 인원으로 내려가요
               </p>
               <AnimatePresence initial={false}>
                 {pendingShuttle.map((attendance) => (
@@ -2423,7 +2423,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
   {
     title: '기본 흐름',
     items: [
-      '체크인만으로는 게임에 못 들어가요 — 대기 인원 맨 위 [콕 확인 대기]에서 콕 낸 사람을 탭해야 대기 인원으로 내려와요. 그 섹션이 비어 있으면 다 처리된 거예요.',
+      '체크인만으로는 게임에 못 들어가요 — 대기 인원 맨 위 [콕 확인 대기]에서 콕 낸 사람의 [콕 확인]을 눌러야 대기 인원으로 내려와요. 그 섹션이 비어 있으면 다 처리된 거예요.',
       '콕 확인 시각이 곧 참여 시작이에요 — 일찍 와서 콕을 늦게 낸 사람이 대기 순번을 앞지르지 않아요. 잘못 눌렀으면 행의 [콕취소]로 되돌려요 (조합·게임에 든 뒤엔 불가).',
       '대기 인원에서 4명 선택 → [조합 만들기] → 대기 조합에서 [코트 배정] → 끝나면 [게임 종료].',
       '[게임 종료]만 게임 수 +1 · 대기시간 리셋. [대기로]는 조합을 유지한 채 뒤로, [취소]·[해체]는 없던 일로 (둘 다 미집계).',
@@ -2929,7 +2929,7 @@ function QueueCard({
 
 // ===== 대기 인원 구역 =====
 
-// 콕 확인 대기 행 — 행 전체가 확인 버튼이다 (시작 시간에 20명을 연속으로 눌러야 해서 탭 영역을 최대로)
+// 콕 확인 대기 행 — [콕 확인] 버튼만 누른다 (행 전체를 버튼으로 두면 스크롤하다 스친 행이 확인돼 버린다)
 // 확인 전에는 게임 배정이 막히므로 선택 체크박스는 없다
 function ShuttleRow({
   attendance,
@@ -2938,27 +2938,19 @@ function ShuttleRow({
   attendance: IAttendance;
   run: (a: () => Promise<unknown>) => Promise<void>;
 }) {
-  // 출석 취소(노쇼) 2탭 확인 — 행 전체가 콕 확인 버튼이라 오탭 한 번에 지워지면 안 된다
+  // 출석 취소(노쇼) 2탭 확인 — 콕 확인 바로 옆이라 오탭 한 번에 지워지면 안 된다
   const [confirmCancel, setConfirmCancel] = useState(false);
   const member = attendance.member;
   if (!member) return null;
   return (
-    <MotionCard
-      onClick={() =>
-        void run(() =>
-          api(`/attendances/${attendance.id}/shuttle`, { method: 'PATCH', admin: true }),
-        )
-      }
-      className="flex cursor-pointer items-center gap-2 rounded-xl border border-amber/40 bg-amber/5 p-3 transition-colors"
-    >
+    <MotionCard className="flex items-center gap-2 rounded-xl border border-amber/40 bg-amber/5 p-3 transition-colors">
       <GradeBadge grade={member.grade} />
       <span className="truncate font-medium">{member.name}</span>
       <GenderMarker gender={member.gender} />
       {member.isGuest && <span className="text-[10px] text-sky">게스트</span>}
       {/* 사전 체크인 취소 — 개인 사정·노쇼 등으로 못 오게 된 사람을 출석 기록 없이 제거 (퇴장과 다름) */}
       <button
-        onClick={(e) => {
-          e.stopPropagation();
+        onClick={() => {
           if (!confirmCancel) {
             setConfirmCancel(true);
             setTimeout(() => setConfirmCancel(false), 3000); // 잠시 뒤 원복 — 눌러둔 채 잊는 실수 방지
@@ -2973,9 +2965,16 @@ function ShuttleRow({
       >
         {confirmCancel ? '한 번 더' : '취소'}
       </button>
-      <span className="shrink-0 rounded-lg bg-amber px-2.5 py-1 text-xs font-bold text-bg">
+      <button
+        onClick={() =>
+          void run(() =>
+            api(`/attendances/${attendance.id}/shuttle`, { method: 'PATCH', admin: true }),
+          )
+        }
+        className="h-9 shrink-0 rounded-lg bg-amber px-3 text-xs font-bold text-bg"
+      >
         콕 확인
-      </span>
+      </button>
     </MotionCard>
   );
 }
