@@ -34,6 +34,7 @@ import { AiCheckInPanel } from '@/components/ai-check-in-panel';
 import { GenderMarker, GradeBadge, PlayerGrid, Toast } from '@/components/badges';
 import { HomeLink } from '@/components/home-link';
 import { MotionCard } from '@/components/motion-card';
+import { GRADES, MultiMemberForm, NewMemberBody } from '@/components/multi-member-form';
 import { api, ApiError } from '@/lib/api';
 import { formatBirthInput, parseBirthDate } from '@/lib/birth-input';
 import {
@@ -1374,7 +1375,6 @@ function CheerEasterEgg({ onDone }: { onDone: () => void }) {
 // 미등록 인원은 구두 동의 전제로 대리 등록+체크인까지 — 게스트는 이름·급수·성별만(생년월일 미수집 정책),
 // 정회원은 생년월일 포함(운영진이 알 수 있음). 본인 폰 연결은 걱정 없음:
 // 나중에 본인이 코드로 들어오면 409를 /checkin이 "본인 확인 완료"로 받아 /m 진입
-const GRADES: Grade[] = ['A', 'B', 'C', 'D', 'E', 'F'];
 
 function ManualCheckInModal({
   sessionId,
@@ -1395,15 +1395,8 @@ function ManualCheckInModal({
   const [selected, setSelected] = useState<Map<string, IMember>>(new Map());
   const [lastDone, setLastDone] = useState<string | null>(null); // 연속 입력용 직전 완료 표시
   const [failed, setFailed] = useState<{ name: string; message: string }[]>([]);
-  // 신규 등록 폼 — 현장 대리 등록은 게스트가 흔해서 기본 게스트. 정회원 선택 시 생년월일 입력 추가
+  // 신규 등록 폼 — 여러 명을 한 번에(공용 MultiMemberForm). 현장 대리 등록은 게스트가 흔해서 기본 게스트
   const [regOpen, setRegOpen] = useState(false);
-  const [regIsGuest, setRegIsGuest] = useState(true);
-  const [regName, setRegName] = useState('');
-  const [regBirth, setRegBirth] = useState('');
-  const [regGrade, setRegGrade] = useState<Grade | null>(null);
-  const [regGender, setRegGender] = useState<Gender | null>(null);
-  const regDigits = regBirth.replace(/\D/g, '');
-  const regBirthDate = parseBirthDate(regBirth);
 
   // 입력 후 300ms 조용하면 검색 (타이핑마다 요청하지 않도록 — /checkin과 동일 패턴)
   useEffect(() => {
@@ -1464,36 +1457,14 @@ function ManualCheckInModal({
     });
   };
 
-  // 등록+체크인 한 번에 — 개인정보 동의는 여기서 받지 않는다(대리 등록이라 본인 의사가 아님)
+  // 한 명분 등록+체크인 — 개인정보 동의는 여기서 받지 않는다(대리 등록이라 본인 의사가 아님)
   // 본인이 코드로 처음 들어올 때 /checkin에서 동의를 받아 기록한다
-  const registerNew = () => {
-    const name = regName.trim();
-    if (!name || !regGrade || !regGender || (!regIsGuest && !regBirthDate)) return;
-    void run(async () => {
-      const created = await api<IMember>('/members', {
-        method: 'POST',
-        admin: true,
-        body: {
-          name,
-          ...(regIsGuest ? {} : { birthDate: regBirthDate }),
-          grade: regGrade,
-          gender: regGender,
-          isGuest: regIsGuest,
-        },
-      });
-      await api(`/sessions/${sessionId}/attendances/manual`, {
-        method: 'POST',
-        admin: true,
-        body: { memberId: created.id },
-      });
-      setLastDone(`${created.name}${regIsGuest ? ' (게스트)' : ''}님 체크인 완료`);
-      setFailed([]);
-      setRegOpen(false);
-      setRegIsGuest(true);
-      setRegName('');
-      setRegBirth('');
-      setRegGrade(null);
-      setRegGender(null);
+  const registerAndCheckIn = async (body: NewMemberBody) => {
+    const created = await api<IMember>('/members', { method: 'POST', admin: true, body });
+    await api(`/sessions/${sessionId}/attendances/manual`, {
+      method: 'POST',
+      admin: true,
+      body: { memberId: created.id },
     });
   };
 
@@ -1620,120 +1591,34 @@ function ManualCheckInModal({
         <div className="mt-3 border-t border-line pt-3">
           {!regOpen ? (
             <button
-              onClick={() => {
-                setRegOpen(true);
-                setRegName(query.trim()); // 방금 검색한 이름 이어받기
-              }}
+              onClick={() => setRegOpen(true)}
               className="h-11 w-full rounded-xl border border-sky/40 text-sm font-medium text-sky"
             >
-              + 신규 등록 — 검색에 없는 인원
+              + 신규 등록 — 검색에 없는 인원 (여러 명 가능)
             </button>
           ) : (
             <div className="flex flex-col gap-2">
-              <div className="grid grid-cols-2 gap-1.5">
-                <button
-                  onClick={() => setRegIsGuest(true)}
-                  className={`h-10 rounded-lg border text-sm font-bold ${
-                    regIsGuest ? 'border-sky bg-sky/15 text-sky' : 'border-line bg-panel2 text-dim'
-                  }`}
-                >
-                  게스트
-                </button>
-                <button
-                  onClick={() => setRegIsGuest(false)}
-                  className={`h-10 rounded-lg border text-sm font-bold ${
-                    !regIsGuest
-                      ? 'border-court bg-court/15 text-court'
-                      : 'border-line bg-panel2 text-dim'
-                  }`}
-                >
-                  정회원
+              <div className="flex items-center">
+                <p className="text-xs font-bold text-sky">신규 등록 + 체크인</p>
+                <button onClick={() => setRegOpen(false)} className="ml-auto text-xs text-faint">
+                  접기
                 </button>
               </div>
-              <input
-                value={regName}
-                onChange={(e) => setRegName(e.target.value)}
-                maxLength={20}
-                placeholder="이름"
-                className="h-11 rounded-xl border border-line bg-panel2 px-4 text-sm outline-none focus:border-sky"
+              <MultiMemberForm
+                defaultGuest
+                initialName={query.trim()} // 방금 검색한 이름 이어받기
+                actionLabel="등록 + 체크인"
+                register={registerAndCheckIn}
+                onFinished={(done, remaining) => {
+                  // 체크인은 소켓 스냅샷으로 보드에 바로 반영된다 — 여기선 결과 문구만
+                  if (done.length > 0) setLastDone(`${done.join(', ')}님 체크인 완료`);
+                  setFailed([]);
+                  if (remaining === 0) setRegOpen(false);
+                }}
               />
-              {!regIsGuest && (
-                <div>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={regBirth}
-                    onChange={(e) => setRegBirth(formatBirthInput(e.target.value))}
-                    placeholder="생년월일 8자리 (예: 19970312)"
-                    className="h-11 w-full rounded-xl border border-line bg-panel2 px-4 text-sm outline-none focus:border-court"
-                  />
-                  {regDigits.length === 8 && !regBirthDate && (
-                    <p className="mt-1 text-xs text-coral">날짜가 올바르지 않아요</p>
-                  )}
-                </div>
-              )}
-              <div className="grid grid-cols-6 gap-1.5">
-                {GRADES.map((g) => (
-                  <button
-                    key={g}
-                    onClick={() => setRegGrade(g)}
-                    className={`h-10 rounded-lg border text-sm font-bold ${
-                      regGrade === g
-                        ? 'border-sky bg-sky/15 text-sky'
-                        : 'border-line bg-panel2 text-dim'
-                    }`}
-                  >
-                    {g}
-                  </button>
-                ))}
-              </div>
-              <div className="grid grid-cols-2 gap-1.5">
-                <button
-                  onClick={() => setRegGender('MALE')}
-                  className={`h-10 rounded-lg border text-sm font-bold ${
-                    regGender === 'MALE'
-                      ? 'border-sky bg-sky/15 text-sky'
-                      : 'border-line bg-panel2 text-dim'
-                  }`}
-                >
-                  ♂ 남
-                </button>
-                <button
-                  onClick={() => setRegGender('FEMALE')}
-                  className={`h-10 rounded-lg border text-sm font-bold ${
-                    regGender === 'FEMALE'
-                      ? 'border-pink bg-pink/15 text-pink'
-                      : 'border-line bg-panel2 text-dim'
-                  }`}
-                >
-                  ♀ 여
-                </button>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setRegOpen(false)}
-                  className="h-11 rounded-xl border border-line px-4 text-sm text-dim"
-                >
-                  취소
-                </button>
-                <button
-                  onClick={registerNew}
-                  disabled={
-                    !regName.trim() ||
-                    !regGrade ||
-                    !regGender ||
-                    (!regIsGuest && !regBirthDate) ||
-                    busy
-                  }
-                  className="h-11 flex-1 rounded-xl bg-sky text-sm font-bold text-bg disabled:opacity-50"
-                >
-                  등록 + 체크인
-                </button>
-              </div>
               <p className="text-[11px] text-faint">
-                {regIsGuest
-                  ? '게스트는 생년월일을 받지 않아요. 이름·급수·성별 등록은 본인에게 구두로 동의받아 주세요.'
-                  : '정회원 등록은 본인에게 구두로 동의받아 주세요. 본인 폰으로 코드 체크인하면 이 계정으로 연결돼요.'}
+                게스트는 생년월일을 받지 않아요. 정회원은 본인 폰으로 코드 체크인하면 이 계정으로
+                연결돼요. 등록은 본인에게 구두로 동의받아 주세요.
               </p>
             </div>
           )}
@@ -1933,7 +1818,7 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
         </button>
 
         {registerOpen && (
-          <MemberRegisterSheet run={run} busy={busy} onClose={() => setRegisterOpen(false)} />
+          <MemberRegisterSheet onRegistered={refetch} onClose={() => setRegisterOpen(false)} />
         )}
         {editTarget && (
           <MemberEditSheet
@@ -1960,40 +1845,13 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
 // 신규 등록 시트 — 체크인 없이 명단에만 추가한다 (모임 전 사전 등록용, 세션 불필요)
 // 모임 중 지각자 등록+체크인은 [수동 체크인]의 [신규 등록]이 담당 — 여긴 원장 작업만
 function MemberRegisterSheet({
-  run,
-  busy,
+  onRegistered,
   onClose,
 }: {
-  run: (a: () => Promise<unknown>) => Promise<void>;
-  busy: boolean;
+  onRegistered: () => Promise<unknown>; // 명단 다시 불러오기
   onClose: () => void;
 }) {
-  const [isGuest, setIsGuest] = useState(false); // 명단 정리 맥락은 정회원 등록이 기본 (현장 즉석과 반대)
-  const [name, setName] = useState('');
-  const [birth, setBirth] = useState('');
-  const [grade, setGrade] = useState<Grade | null>(null);
-  const [gender, setGender] = useState<Gender | null>(null);
-  const birthDate = parseBirthDate(birth);
-  const birthDigits = birth.replace(/\D/g, '');
-
-  const save = () => {
-    const trimmed = name.trim();
-    if (!trimmed || !grade || !gender || (!isGuest && !birthDate)) return;
-    void run(async () => {
-      await api('/members', {
-        method: 'POST',
-        admin: true,
-        body: {
-          name: trimmed,
-          ...(isGuest ? {} : { birthDate }),
-          grade,
-          gender,
-          isGuest,
-        },
-      });
-      onClose();
-    });
-  };
+  const [notice, setNotice] = useState<string | null>(null);
 
   return (
     <div
@@ -2015,85 +1873,20 @@ function MemberRegisterSheet({
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-1.5">
-          <button
-            onClick={() => setIsGuest(false)}
-            className={`h-10 rounded-lg border text-sm font-bold ${
-              !isGuest ? 'border-court bg-court/15 text-court' : 'border-line bg-panel2 text-dim'
-            }`}
-          >
-            정회원
-          </button>
-          <button
-            onClick={() => setIsGuest(true)}
-            className={`h-10 rounded-lg border text-sm font-bold ${
-              isGuest ? 'border-sky bg-sky/15 text-sky' : 'border-line bg-panel2 text-dim'
-            }`}
-          >
-            게스트
-          </button>
-        </div>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          maxLength={20}
-          placeholder="이름"
-          autoFocus
-          className="h-11 rounded-xl border border-line bg-panel2 px-4 text-sm outline-none focus:border-sky"
+        {/* 명단 정리 맥락은 정회원 등록이 기본 (현장 즉석 등록과 반대) */}
+        <MultiMemberForm
+          defaultGuest={false}
+          actionLabel="등록"
+          register={async (body) => {
+            await api('/members', { method: 'POST', admin: true, body });
+          }}
+          onFinished={(done, remaining) => {
+            void onRegistered();
+            if (remaining === 0) onClose();
+            else if (done.length > 0) setNotice(`${done.length}명 등록 완료 — 남은 줄을 확인해주세요`);
+          }}
         />
-        {!isGuest && (
-          <div>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={birth}
-              onChange={(e) => setBirth(formatBirthInput(e.target.value))}
-              placeholder="생년월일 8자리 (예: 19970312)"
-              className="h-11 w-full rounded-xl border border-line bg-panel2 px-4 text-sm outline-none focus:border-sky"
-            />
-            {birthDigits.length === 8 && !birthDate && (
-              <p className="mt-1 text-xs text-coral">날짜가 올바르지 않아요</p>
-            )}
-          </div>
-        )}
-        <div className="grid grid-cols-6 gap-1.5">
-          {GRADES.map((g) => (
-            <button
-              key={g}
-              onClick={() => setGrade(g)}
-              className={`h-10 rounded-lg border text-sm font-bold ${
-                grade === g ? 'border-sky bg-sky/15 text-sky' : 'border-line bg-panel2 text-dim'
-              }`}
-            >
-              {g}
-            </button>
-          ))}
-        </div>
-        <div className="grid grid-cols-2 gap-1.5">
-          <button
-            onClick={() => setGender('MALE')}
-            className={`h-10 rounded-lg border text-sm font-bold ${
-              gender === 'MALE' ? 'border-sky bg-sky/15 text-sky' : 'border-line bg-panel2 text-dim'
-            }`}
-          >
-            ♂ 남
-          </button>
-          <button
-            onClick={() => setGender('FEMALE')}
-            className={`h-10 rounded-lg border text-sm font-bold ${
-              gender === 'FEMALE' ? 'border-pink bg-pink/15 text-pink' : 'border-line bg-panel2 text-dim'
-            }`}
-          >
-            ♀ 여
-          </button>
-        </div>
-        <button
-          onClick={save}
-          disabled={busy || !name.trim() || !grade || !gender || (!isGuest && !birthDate)}
-          className="h-11 rounded-xl bg-sky text-sm font-bold text-bg disabled:opacity-50"
-        >
-          등록
-        </button>
+        {notice && <p className="text-xs font-medium text-court">{notice}</p>}
         <p className="text-[11px] leading-relaxed text-faint">
           개인정보 동의는 본인이 처음 코드로 체크인할 때 받아요. 등록은 본인에게 구두로 동의받아
           주세요.
