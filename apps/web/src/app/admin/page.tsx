@@ -31,6 +31,7 @@ import {
 } from 'react';
 import { LoginGate, useAdminAuth } from '@/components/admin-gate';
 import { AiCheckInPanel } from '@/components/ai-check-in-panel';
+import { BirthdayCalendarModal } from '@/components/birthday-calendar';
 import { GenderMarker, GradeBadge, PlayerGrid, Toast } from '@/components/badges';
 import { HomeLink } from '@/components/home-link';
 import { MotionCard } from '@/components/motion-card';
@@ -110,6 +111,7 @@ function StartScreen({
 }) {
   // 명단 정리는 모임 전이 한가하다 — 세션 없이도 모임원 관리에 들어갈 수 있게
   const [membersOpen, setMembersOpen] = useState(false);
+  const [birthdayOpen, setBirthdayOpen] = useState(false);
   return (
     <main className="fade-in flex min-h-dvh flex-col items-center justify-center gap-8">
       <div className="text-center">
@@ -141,6 +143,12 @@ function StartScreen({
         >
           지난 기록
         </Link>
+        <button
+          onClick={() => setBirthdayOpen(true)}
+          className="h-11 rounded-xl border border-line px-6 text-sm font-medium text-dim"
+        >
+          생일
+        </button>
       </div>
       {/* 잠금 — 보드의 [잠금]과 같다. 저장된 패스코드를 지우고 입력 화면으로 (모임 전엔 보드가 없어 여기 둔다) */}
       <button
@@ -151,6 +159,7 @@ function StartScreen({
         잠금 — 저장된 패스코드 지우기
       </button>
       {membersOpen && <MembersManagerModal onClose={() => setMembersOpen(false)} />}
+      {birthdayOpen && <BirthdayCalendarModal onClose={() => setBirthdayOpen(false)} />}
       {toast && <Toast message={toast} />}
     </main>
   );
@@ -185,6 +194,7 @@ function BoardBody({
   const [helpOpen, setHelpOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false); // 운영진 수동 체크인 (사전 등록·현장 대리 등 예외용)
   const [membersOpen, setMembersOpen] = useState(false); // 모임원 관리 (명단 조회·수정·정리)
+  const [birthdayOpen, setBirthdayOpen] = useState(false); // 생일 캘린더
 
   // 이스터에그 — 대기 인원 헤더의 [수동 체크인] 왼쪽 빈 영역 13연타 (현장 태블릿용 서프라이즈)
   // 연타 카운트는 리렌더와 무관한 ref로, 1초 이상 쉬면 리셋(누적 탭 우연 발동 방지)
@@ -336,6 +346,12 @@ function BoardBody({
       key: 'members',
       label: '모임원 관리',
       onClick: () => setMembersOpen(true),
+      cls: 'border-line text-dim',
+    },
+    {
+      key: 'birthday',
+      label: '생일',
+      onClick: () => setBirthdayOpen(true),
       cls: 'border-line text-dim',
     },
     {
@@ -663,6 +679,7 @@ function BoardBody({
       )}
       {codeOpen && <CheckInCodeModal onClose={() => setCodeOpen(false)} />}
       {membersOpen && <MembersManagerModal onClose={() => setMembersOpen(false)} />}
+      {birthdayOpen && <BirthdayCalendarModal onClose={() => setBirthdayOpen(false)} />}
       {cheer && <CheerEasterEgg onDone={closeCheer} />}
       {manualOpen && (
         <ManualCheckInModal
