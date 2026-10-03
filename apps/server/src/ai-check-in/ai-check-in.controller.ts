@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
   Param,
@@ -13,6 +14,7 @@ import { Throttle } from '@nestjs/throttler';
 import { IAiCheckInResult, IAiCheckInStatus, IApiResponse } from '@letscok/shared-types';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { AiCheckInService } from './ai-check-in.service';
+import { AiCheckInCommandDto } from './dto/ai-check-in.dtos';
 
 // 캡처 업로드 제한 — 웹이 긴 변 1568px JPEG로 줄여 보내므로 장당 1.5MB면 넉넉하다
 // (원본 수 MB를 여러 장 받으면 Render 무료 인스턴스 512MB 메모리가 위험)
@@ -54,6 +56,19 @@ export class AiCheckInController {
     return {
       success: true,
       data: await this.aiCheckInService.checkInFromImages(sessionId, images),
+    };
+  }
+
+  // 운영진 자연어 명령 — 체크인만 지원(그 밖의 요청엔 고정 안내만)
+  @Post('sessions/:sessionId/ai-check-in/command')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  async checkInFromCommand(
+    @Param('sessionId') sessionId: string,
+    @Body() dto: AiCheckInCommandDto,
+  ): Promise<IApiResponse<IAiCheckInResult>> {
+    return {
+      success: true,
+      data: await this.aiCheckInService.checkInFromCommand(sessionId, dto.text),
     };
   }
 }

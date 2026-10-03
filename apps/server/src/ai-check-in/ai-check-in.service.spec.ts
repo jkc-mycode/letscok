@@ -4,7 +4,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from '../push/push.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { SessionsService } from '../sessions/sessions.service';
-import { AiCheckInService, ExtractedName, normalizeName } from './ai-check-in.service';
+import {
+  AiCheckInService,
+  ExtractedName,
+  normalizeName,
+  UNSUPPORTED_COMMAND_MESSAGE,
+} from './ai-check-in.service';
 import { AiClient } from './ai.client';
 
 // AI 체크인 매칭 통합 테스트 — 실DB로 "확실한 것만 자동" 규칙을 검증한다
@@ -249,6 +254,50 @@ describe('checkInFromImages (캡처)', () => {
 
     await expect(service.checkInFromImages(session.id, [png])).rejects.toThrow(UnprocessableEntityException);
     expect(await attendedIds(session.id)).toEqual([]);
+  });
+});
+
+describe('checkInFromCommand (자연어 명령)', () => {
+  beforeEach(() => aiStub.extract.mockReset());
+
+  it('체크인 명령이면 뽑힌 대상을 같은 규칙으로 체크인한다 (명령 문장은 다듬어서 전달)', async () => {
+    const session = await seedSession();
+    await seedMember('김민수', { birthDate: '1995-01-01' });
+    const target = await seedMember('김민수', { birthDate: '1997-01-01' });
+    aiStub.extract.mockResolvedValue({
+      action: 'check_in',
+      targets: [full('김민수', { raw: '97년생 김민수', birthYear: 97 })],
+    });
+
+    const result = await service.checkInFromCommand(session.id, '  97년생 김민수 체크인해줘  ');
+
+    expect(result.checkedIn).toEqual([{ memberId: target.id, name: '김민수' }]);
+    expect(aiStub.extract.mock.calls[0][3]).toBe('97년생 김민수 체크인해줘');
+  });
+
+  it('체크인 외 요청(unsupported)은 아무것도 하지 않고 고정 안내만 — AI가 뽑은 이름이 있어도 무시', async () => {
+    const session = await seedSession();
+    await seedMember('김하나');
+    aiStub.extract.mockResolvedValue({ action: 'unsupported', targets: [full('김하나')] });
+
+    const result = await service.checkInFromCommand(session.id, '김하나 퇴장시켜줘');
+
+    expect(result).toEqual({
+      checkedIn: [],
+      alreadyIn: [],
+      notFound: [],
+      ambiguous: [],
+      message: UNSUPPORTED_COMMAND_MESSAGE,
+    });
+    expect(await attendedIds(session.id)).toEqual([]);
+  });
+
+  it('진행 중 모임이 아니면 AI를 부르지 않는다', async () => {
+    const session = await seedSession();
+    await prisma.session.update({ where: { id: session.id }, data: { status: 'CLOSED' } });
+
+    await expect(service.checkInFromCommand(session.id, '김하나 체크인')).rejects.toThrow(NotFoundException);
+    expect(aiStub.extract).not.toHaveBeenCalled();
   });
 });
 

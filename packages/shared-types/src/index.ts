@@ -388,6 +388,11 @@ export interface IAiCheckInMember {
   name: string;
 }
 
+// 운영진 자연어 명령 — 예: "97년생 김민수 체크인해줘"
+export interface IAiCheckInCommandDto {
+  text: string;
+}
+
 // 캡처·명령 처리 결과 — 확실한 사람만 체크인하고 나머지는 운영진이 직접 처리하도록 나눠서 돌려준다
 export interface IAiCheckInResult {
   checkedIn: IAiCheckInMember[]; // 이번에 체크인됨
