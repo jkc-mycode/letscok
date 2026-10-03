@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { AttendancesService } from '../attendances/attendances.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from '../push/push.service';
@@ -12,12 +12,18 @@ import { AiClient } from './ai.client';
 
 const realtimeStub = { broadcastSnapshot: () => undefined } as unknown as RealtimeService;
 const pushStub = {} as unknown as PushService;
-const aiStub = { isEnabled: () => true } as unknown as AiClient;
+// AI 판독은 고정 결과로 대체 — 요청 모양(이미지·지시문)만 확인한다
+const aiStub = { isEnabled: () => true, extract: jest.fn() };
 
 const prisma = new PrismaService();
 const sessionsService = new SessionsService(prisma, realtimeStub);
 const attendancesService = new AttendancesService(prisma, sessionsService, realtimeStub, pushStub);
-const service = new AiCheckInService(prisma, sessionsService, attendancesService, aiStub);
+const service = new AiCheckInService(
+  prisma,
+  sessionsService,
+  attendancesService,
+  aiStub as unknown as AiClient,
+);
 
 // AI 추출 결과 1건 — 기본은 성+이름, 표기 없음
 const full = (name: string, over: Partial<ExtractedName> = {}): ExtractedName => ({
@@ -204,3 +210,45 @@ describe('안내 문장과 세션', () => {
     expect(normalizeName(' 김 강민 🏸 ')).toBe('김강민');
   });
 });
+
+describe('checkInFromImages (캡처)', () => {
+  const png = { buffer: Buffer.from('fake-png'), mimetype: 'image/png' };
+  const jpeg = { buffer: Buffer.from('fake-jpeg'), mimetype: 'image/jpeg' };
+
+  beforeEach(() => aiStub.extract.mockReset());
+
+  it('캡처를 data URL 이미지로 실어 보내고, 읽은 이름을 같은 규칙으로 체크인한다', async () => {
+    const session = await seedSession();
+    const member = await seedMember('김하나');
+    aiStub.extract.mockResolvedValue({ names: [full('김하나'), full('스매싱장인', { kind: 'nickname' })] });
+
+    const result = await service.checkInFromImages(session.id, [png, jpeg]);
+
+    expect(result.checkedIn).toEqual([{ memberId: member.id, name: '김하나' }]);
+    expect(result.notFound).toEqual(['스매싱장인']);
+    const content = aiStub.extract.mock.calls[0][3];
+    expect(content.slice(0, 2)).toEqual([
+      { type: 'image_url', image_url: { url: `data:image/png;base64,${png.buffer.toString('base64')}` } },
+      { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${jpeg.buffer.toString('base64')}` } },
+    ]);
+    expect(content[2]).toMatchObject({ type: 'text' });
+  });
+
+  it('진행 중 모임이 아니면 AI를 부르지 않는다 — 비용 낭비 방지', async () => {
+    const session = await seedSession();
+    await prisma.session.update({ where: { id: session.id }, data: { status: 'CLOSED' } });
+
+    await expect(service.checkInFromImages(session.id, [png])).rejects.toThrow(NotFoundException);
+    expect(aiStub.extract).not.toHaveBeenCalled();
+  });
+
+  it('AI가 읽지 못하면(422 등) 체크인 없이 그 에러를 그대로 전달한다', async () => {
+    const session = await seedSession();
+    await seedMember('김하나');
+    aiStub.extract.mockRejectedValue(new UnprocessableEntityException('내용을 읽지 못했어요.'));
+
+    await expect(service.checkInFromImages(session.id, [png])).rejects.toThrow(UnprocessableEntityException);
+    expect(await attendedIds(session.id)).toEqual([]);
+  });
+});
+

@@ -24,6 +24,33 @@ export const extractedNameSchema = z.strictObject({
 });
 export type ExtractedName = z.infer<typeof extractedNameSchema>;
 
+// 캡처 여러 장에서 읽은 참석 신청자 목록
+const attendeeListSchema = z.strictObject({
+  names: z.array(extractedNameSchema).describe('참석 신청자 목록. 여러 장에 같은 사람이 있으면 한 번만'),
+});
+
+// 한 번에 처리할 이름 상한 — 모델이 이상하게 길게 뽑아도 체크인이 폭주하지 않게
+const MAX_NAMES = 60;
+
+// 캡처 판독 지시 — 판단(누구를 체크인할지)은 서버가 하므로 여기선 "있는 그대로 읽기"만 시킨다
+const IMAGES_SYSTEM_PROMPT = `당신은 배드민턴 소모임 앱의 "참석 신청자 목록" 캡처에서 사람 이름을 읽는 판독기입니다.
+
+규칙:
+- 참석(신청) 목록에 있는 사람만 뽑습니다. 모임 제목·공지 본문·날짜·장소·버튼 문구·인원수 같은 글자는 사람이 아니므로 제외합니다.
+- 화면에 대기자·불참 목록이 따로 구분돼 있으면 그 사람들은 제외합니다.
+- 여러 장에 같은 사람이 겹쳐 찍혀 있으면 한 번만 적습니다.
+- raw에는 화면에 적힌 표기를 그대로 옮깁니다.
+- name에는 지역명·이모지·괄호 속 숫자·직함 같은 장식을 뗀 이름 부분만 적습니다.
+- kind는 이렇게 고릅니다.
+  - full: 한국인 성과 이름이 모두 있는 실명으로 보일 때 (예: 김강민, 남궁민수)
+  - given: 성 없이 이름만 있을 때 (예: 강민, 민수)
+  - nickname: 실명이 아닌 별명일 때 (예: 스매싱장인, 콕콕이)
+  - unclear: 위 셋 중 어느 것인지 확신이 없을 때
+- 확신이 없으면 반드시 unclear로 적습니다. 추측해서 full로 올리지 마세요. full이면 그 이름으로 바로 출석 처리되기 때문입니다.
+- birthYear는 "(97)", "97년생", "1997" 같은 생년 표기가 있을 때만 숫자로, 없으면 null입니다.
+- guest는 "게스트", "G", "(게)" 같은 게스트 표기가 있을 때만 true입니다.
+- 글자가 잘리거나 흐려서 읽을 수 없는 항목은 적지 않습니다.`;
+
 // 비교용 이름 정규화 — 공백·이모지를 지우고 한글 조합형 차이를 맞춘다
 export function normalizeName(name: string): string {
   return name.normalize('NFC').replace(/[\s\p{Extended_Pictographic}️‍]/gu, '');
@@ -46,6 +73,23 @@ export class AiCheckInService {
 
   status(): IAiCheckInStatus {
     return { enabled: this.ai.isEnabled() };
+  }
+
+  // 참석 신청 목록 캡처 → 이름 읽기 → 확실한 사람만 체크인
+  // 진행 중 모임인지 먼저 확인 — 닫힌 모임에 AI 비용을 쓰지 않게
+  async checkInFromImages(
+    sessionId: string,
+    images: { buffer: Buffer; mimetype: string }[],
+  ): Promise<IAiCheckInResult> {
+    await this.sessionsService.findOpenSessionOrThrow(sessionId);
+    const { names } = await this.ai.extract(attendeeListSchema, 'attendee_list', IMAGES_SYSTEM_PROMPT, [
+      ...images.map((image) => ({
+        type: 'image_url' as const,
+        image_url: { url: `data:${image.mimetype};base64,${image.buffer.toString('base64')}` },
+      })),
+      { type: 'text' as const, text: `캡처 ${images.length}장입니다. 참석 신청자 이름을 규칙대로 읽어 주세요.` },
+    ]);
+    return this.applyNames(sessionId, names.slice(0, MAX_NAMES));
   }
 
   // 읽어 낸 이름들을 회원과 맞춰 확실한 사람만 체크인한다 — 판단은 AI가 아니라 이 결정적 규칙이 한다
