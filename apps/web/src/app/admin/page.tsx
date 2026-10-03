@@ -30,6 +30,7 @@ import {
   type TouchEvent as ReactTouchEvent,
 } from 'react';
 import { LoginGate, useAdminAuth } from '@/components/admin-gate';
+import { AiCheckInPanel } from '@/components/ai-check-in-panel';
 import { GenderMarker, GradeBadge, PlayerGrid, Toast } from '@/components/badges';
 import { HomeLink } from '@/components/home-link';
 import { MotionCard } from '@/components/motion-card';
@@ -1516,6 +1517,9 @@ function ManualCheckInModal({
           </button>
         </div>
 
+        {/* AI 체크인 — 서버에 AI 키가 없으면 스스로 숨는다 */}
+        <AiCheckInPanel sessionId={sessionId} attendances={attendances} run={run} />
+
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -2629,6 +2633,15 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
       '[게임 추천]은 참고용 초안 3종 — 공정성(오래 기다린 순) / 새 조합(오늘 안 만난 사람) / 믹스.',
       '대기시간·게임 수·함께 뛴 조합·성별 구성(남복/여복/혼복)을 점수로 계산해요. 넣을지는 운영진 마음!',
       '종목 탭(남복/여복/혼복/기타 3:1)을 누르면 그 구성으로만 추천해요. 성별 미지정 멤버는 [전체] 탭에서만 나와요.',
+    ],
+  },
+  {
+    title: 'AI 체크인 (수동 체크인 안)',
+    items: [
+      '[수동 체크인] → [✨ AI 체크인]에서 소모임 참석 신청 목록 캡처(최대 4장)를 올리면, 명단과 이름이 확실히 맞는 사람만 자동으로 체크인해요.',
+      '성+이름이 한 명과 정확히 맞을 때만 자동이에요. 동명이인·이름만 적힌 경우는 후보 버튼으로, 별명·못 찾은 사람은 검색으로 직접 체크인해주세요.',
+      '"97년생 김민수 체크인해줘"처럼 문장으로도 돼요. 체크인 말고 다른 요청은 처리하지 않아요.',
+      '잘못 잡힌 사람은 결과 카드의 이름 옆 ✕로 바로 취소할 수 있어요(콕 확인 전까지).',
     ],
   },
   {

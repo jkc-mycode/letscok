@@ -39,15 +39,22 @@ interface ApiOptions {
 }
 
 export async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
+  // FormData(파일 업로드)는 그대로 보낸다 — Content-Type은 브라우저가 boundary까지 붙여 정한다
+  const isForm = options.body instanceof FormData;
   const headers: Record<string, string> = {};
-  if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+  if (options.body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
   if (options.passcode !== undefined) headers['x-admin-passcode'] = options.passcode;
   else if (options.admin) headers['x-admin-passcode'] = getPasscode() ?? '';
 
   const res = await fetch(`${API_URL}${path}`, {
     method: options.method ?? 'GET',
     headers,
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    body:
+      options.body === undefined
+        ? undefined
+        : isForm
+          ? (options.body as FormData)
+          : JSON.stringify(options.body),
   });
 
   const json = (await res.json().catch(() => null)) as
