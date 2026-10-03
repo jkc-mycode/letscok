@@ -84,7 +84,7 @@ function Board({ onLogout }: { onLogout: () => void }) {
     return <Centered>불러오는 중...</Centered>;
   }
   if (noSession || !snapshot) {
-    return <StartScreen run={run} busy={busy} toast={toast} />;
+    return <StartScreen run={run} busy={busy} toast={toast} onLogout={onLogout} />;
   }
   return (
     <BoardBody snapshot={snapshot} run={run} busy={busy} toast={toast} onLogout={onLogout} />
@@ -101,10 +101,12 @@ function StartScreen({
   run,
   busy,
   toast,
+  onLogout,
 }: {
   run: (a: () => Promise<unknown>) => Promise<void>;
   busy: boolean;
   toast: string | null;
+  onLogout: () => void;
 }) {
   // 명단 정리는 모임 전이 한가하다 — 세션 없이도 모임원 관리에 들어갈 수 있게
   const [membersOpen, setMembersOpen] = useState(false);
@@ -140,6 +142,14 @@ function StartScreen({
           지난 기록
         </Link>
       </div>
+      {/* 잠금 — 보드의 [잠금]과 같다. 저장된 패스코드를 지우고 입력 화면으로 (모임 전엔 보드가 없어 여기 둔다) */}
+      <button
+        onClick={onLogout}
+        title="이 기기에 저장된 운영진 패스코드를 지우고 입력 화면으로 돌아가요"
+        className="text-xs text-faint underline-offset-4 hover:text-coral hover:underline"
+      >
+        잠금 — 저장된 패스코드 지우기
+      </button>
       {membersOpen && <MembersManagerModal onClose={() => setMembersOpen(false)} />}
       {toast && <Toast message={toast} />}
     </main>
