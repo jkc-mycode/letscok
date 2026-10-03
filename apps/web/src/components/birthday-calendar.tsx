@@ -100,10 +100,11 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
 
   const firstWeekday = new Date(view.year, view.month - 1, 1).getDay();
   const daysInMonth = new Date(view.year, view.month, 0).getDate();
-  const cells: (number | null)[] = [
-    ...Array.from({ length: firstWeekday }, () => null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-  ];
+  // 항상 6주(42칸)로 그린다 — 달마다 5주/6주가 섞이면 월을 넘길 때 높이가 바뀐다
+  const cells: (number | null)[] = Array.from({ length: 42 }, (_, i) => {
+    const day = i - firstWeekday + 1;
+    return day >= 1 && day <= daysInMonth ? day : null;
+  });
   const isThisMonth = view.year === today.getFullYear() && view.month === today.getMonth() + 1;
 
   const moveMonth = (delta: number) => {
@@ -123,7 +124,8 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[92dvh] w-full max-w-md flex-col rounded-2xl border border-line bg-panel p-4 sm:p-5"
+        // 높이 고정 — 날짜를 고르거나 월을 넘겨도 팝업 크기가 변하지 않게
+        className="flex h-[min(92dvh,760px)] w-full max-w-md flex-col rounded-2xl border border-line bg-panel p-4 sm:p-5"
       >
         <div className="flex items-center pb-3">
           <h2 className="text-lg font-bold text-court">🎂 생일 캘린더</h2>
@@ -136,7 +138,7 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-3 scroll-area">
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
           {failed && <p className="py-6 text-center text-sm text-coral">명단을 불러오지 못했어요</p>}
           {!failed && members === null && <p className="py-6 text-center text-sm text-dim">불러오는 중...</p>}
 
@@ -173,7 +175,7 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
                   </span>
                 ))}
                 {cells.map((day, i) => {
-                  if (day === null) return <span key={`blank-${i}`} />;
+                  if (day === null) return <span key={`blank-${i}`} className="min-h-12" />; // 빈 주도 높이를 차지해야 6주 고정이 된다
                   const people = byDay.get(day) ?? [];
                   const isToday = isThisMonth && day === today.getDate();
                   return (
@@ -204,33 +206,39 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
                 })}
               </div>
 
-              {/* 날짜를 누르면 그날 생일자 전체 */}
-              {selectedDay !== null && (
-                <div className="flex flex-col gap-1.5">
-                  <p className="text-xs font-bold text-court">
-                    {view.month}월 {selectedDay}일 생일 {selected.length}명
-                  </p>
-                  {selected.map((m) => (
-                    <MemberLine key={m.id} member={m} />
-                  ))}
-                </div>
-              )}
-
-              {/* 다가오는 생일 — 모임 당일 축하할 사람 찾기용 */}
-              <div className="flex flex-col gap-1.5 border-t border-line pt-3">
-                <p className="text-xs font-bold text-dim">다가오는 생일 ({UPCOMING_DAYS}일 안)</p>
-                {upcoming.length === 0 && <p className="text-xs text-faint">한 달 안에 생일인 정회원이 없어요</p>}
-                {upcoming.map((b) => (
-                  <MemberLine
-                    key={b.member.id}
-                    member={b.member}
-                    note={`${b.date.getMonth() + 1}/${b.date.getDate()} · ${
-                      b.days === 0 ? '오늘 🎂' : b.days === 1 ? '내일' : `${b.days}일 뒤`
-                    }`}
-                  />
-                ))}
+              {/* 아래 칸 하나 — 평소엔 다가오는 생일, 날짜를 고르면 같은 자리에 그날 생일자. 넘치면 이 칸만 스크롤 */}
+              <div className="flex min-h-24 flex-1 flex-col gap-1.5 border-t border-line pt-3 scroll-area">
+                {selectedDay !== null ? (
+                  <>
+                    <div className="flex items-center">
+                      <p className="text-xs font-bold text-court">
+                        {view.month}월 {selectedDay}일 생일 {selected.length}명
+                      </p>
+                      <button onClick={() => setSelectedDay(null)} className="ml-auto text-xs text-dim">
+                        ← 다가오는 생일
+                      </button>
+                    </div>
+                    {selected.map((m) => (
+                      <MemberLine key={m.id} member={m} />
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs font-bold text-dim">다가오는 생일 ({UPCOMING_DAYS}일 안)</p>
+                    {upcoming.length === 0 && <p className="text-xs text-faint">한 달 안에 생일인 정회원이 없어요</p>}
+                    {upcoming.map((b) => (
+                      <MemberLine
+                        key={b.member.id}
+                        member={b.member}
+                        note={`${b.date.getMonth() + 1}/${b.date.getDate()} · ${
+                          b.days === 0 ? '오늘 🎂' : b.days === 1 ? '내일' : `${b.days}일 뒤`
+                        }`}
+                      />
+                    ))}
+                    <p className="pt-1 text-[11px] text-faint">게스트는 생년월일을 받지 않아 표시되지 않아요.</p>
+                  </>
+                )}
               </div>
-              <p className="text-[11px] text-faint">게스트는 생년월일을 받지 않아 표시되지 않아요.</p>
             </>
           )}
         </div>
