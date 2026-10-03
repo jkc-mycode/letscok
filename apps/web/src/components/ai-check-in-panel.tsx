@@ -172,6 +172,7 @@ export function AiCheckInPanel({
           </button>
           <div className="flex gap-2">
             <input
+              autoComplete="off"
               value={command}
               onChange={(e) => setCommand(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && void sendCommand()}

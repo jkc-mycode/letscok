@@ -1284,6 +1284,7 @@ function MemoPanel({
       )}
       <div className="flex gap-2 p-3">
         <input
+          autoComplete="off"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && add()}
@@ -1528,6 +1529,7 @@ function ManualCheckInModal({
         <AiCheckInPanel sessionId={sessionId} attendances={attendances} run={run} />
 
         <input
+          autoComplete="off"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="모임원 이름을 검색하세요"
@@ -1789,6 +1791,7 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <input
+          autoComplete="off"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="이름으로 검색"
@@ -2011,6 +2014,7 @@ function MemberEditSheet({
         {!deleted && (
           <>
             <input
+              autoComplete="off"
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={20}
@@ -2032,6 +2036,7 @@ function MemberEditSheet({
             {asRegular && (
               <div>
                 <input
+                  autoComplete="off"
                   type="text"
                   inputMode="numeric"
                   value={birth}
@@ -2351,6 +2356,7 @@ function TodayGamesModal({
         </div>
 
         <input
+          autoComplete="off"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="이름으로 검색"
@@ -2655,6 +2661,7 @@ function CourtsManager({
         );
       })}
       <input
+        autoComplete="off"
         type="number"
         value={courtNo}
         onChange={(e) => setCourtNo(e.target.value)}

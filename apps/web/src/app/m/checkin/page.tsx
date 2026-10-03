@@ -146,6 +146,7 @@ function SearchPanel({
   return (
     <>
       <input
+        autoComplete="off"
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);

@@ -121,6 +121,7 @@ export function MultiMemberForm({
                 </button>
               </div>
               <input
+                autoComplete="off"
                 value={row.name}
                 onChange={(e) => update(row.key, { name: e.target.value })}
                 maxLength={20}
@@ -140,6 +141,7 @@ export function MultiMemberForm({
 
             {!row.isGuest && (
               <input
+                autoComplete="off"
                 type="text"
                 inputMode="numeric"
                 value={row.birth}
