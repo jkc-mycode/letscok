@@ -841,7 +841,7 @@ function RecommendModal({
           ))}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 scroll-area">
           {error && <p className="py-10 text-center text-sm text-coral">{error}</p>}
           {!error && candidates === null && (
             <p className="py-10 text-center text-sm text-dim">추천 계산 중...</p>
@@ -1104,7 +1104,7 @@ function ReplacePlayerModal({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 scroll-area">
           <h3 className="pb-1.5 text-sm font-bold text-coral">빠질 사람</h3>
           <div className="grid grid-cols-2 gap-2">
             {(game.players ?? []).map((player) => {
@@ -1540,7 +1540,7 @@ function ManualCheckInModal({
           </div>
         )}
 
-        <div className="mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+        <div className="mt-3 flex min-h-0 flex-1 flex-col gap-2 scroll-area">
           {results.map((member) => {
             const status = statusByMemberId.get(member.id);
             const present = status !== undefined && status !== 'LEFT';
@@ -1808,7 +1808,7 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
-        <div className="mt-3 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto">
+        <div className="mt-3 flex min-h-0 flex-1 flex-col gap-1.5 scroll-area">
           {members === null && <p className="py-8 text-center text-sm text-dim">불러오는 중...</p>}
           {members !== null && visible.length === 0 && (
             <p className="py-8 text-center text-sm text-faint">
@@ -2221,7 +2221,7 @@ function StaleGuestCleanupSheet({
           삭제해도 지난 기록은 남고, [삭제됨] 탭에서 복구할 수 있어요.
         </p>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col gap-1.5 scroll-area">
           {guests.map((guest) => {
             const picked = selected.has(guest.id);
             return (
@@ -2348,7 +2348,7 @@ function TodayGamesModal({
           </p>
         )}
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 scroll-area">
           {error && <p className="py-10 text-center text-sm text-coral">{error}</p>}
           {!error && detail === null && (
             <p className="py-10 text-center text-sm text-dim">불러오는 중...</p>
@@ -2509,7 +2509,7 @@ function HelpModal({ onClose }: { onClose: () => void }) {
             닫기
           </button>
         </div>
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+        <div className="min-h-0 flex-1 space-y-4 scroll-area">
           {HELP_SECTIONS.map((section) => (
             <section key={section.title}>
               <h3 className="text-sm font-bold text-amber">{section.title}</h3>

@@ -151,7 +151,7 @@ export function AiCheckInPanel({
       </button>
 
       {open && (
-        <div className="mt-3 flex max-h-[45dvh] flex-col gap-2 overflow-y-auto">
+        <div className="mt-3 flex max-h-[45dvh] flex-col gap-2 scroll-area">
           <input
             ref={fileInput}
             type="file"

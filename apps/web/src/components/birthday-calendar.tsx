@@ -134,7 +134,7 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 scroll-area">
           {failed && <p className="py-6 text-center text-sm text-coral">명단을 불러오지 못했어요</p>}
           {!failed && members === null && <p className="py-6 text-center text-sm text-dim">불러오는 중...</p>}
 
@@ -179,13 +179,16 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
                       key={day}
                       onClick={() => people.length > 0 && setSelectedDay(day === selectedDay ? null : day)}
                       disabled={people.length === 0}
+                      // 오늘 표시는 ring 대신 테두리 — ring은 상자 바깥에 그려져 스크롤 영역 가장자리(토요일 칸)에서 잘린다
                       className={`flex min-h-12 flex-col items-center gap-0.5 rounded-lg border px-0.5 py-1 ${
                         selectedDay === day
                           ? 'border-court bg-court/15'
-                          : people.length > 0
-                            ? 'border-court/30 bg-court/5'
-                            : 'border-transparent'
-                      } ${isToday ? 'ring-1 ring-amber' : ''}`}
+                          : isToday
+                            ? `border-amber ${people.length > 0 ? 'bg-court/5' : ''}`
+                            : people.length > 0
+                              ? 'border-court/30 bg-court/5'
+                              : 'border-transparent'
+                      }`}
                     >
                       <span className={`text-[11px] ${isToday ? 'font-bold text-amber' : 'text-dim'}`}>{day}</span>
                       {people.length > 0 && (
