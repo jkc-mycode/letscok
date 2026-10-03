@@ -113,13 +113,20 @@ export function LoginGate({
         <p className="mt-2 text-dim">{subtitle ?? '운영진 패스코드를 입력해주세요'}</p>
       </div>
       <div className="flex w-full max-w-sm flex-col gap-3">
+        {/* 비밀번호 필드가 아니라서 브라우저의 "비밀번호 저장" 팝업이 뜨지 않는다 — 가림은 .text-mask가 담당
+            (autocomplete="off"만으로는 크롬이 비밀번호 필드의 저장 제안을 끄지 않는다) */}
         <input
-          type="password"
+          type="text"
+          name="letscok-admin-code"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           value={passcode}
           onChange={(e) => setPasscode(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && void submit()}
           placeholder="패스코드"
-          className="h-14 rounded-xl border border-line bg-panel px-5 text-lg outline-none focus:border-court"
+          className="text-mask h-14 rounded-xl border border-line bg-panel px-5 text-lg outline-none focus:border-court"
         />
         <button
           onClick={() => void submit()}

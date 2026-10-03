@@ -81,6 +81,12 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* 비밀번호 필드처럼 글자를 점으로 가린다 — type="password"를 쓰면 브라우저가
+   "비밀번호를 저장하시겠습니까?"를 띄워서, 일반 입력란에 화면 가림만 입힌다 (WebKit·Chromium 계열) */
+.text-mask {
+  -webkit-text-security: disc;
+}
+
 /* 모든 버튼 공통 — 상태 색 전환은 부드럽게, 누르면 살짝 눌리는 촉감 */
 button {
   transition:
