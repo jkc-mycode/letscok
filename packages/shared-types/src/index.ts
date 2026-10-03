@@ -376,6 +376,27 @@ export interface IPushPayload {
   url: string; // 알림을 누르면 열 경로
 }
 
+// ===== AI 체크인 (/ai-check-in/*, 운영진 전용) =====
+
+// 서버에 AI 키가 없으면 enabled=false — 웹은 AI 영역을 숨긴다
+export interface IAiCheckInStatus {
+  enabled: boolean;
+}
+
+export interface IAiCheckInMember {
+  memberId: string;
+  name: string;
+}
+
+// 캡처·명령 처리 결과 — 확실한 사람만 체크인하고 나머지는 운영진이 직접 처리하도록 나눠서 돌려준다
+export interface IAiCheckInResult {
+  checkedIn: IAiCheckInMember[]; // 이번에 체크인됨
+  alreadyIn: IAiCheckInMember[]; // 이미 출석 중 — 실패가 아니라 정보
+  notFound: string[]; // 명단에서 못 찾은 표기(캡처 원문 그대로)
+  ambiguous: { name: string; candidates: IMember[] }[]; // 동명이인·이름만 표기 — 후보 버튼으로 운영진이 고른다
+  message: string; // 서버가 정해진 틀로 조립한 안내 문장 (AI가 쓴 문장이 아님)
+}
+
 // ===== 공통 응답 래퍼 =====
 
 export interface IApiResponse<T> {

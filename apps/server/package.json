@@ -27,10 +27,12 @@
     "class-validator": "^0.14.1",
     "dotenv": "^16.4.5",
     "helmet": "^8.2.0",
+    "openai": "^7.27.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.0",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
