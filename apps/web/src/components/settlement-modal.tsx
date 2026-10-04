@@ -94,6 +94,7 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
   const [reading, setReading] = useState(false);
   const [receiptError, setReceiptError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const cameraInput = useRef<HTMLInputElement>(null);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     if (copiedTimer.current) clearTimeout(copiedTimer.current);
@@ -192,6 +193,18 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
           {/* 영수증으로 채우기 — AI가 품목을 공통·술·음료로 나누고, 칩을 눌러 고친다 */}
           {aiEnabled && (
             <div className="flex flex-col gap-2">
+              {/* 촬영 = 바로 후면 카메라(1장), 앨범 = 찍어 둔 사진 최대 2장(1차·2차) */}
+              <input
+                ref={cameraInput}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => {
+                  void readReceipt(e.target.files);
+                  e.target.value = ''; // 같은 사진을 다시 골라도 onChange가 오게
+                }}
+              />
               <input
                 ref={fileInput}
                 type="file"
@@ -200,16 +213,29 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
                 className="hidden"
                 onChange={(e) => {
                   void readReceipt(e.target.files);
-                  e.target.value = ''; // 같은 사진을 다시 골라도 onChange가 오게
+                  e.target.value = '';
                 }}
               />
-              <button
-                onClick={() => fileInput.current?.click()}
-                disabled={reading}
-                className="h-11 rounded-xl border border-court/50 text-sm font-bold text-court disabled:opacity-50"
-              >
-                {reading ? '영수증을 읽는 중이에요…' : `📷 영수증으로 채우기 (최대 ${MAX_RECEIPTS}장)`}
-              </button>
+              {reading ? (
+                <p className="flex h-11 items-center justify-center rounded-xl border border-court/50 text-sm font-bold text-court opacity-60">
+                  영수증을 읽는 중이에요…
+                </p>
+              ) : (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => cameraInput.current?.click()}
+                    className="h-11 flex-1 rounded-xl border border-court/50 text-sm font-bold text-court"
+                  >
+                    📷 영수증 촬영
+                  </button>
+                  <button
+                    onClick={() => fileInput.current?.click()}
+                    className="h-11 flex-1 rounded-xl border border-court/50 text-sm font-bold text-court"
+                  >
+                    🖼 앨범 (최대 {MAX_RECEIPTS}장)
+                  </button>
+                </div>
+              )}
               {receiptError && <p className="text-xs font-medium text-coral">{receiptError}</p>}
 
               {receipt && (
