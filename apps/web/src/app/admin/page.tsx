@@ -118,6 +118,7 @@ function StartScreen({
   // 명단 정리는 모임 전이 한가하다 — 세션 없이도 모임원 관리에 들어갈 수 있게
   const [membersOpen, setMembersOpen] = useState(false);
   const [birthdayOpen, setBirthdayOpen] = useState(false);
+  const [settlementOpen, setSettlementOpen] = useState(false); // 뒤풀이는 모임이 끝난(종료한) 뒤에 정산하는 경우가 많다
   return (
     <main className="fade-in flex min-h-dvh flex-col items-center justify-center gap-8">
       <div className="text-center">
@@ -136,7 +137,7 @@ function StartScreen({
       </button>
       {/* 모임 전이 한가하니 명단 정리·기록 열람을 여기서 바로 들어가게 둔다
           (지난 기록은 원래 홈에만 링크가 있었는데, 홈은 관제판 앱 scope 밖이라 설치본에선 못 간다) */}
-      <div className="flex gap-3">
+      <div className="flex flex-wrap justify-center gap-3 px-4">
         <button
           onClick={() => setMembersOpen(true)}
           className="h-11 rounded-xl border border-line px-6 text-sm font-medium text-dim"
@@ -155,6 +156,12 @@ function StartScreen({
         >
           생일
         </button>
+        <button
+          onClick={() => setSettlementOpen(true)}
+          className="h-11 rounded-xl border border-line px-6 text-sm font-medium text-dim"
+        >
+          정산
+        </button>
       </div>
       {/* 잠금 — 보드의 [잠금]과 같다. 저장된 패스코드를 지우고 입력 화면으로 (모임 전엔 보드가 없어 여기 둔다) */}
       <button
@@ -166,6 +173,7 @@ function StartScreen({
       </button>
       {membersOpen && <MembersManagerModal onClose={() => setMembersOpen(false)} />}
       {birthdayOpen && <BirthdayCalendarModal onClose={() => setBirthdayOpen(false)} />}
+      {settlementOpen && <SettlementModal onClose={() => setSettlementOpen(false)} />}
       {toast && <Toast message={toast} />}
     </main>
   );
