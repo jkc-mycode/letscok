@@ -65,7 +65,7 @@ export function LoginGate({
   const [busy, setBusy] = useState(false);
   const [slow, setSlow] = useState(false);
 
-  // 화면이 열리자마자 서버를 깨워 둔다 — Render 무료 인스턴스는 잠들면 깨는 데 최대 1분
+  // 화면이 열리자마자 서버를 깨워 둔다 — Render 무료 인스턴스는 잠들면 깨는 데 보통 1분 남짓, 길면 몇 분
   // (패스코드를 입력하는 동안 기동이 진행돼 실제 대기가 줄어든다. 결과는 쓰지 않음)
   useEffect(() => {
     fetch(`${API_URL}/health`).catch(() => {});
@@ -137,7 +137,7 @@ export function LoginGate({
         </button>
         {slow && (
           <p className="text-center text-sm text-dim">
-            서버를 깨우는 중이에요. 최대 1분 정도 걸릴 수 있어요.
+            서버를 깨우는 중이에요. 최대 5분 정도 걸릴 수 있어요.
           </p>
         )}
         {/* 새로 입력해 실패한 에러가 있으면 그쪽이 더 최신 정보라 안내는 숨긴다 */}
