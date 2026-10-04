@@ -15,6 +15,7 @@ export interface SettlementInput {
   total: number;
   alcohol: number;
   beverage: number;
+  sponsor?: number; // 찬조(원) — 공통·술·음료를 같은 비율로 줄인다(50%면 모두의 몫이 절반)
   groups: SettlementGroup[];
 }
 
@@ -28,6 +29,7 @@ export type SettlementResult =
       ok: true;
       common: number; // 총액 − 술값 − 음료값
       headcount: number;
+      collectTotal: number; // 걷을 금액 = 총액 − 찬조
       shares: SettlementShare[]; // 인원 0명인 그룹은 뺀다
       remainder: number; // 내림으로 남은 몇 원 — 결제자 부담
     }
@@ -42,8 +44,8 @@ export const DEFAULT_GROUPS: SettlementGroup[] = [
 
 const isWon = (n: number) => Number.isSafeInteger(n) && n >= 0;
 
-export function settle({ total, alcohol, beverage, groups }: SettlementInput): SettlementResult {
-  if (![total, alcohol, beverage].every(isWon) || !groups.every((g) => isWon(g.count))) {
+export function settle({ total, alcohol, beverage, sponsor = 0, groups }: SettlementInput): SettlementResult {
+  if (![total, alcohol, beverage, sponsor].every(isWon) || !groups.every((g) => isWon(g.count))) {
     return { ok: false, error: '금액과 인원은 0 이상의 정수로 입력해주세요' };
   }
   const headcount = groups.reduce((sum, g) => sum + g.count, 0);
@@ -53,23 +55,29 @@ export function settle({ total, alcohol, beverage, groups }: SettlementInput): S
   if (total === 0) return { ok: false, error: '총 금액을 입력해주세요' };
   if (headcount === 0) return { ok: false, error: '인원을 입력해주세요' };
   if (alcohol + beverage > total) return { ok: false, error: '술값과 음료값의 합이 총액보다 커요' };
+  if (sponsor > total) return { ok: false, error: '찬조 금액이 총액보다 커요' };
   if (alcohol > 0 && alcoholCount === 0) return { ok: false, error: '술값이 있는데 술 마신 사람이 없어요' };
   if (beverage > 0 && beverageCount === 0) return { ok: false, error: '음료값이 있는데 음료 마신 사람이 없어요' };
 
   const common = total - alcohol - beverage;
+  const collectTotal = total - sponsor;
   // 정수 연산으로 한 번에 내림 — 소수로 더하면 27133.333…처럼 나눠떨어지는 경우에도 1원 어긋날 수 있다
-  const a = alcoholCount || 1;
-  const b = beverageCount || 1;
-  const denominator = headcount * a * b;
+  // 찬조 비율(collectTotal / total)까지 곱하면 Number 범위를 넘을 수 있어 BigInt로 계산한다
+  const a = BigInt(alcoholCount || 1);
+  const b = BigInt(beverageCount || 1);
+  const n = BigInt(headcount);
+  const denominator = n * a * b * BigInt(total);
   const shares = groups
     .filter((g) => g.count > 0)
     .map((group) => {
       const numerator =
-        common * a * b + (group.alcohol ? alcohol * headcount * b : 0) + (group.beverage ? beverage * headcount * a : 0);
-      return { group, perPerson: Math.floor(numerator / denominator) };
+        BigInt(common) * a * b +
+        (group.alcohol ? BigInt(alcohol) * n * b : BigInt(0)) +
+        (group.beverage ? BigInt(beverage) * n * a : BigInt(0));
+      return { group, perPerson: Number((numerator * BigInt(collectTotal)) / denominator) };
     });
   const collected = shares.reduce((sum, s) => sum + s.perPerson * s.group.count, 0);
-  return { ok: true, common, headcount, shares, remainder: total - collected };
+  return { ok: true, common, headcount, collectTotal, shares, remainder: collectTotal - collected };
 }
 
 export const won = (n: number) => `${n.toLocaleString('ko-KR')}원`;

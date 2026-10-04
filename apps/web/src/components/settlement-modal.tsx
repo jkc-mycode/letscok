@@ -115,6 +115,8 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
   const [total, setTotal] = useState('');
   const [alcohol, setAlcohol] = useState('');
   const [beverage, setBeverage] = useState('');
+  const [sponsor, setSponsor] = useState(''); // 찬조 — 원 또는 %(sponsorUnit)
+  const [sponsorUnit, setSponsorUnit] = useState<'won' | 'percent'>('won');
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [names, setNames] = useState<Record<string, string>>({}); // 그룹별 이름 입력 원문
   const [place, setPlace] = useState('');
@@ -191,9 +193,19 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
   );
   const headcount = groups.reduce((sum, g) => sum + g.count, 0);
   const common = toNumber(total) - toNumber(alcohol) - toNumber(beverage);
+  // % 찬조는 총액 기준 원으로 바꿔 계산한다(반올림). 100%를 넘으면 계산 쪽에서 "총액보다 커요"로 막힌다
+  const sponsorWon =
+    sponsorUnit === 'won' ? toNumber(sponsor) : Math.round((toNumber(total) * toNumber(sponsor)) / 100);
   const result = useMemo(
-    () => settle({ total: toNumber(total), alcohol: toNumber(alcohol), beverage: toNumber(beverage), groups }),
-    [total, alcohol, beverage, groups],
+    () =>
+      settle({
+        total: toNumber(total),
+        alcohol: toNumber(alcohol),
+        beverage: toNumber(beverage),
+        sponsor: sponsorWon,
+        groups,
+      }),
+    [total, alcohol, beverage, sponsorWon, groups],
   );
   const text = result.ok ? settlementText({ total: toNumber(total), day, place, shares: result.shares }) : '';
 
@@ -320,6 +332,40 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
             <p className="text-right text-xs text-faint">
               공통(안주·식사) {common >= 0 ? won(common) : '—'}
             </p>
+            {/* 찬조 — 원 또는 %. 공통·술·음료를 같은 비율로 줄인다. 카톡 문구엔 표시하지 않는다 */}
+            <div className="flex items-center gap-3">
+              <span className="w-16 shrink-0 text-sm text-dim">찬조</span>
+              <input
+                value={sponsorUnit === 'won' ? withCommas(sponsor) : sponsor}
+                onChange={(e) => {
+                  const digits = digitsOnly(e.target.value);
+                  setSponsor(sponsorUnit === 'won' ? digits : digits.slice(0, 3)); // %는 세 자리까지
+                }}
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="0"
+                className="tabular h-11 min-w-0 flex-1 rounded-lg border border-line bg-panel2 px-3 text-right text-base outline-none placeholder:text-faint focus:border-court"
+              />
+              <div className="flex shrink-0 overflow-hidden rounded-lg border border-line text-sm">
+                {(['won', 'percent'] as const).map((unit) => (
+                  <button
+                    key={unit}
+                    onClick={() => {
+                      setSponsorUnit(unit);
+                      setSponsor(''); // 단위가 바뀌면 숫자의 의미가 달라져 비운다
+                    }}
+                    className={`h-11 w-9 ${sponsorUnit === unit ? 'bg-court/15 font-bold text-court' : 'text-dim'}`}
+                  >
+                    {unit === 'won' ? '원' : '%'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {sponsorWon > 0 && (
+              <p className="text-right text-xs text-faint">
+                찬조 {won(sponsorWon)} 빼고 {won(Math.max(0, toNumber(total) - sponsorWon))}을 나눠요
+              </p>
+            )}
           </div>
 
           {/* 인원 — 술·음료 마신 여부로 4그룹 */}
