@@ -1,6 +1,6 @@
 'use client';
 
-import { IAiCheckInStatus, IReceiptItem, IReceiptReadResult, ReceiptCategory } from '@letscok/shared-types';
+import { IAiCheckInStatus, IReceiptReadResult, ReceiptCategory } from '@letscok/shared-types';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useBackClose } from '@/lib/back-stack';
@@ -63,8 +63,32 @@ const NEXT_CATEGORY: Record<ReceiptCategory, ReceiptCategory> = {
   beverage: 'common',
 };
 
-const sumBy = (items: IReceiptItem[], category?: ReceiptCategory) =>
-  items.filter((i) => !category || i.category === category).reduce((sum, i) => sum + i.amount, 0);
+// 영수증 판독 결과를 고칠 수 있게 담아 두는 형태 — 금액은 입력 중인 글자 그대로("-", "" 포함) 들고 있는다
+interface DraftItem {
+  key: number;
+  name: string;
+  amountText: string; // "-2000"처럼 할인은 음수
+  category: ReceiptCategory;
+}
+interface ReceiptDraft {
+  items: DraftItem[];
+  total: number | null; // AI가 읽은 결제 금액
+  edited: boolean; // 품목 금액을 고치거나 지우거나 더했으면 총 금액은 품목 합계를 따른다
+}
+
+const amountOf = (text: string) => Number(text.replace(/[^\d-]/g, '')) || 0;
+// 쉼표를 빼고 앞의 "-" 하나와 숫자만 남긴다(9자리까지)
+const cleanAmount = (raw: string) => {
+  const negative = raw.trim().startsWith('-');
+  return (negative ? '-' : '') + raw.replace(/\D/g, '').slice(0, 9);
+};
+const amountDisplay = (text: string) => {
+  const digits = text.replace(/\D/g, '');
+  return digits ? `${text.startsWith('-') ? '-' : ''}${Number(digits).toLocaleString('ko-KR')}` : text;
+};
+
+const sumBy = (items: DraftItem[], category?: ReceiptCategory) =>
+  items.filter((i) => !category || i.category === category).reduce((sum, i) => sum + amountOf(i.amountText), 0);
 
 // 이름을 적으면 인원수가 이름 수로 고정된다(이름과 인원이 어긋나지 않게) — 이름을 지우면 다시 [-]/[+]
 function Counter({
@@ -135,7 +159,8 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
   const [date, setDate] = useState(todayInput);
   const [copied, setCopied] = useState<'done' | 'failed' | null>(null);
   const [aiEnabled, setAiEnabled] = useState(false);
-  const [receipt, setReceipt] = useState<IReceiptReadResult | null>(null);
+  const [receipt, setReceipt] = useState<ReceiptDraft | null>(null);
+  const nextItemKey = useRef(1);
   const [reading, setReading] = useState(false);
   const [receiptError, setReceiptError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -152,11 +177,31 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
       .catch(() => setAiEnabled(false));
   }, []);
 
-  // 영수증 분류 → 금액 칸. 총액은 영수증 결제 금액(못 읽었으면 품목 합계), 할인으로 음수가 되면 0
-  const fillFromReceipt = (r: IReceiptReadResult) => {
-    setTotal(String(Math.max(0, r.total ?? sumBy(r.items))));
+  // 영수증 품목 → 금액 칸. 총액은 영수증 결제 금액(못 읽었거나 품목을 고쳤으면 품목 합계), 할인으로 음수가 되면 0
+  // 품목을 바꿀 때마다 다시 채우므로 금액 칸을 직접 고친 값은 덮어써진다 — 품목을 먼저 맞추고 칸을 고치는 순서
+  const updateReceipt = (r: ReceiptDraft) => {
+    setReceipt(r);
+    const sum = sumBy(r.items);
+    setTotal(String(Math.max(0, r.edited || r.total === null ? sum : r.total)));
     setAlcohol(String(Math.max(0, sumBy(r.items, 'alcohol'))));
     setBeverage(String(Math.max(0, sumBy(r.items, 'beverage'))));
+  };
+  const editItem = (key: number, patch: Partial<DraftItem>, edited: boolean) => {
+    if (!receipt) return;
+    updateReceipt({
+      ...receipt,
+      items: receipt.items.map((item) => (item.key === key ? { ...item, ...patch } : item)),
+      edited: receipt.edited || edited,
+    });
+  };
+  const removeItem = (key: number) => {
+    if (!receipt) return;
+    updateReceipt({ ...receipt, items: receipt.items.filter((item) => item.key !== key), edited: true });
+  };
+  const addItem = () => {
+    if (!receipt) return;
+    const item: DraftItem = { key: nextItemKey.current++, name: '', amountText: '', category: 'common' };
+    updateReceipt({ ...receipt, items: [...receipt.items, item], edited: true });
   };
 
   const readReceipt = async (files: FileList | null) => {
@@ -173,24 +218,21 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
         form.append('images', await shrinkImage(file), `receipt-${i + 1}.jpg`);
       }
       const result = await api<IReceiptReadResult>('/settlement/receipt', { method: 'POST', admin: true, body: form });
-      setReceipt(result);
-      fillFromReceipt(result);
+      updateReceipt({
+        items: result.items.map((item) => ({
+          key: nextItemKey.current++,
+          name: item.name,
+          amountText: String(item.amount),
+          category: item.category,
+        })),
+        total: result.total,
+        edited: false,
+      });
     } catch (e) {
       setReceiptError(e instanceof ApiError ? e.message : '영수증을 읽지 못했어요. 직접 입력해주세요.');
     } finally {
       setReading(false);
     }
-  };
-
-  // 칩을 바꾸면 금액 칸을 다시 채운다 — 직접 고친 금액은 덮어쓰므로 분류를 먼저 맞추고 칸을 고치는 순서
-  const changeCategory = (index: number) => {
-    if (!receipt) return;
-    const items = receipt.items.map((item, i) =>
-      i === index ? { ...item, category: NEXT_CATEGORY[item.category] } : item,
-    );
-    const next = { ...receipt, items };
-    setReceipt(next);
-    fillFromReceipt(next);
   };
 
   const itemsSum = receipt ? sumBy(receipt.items) : 0;
@@ -304,25 +346,53 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
               {receipt && (
                 <div className="flex flex-col gap-1 rounded-xl border border-line bg-panel2 p-3">
                   <div className="flex items-center pb-1">
-                    <p className="text-xs text-dim">분류를 누르면 공통 → 술 → 음료로 바뀌어요</p>
+                    <p className="text-xs text-dim">분류를 누르면 공통 → 술 → 음료로 바뀌고, 이름·금액은 눌러서 고쳐요</p>
                     <button onClick={() => setReceipt(null)} className="ml-auto text-xs text-faint">
                       접기
                     </button>
                   </div>
-                  {receipt.items.map((item, i) => (
-                    <div key={i} className="flex items-center gap-2 text-sm">
+                  {receipt.items.map((item) => (
+                    <div key={item.key} className="flex items-center gap-1.5 text-sm">
                       <button
-                        onClick={() => changeCategory(i)}
-                        className={`h-7 w-11 shrink-0 rounded-md border text-xs font-medium ${CATEGORY_CLS[item.category]}`}
+                        onClick={() => editItem(item.key, { category: NEXT_CATEGORY[item.category] }, false)}
+                        className={`h-8 w-11 shrink-0 rounded-md border text-xs font-medium ${CATEGORY_CLS[item.category]}`}
                       >
                         {CATEGORY_LABEL[item.category]}
                       </button>
-                      <span className="min-w-0 flex-1 truncate">{item.name}</span>
-                      <span className={`tabular shrink-0 ${item.amount < 0 ? 'text-coral' : ''}`}>{won(item.amount)}</span>
+                      <input
+                        value={item.name}
+                        onChange={(e) => editItem(item.key, { name: e.target.value }, false)}
+                        autoComplete="off"
+                        maxLength={40}
+                        placeholder="품목 이름"
+                        className="h-8 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 outline-none placeholder:text-faint focus:border-court"
+                      />
+                      <input
+                        value={amountDisplay(item.amountText)}
+                        onChange={(e) => editItem(item.key, { amountText: cleanAmount(e.target.value) }, true)}
+                        inputMode="numeric"
+                        autoComplete="off"
+                        placeholder="0"
+                        className={`tabular h-8 w-24 shrink-0 rounded-md border border-line bg-panel px-2 text-right outline-none placeholder:text-faint focus:border-court ${
+                          amountOf(item.amountText) < 0 ? 'text-coral' : ''
+                        }`}
+                      />
+                      <button
+                        onClick={() => removeItem(item.key)}
+                        title="이 줄 지우기"
+                        className="h-8 w-7 shrink-0 text-faint hover:text-coral"
+                      >
+                        ✕
+                      </button>
                     </div>
                   ))}
+                  <button onClick={addItem} className="mt-1 h-8 rounded-md border border-dashed border-line text-xs text-dim">
+                    + 품목 추가
+                  </button>
                   <p className="pt-1 text-right text-xs text-dim">품목 합계 {won(itemsSum)}</p>
-                  {receipt.total === null ? (
+                  {receipt.edited ? (
+                    <p className="text-right text-xs text-faint">품목을 고쳐서 총 금액을 품목 합계로 채웠어요</p>
+                  ) : receipt.total === null ? (
                     <p className="text-right text-xs text-amber">영수증 총액을 못 읽어 품목 합계로 채웠어요</p>
                   ) : (
                     receipt.total !== itemsSum && (
