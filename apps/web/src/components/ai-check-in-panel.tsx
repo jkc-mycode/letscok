@@ -9,31 +9,12 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { GenderMarker, GradeBadge } from '@/components/badges';
 import { api, ApiError } from '@/lib/api';
+import { shrinkImage } from '@/lib/image';
 
 // AI 체크인 — 참석 신청 목록 캡처나 자연어 명령으로 확실한 사람만 자동 체크인한다
 // 판단(누구를 체크인할지)은 서버의 결정적 규칙이 하고, 여기선 결과를 보여주고 남은 사람을 버튼으로 처리하게 돕는다
 
-// 서버 한도(4장·장당 1.5MB)에 맞춰 보낸다 — 긴 변 1568px JPEG면 화면 글자는 충분히 읽히고 수백 KB로 줄어든다
-const MAX_IMAGES = 4;
-const MAX_EDGE = 1568;
-const JPEG_QUALITY = 0.85;
-
-async function shrinkImage(file: File): Promise<Blob> {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-  return new Promise((resolve, reject) =>
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error('이미지를 변환하지 못했어요.'))),
-      'image/jpeg',
-      JPEG_QUALITY,
-    ),
-  );
-}
+const MAX_IMAGES = 4; // 서버 한도 — 사진은 lib/image의 shrinkImage로 줄여서 보낸다
 
 interface LogEntry {
   id: number;
