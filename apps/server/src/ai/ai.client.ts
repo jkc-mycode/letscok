@@ -30,7 +30,7 @@ export class AiClient {
     const model = process.env.OPENROUTER_MODEL;
     // 키가 없으면 비활성으로 정상 기동 — 로컬·CI·테스트는 키 없이 돌아간다 (푸시 VAPID와 같은 방식)
     if (!apiKey || !model) {
-      this.logger.warn('OPENROUTER_API_KEY·OPENROUTER_MODEL이 없어 AI 체크인을 비활성화합니다.');
+      this.logger.warn('OPENROUTER_API_KEY·OPENROUTER_MODEL이 없어 AI 기능을 비활성화합니다.');
       return;
     }
     // 캡처 여러 장은 수십 초 걸릴 수 있다. 재시도는 1번만 — 비용이 드는 호출이라
@@ -43,11 +43,13 @@ export class AiClient {
   }
 
   // 스키마에 맞는 JSON 한 개를 받아 온다 — zod 스키마 하나로 요청 스키마와 응답 검증을 함께 만든다
+  // fallback = 실패 안내 끝에 붙일 대안 ("직접 체크인해주세요." / "직접 입력해주세요.") — 기능마다 다르다
   async extract<T>(
     schema: z.ZodType<T>,
     schemaName: string,
     system: string,
     content: string | ChatCompletionContentPart[],
+    fallback: string,
   ): Promise<T> {
     if (!this.client || !this.model) {
       throw new ServiceUnavailableException('AI 기능이 꺼져 있어요.');
@@ -73,10 +75,10 @@ export class AiClient {
       } as ChatCompletionCreateParamsNonStreaming);
     } catch (error) {
       if (error instanceof OpenAI.RateLimitError) {
-        throw new HttpException('AI 사용 한도를 넘었어요. 직접 체크인해주세요.', HttpStatus.TOO_MANY_REQUESTS);
+        throw new HttpException(`AI 사용 한도를 넘었어요. ${fallback}`, HttpStatus.TOO_MANY_REQUESTS);
       }
       this.logger.error('AI 호출 실패', (error as Error).stack);
-      throw new BadGatewayException('AI 응답을 받지 못했어요. 잠시 후 다시 시도하거나 직접 체크인해주세요.');
+      throw new BadGatewayException(`AI 응답을 받지 못했어요. 잠시 후 다시 시도하거나 ${fallback}`);
     }
 
     // OpenRouter는 실제 청구액(USD)을 usage.cost에 넣어 준다 — 비용 실측용
@@ -90,15 +92,15 @@ export class AiClient {
     try {
       parsed = JSON.parse(text);
     } catch {
-      throw this.unreadable(schemaName, 'JSON 아님');
+      throw this.unreadable(schemaName, 'JSON 아님', fallback);
     }
     const result = schema.safeParse(parsed);
-    if (!result.success) throw this.unreadable(schemaName, result.error.message);
+    if (!result.success) throw this.unreadable(schemaName, result.error.message, fallback);
     return result.data;
   }
 
-  private unreadable(schemaName: string, reason: string) {
+  private unreadable(schemaName: string, reason: string, fallback: string) {
     this.logger.warn(`AI 응답 형식 불일치 (${schemaName}): ${reason}`);
-    return new UnprocessableEntityException('내용을 읽지 못했어요. 다시 시도하거나 직접 체크인해주세요.');
+    return new UnprocessableEntityException(`내용을 읽지 못했어요. 다시 시도하거나 ${fallback}`);
   }
 }

@@ -10,7 +10,7 @@ import { toMemberResponse } from '../common/mappers/entity.mappers';
 import type { Member } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SessionsService } from '../sessions/sessions.service';
-import { AiClient } from './ai.client';
+import { AiClient } from '../ai/ai.client';
 
 // AI가 캡처·명령에서 읽어 낸 이름 1건 — 표기 종류(kind)로 자동 체크인 여부가 갈린다
 export const extractedNameSchema = z.strictObject({
@@ -53,6 +53,7 @@ const COMMAND_SYSTEM_PROMPT = `당신은 배드민턴 모임 관제판의 명령
 
 // 한 번에 처리할 이름 상한 — 모델이 이상하게 길게 뽑아도 체크인이 폭주하지 않게
 const MAX_NAMES = 60;
+const FALLBACK = '직접 체크인해주세요.'; // AI 실패 안내 꼬리 — 수동 체크인으로 이어서 처리
 
 // 캡처 판독 지시 — 판단(누구를 체크인할지)은 서버가 하므로 여기선 "있는 그대로 읽기"만 시킨다
 const IMAGES_SYSTEM_PROMPT = `당신은 배드민턴 소모임 앱의 "참석 신청자 목록" 캡처에서 사람 이름을 읽는 판독기입니다.
@@ -104,20 +105,32 @@ export class AiCheckInService {
     images: { buffer: Buffer; mimetype: string }[],
   ): Promise<IAiCheckInResult> {
     await this.sessionsService.findOpenSessionOrThrow(sessionId);
-    const { names } = await this.ai.extract(attendeeListSchema, 'attendee_list', IMAGES_SYSTEM_PROMPT, [
-      ...images.map((image) => ({
-        type: 'image_url' as const,
-        image_url: { url: `data:${image.mimetype};base64,${image.buffer.toString('base64')}` },
-      })),
-      { type: 'text' as const, text: `캡처 ${images.length}장입니다. 참석 신청자 이름을 규칙대로 읽어 주세요.` },
-    ]);
+    const { names } = await this.ai.extract(
+      attendeeListSchema,
+      'attendee_list',
+      IMAGES_SYSTEM_PROMPT,
+      [
+        ...images.map((image) => ({
+          type: 'image_url' as const,
+          image_url: { url: `data:${image.mimetype};base64,${image.buffer.toString('base64')}` },
+        })),
+        { type: 'text' as const, text: `캡처 ${images.length}장입니다. 참석 신청자 이름을 규칙대로 읽어 주세요.` },
+      ],
+      FALLBACK,
+    );
     return this.applyNames(sessionId, names.slice(0, MAX_NAMES));
   }
 
   // 운영진 자연어 명령 → 대상 뽑기 → 같은 규칙으로 체크인. 체크인 외 요청은 아무것도 하지 않고 고정 안내
   async checkInFromCommand(sessionId: string, text: string): Promise<IAiCheckInResult> {
     await this.sessionsService.findOpenSessionOrThrow(sessionId);
-    const command = await this.ai.extract(commandSchema, 'check_in_command', COMMAND_SYSTEM_PROMPT, text.trim());
+    const command = await this.ai.extract(
+      commandSchema,
+      'check_in_command',
+      COMMAND_SYSTEM_PROMPT,
+      text.trim(),
+      FALLBACK,
+    );
     if (command.action !== 'check_in') {
       return { checkedIn: [], alreadyIn: [], notFound: [], ambiguous: [], message: UNSUPPORTED_COMMAND_MESSAGE };
     }

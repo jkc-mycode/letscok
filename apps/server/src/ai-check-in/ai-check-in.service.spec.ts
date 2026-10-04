@@ -10,7 +10,7 @@ import {
   normalizeName,
   UNSUPPORTED_COMMAND_MESSAGE,
 } from './ai-check-in.service';
-import { AiClient } from './ai.client';
+import { AiClient } from '../ai/ai.client';
 
 // AI 체크인 매칭 통합 테스트 — 실DB로 "확실한 것만 자동" 규칙을 검증한다
 // (AI가 읽어 낸 결과를 고정 입력으로 넣는다. AI 호출 자체는 ai.client.spec이 검증)

@@ -38,14 +38,14 @@ describe('AiClient', () => {
     const { client } = createClient(false);
 
     expect(client.isEnabled()).toBe(false);
-    await expect(client.extract(schema, 'test', 'system', 'hi')).rejects.toThrow(ServiceUnavailableException);
+    await expect(client.extract(schema, 'test', 'system', 'hi', '직접 입력해주세요.')).rejects.toThrow(ServiceUnavailableException);
   });
 
   it('스키마에 맞는 JSON이면 검증된 값을 돌려주고, 요청에 strict 스키마와 제공자 조건을 싣는다', async () => {
     const { client, create } = createClient();
     create.mockResolvedValue(reply('{"names":["김하나"]}'));
 
-    await expect(client.extract(schema, 'names', 'system', 'hi')).resolves.toEqual({ names: ['김하나'] });
+    await expect(client.extract(schema, 'names', 'system', 'hi', '직접 입력해주세요.')).resolves.toEqual({ names: ['김하나'] });
 
     const body = create.mock.calls[0][0];
     expect(body.response_format.json_schema).toMatchObject({ name: 'names', strict: true });
@@ -57,17 +57,20 @@ describe('AiClient', () => {
   it('자유 문장이나 스키마와 어긋난 JSON은 422 — 체크인으로 이어지지 않는다', async () => {
     const { client, create } = createClient();
     create.mockResolvedValueOnce(reply('오늘 날씨는 맑아요'));
-    await expect(client.extract(schema, 'names', 'system', 'hi')).rejects.toThrow(UnprocessableEntityException);
+    await expect(client.extract(schema, 'names', 'system', 'hi', '직접 입력해주세요.')).rejects.toThrow(UnprocessableEntityException);
 
     create.mockResolvedValueOnce(reply('{"names":"김하나"}'));
-    await expect(client.extract(schema, 'names', 'system', 'hi')).rejects.toThrow(UnprocessableEntityException);
+    await expect(client.extract(schema, 'names', 'system', 'hi', '직접 입력해주세요.')).rejects.toThrow(UnprocessableEntityException);
   });
 
   it('사용 한도 초과(429)는 429로 안내', async () => {
     const { client, create } = createClient();
     create.mockRejectedValue(new OpenAI.RateLimitError(429, undefined, 'rate limited', new Headers()));
 
-    await expect(client.extract(schema, 'names', 'system', 'hi')).rejects.toMatchObject({ status: 429 });
-    await expect(client.extract(schema, 'names', 'system', 'hi')).rejects.toBeInstanceOf(HttpException);
+    await expect(client.extract(schema, 'names', 'system', 'hi', '직접 입력해주세요.')).rejects.toMatchObject({
+      status: 429,
+      message: 'AI 사용 한도를 넘었어요. 직접 입력해주세요.', // 실패 안내 꼬리는 호출하는 기능이 정한다
+    });
+    await expect(client.extract(schema, 'names', 'system', 'hi', '직접 입력해주세요.')).rejects.toBeInstanceOf(HttpException);
   });
 });
