@@ -32,6 +32,7 @@ import {
 import { LoginGate, useAdminAuth } from '@/components/admin-gate';
 import { AiCheckInPanel } from '@/components/ai-check-in-panel';
 import { BirthdayCalendarModal } from '@/components/birthday-calendar';
+import { SettlementModal } from '@/components/settlement-modal';
 import { ExitGuard } from '@/components/exit-guard';
 import { GenderMarker, GradeBadge, PlayerGrid, Toast } from '@/components/badges';
 import { HomeLink } from '@/components/home-link';
@@ -200,6 +201,7 @@ function BoardBody({
   const [manualOpen, setManualOpen] = useState(false); // 운영진 수동 체크인 (사전 등록·현장 대리 등 예외용)
   const [membersOpen, setMembersOpen] = useState(false); // 모임원 관리 (명단 조회·수정·정리)
   const [birthdayOpen, setBirthdayOpen] = useState(false); // 생일 캘린더
+  const [settlementOpen, setSettlementOpen] = useState(false); // 뒤풀이 정산
 
   // 이스터에그 — 대기 인원 헤더의 [수동 체크인] 왼쪽 빈 영역 13연타 (현장 태블릿용 서프라이즈)
   // 연타 카운트는 리렌더와 무관한 ref로, 1초 이상 쉬면 리셋(누적 탭 우연 발동 방지)
@@ -357,6 +359,12 @@ function BoardBody({
       key: 'birthday',
       label: '생일',
       onClick: () => setBirthdayOpen(true),
+      cls: 'border-line text-dim',
+    },
+    {
+      key: 'settlement',
+      label: '정산',
+      onClick: () => setSettlementOpen(true),
       cls: 'border-line text-dim',
     },
     {
@@ -685,6 +693,7 @@ function BoardBody({
       {codeOpen && <CheckInCodeModal onClose={() => setCodeOpen(false)} />}
       {membersOpen && <MembersManagerModal onClose={() => setMembersOpen(false)} />}
       {birthdayOpen && <BirthdayCalendarModal onClose={() => setBirthdayOpen(false)} />}
+      {settlementOpen && <SettlementModal onClose={() => setSettlementOpen(false)} />}
       {cheer && <CheerEasterEgg onDone={closeCheer} />}
       {manualOpen && (
         <ManualCheckInModal
