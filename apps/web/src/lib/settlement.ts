@@ -88,18 +88,18 @@ export const parseNames = (raw: string) => raw.split(/[,\s]+/).filter(Boolean);
 // 카톡에 붙여넣을 문구 — 운영진이 쓰던 공지 형식 그대로. 계좌번호는 결제자가 끝에 직접 붙인다
 export function settlementText({
   total,
-  day,
+  when,
   place,
   shares,
 }: {
   total: number;
-  day: '오늘' | '어제';
+  when: string; // "어제" / "10월 3일" — 머리말 앞에 그대로 붙는다
   place: string;
   shares: SettlementShare[];
 }): string {
   return [
     '안녕하세요~',
-    `${day} ${place.trim() || '뒤풀이'} 정산 안내드립니다!`,
+    `${when} ${place.trim() || '뒤풀이'} 정산 안내드립니다!`,
     '',
     ` 총 금액: ${won(total)}`,
     '',

@@ -38,6 +38,16 @@ function AmountField({
   );
 }
 
+// 날짜 입력 값("YYYY-MM-DD", 기기 시간대 기준 오늘)과 문구용 "10월 3일"
+const todayInput = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
+const monthDay = (value: string) => {
+  const [, month, day] = value.split('-').map(Number);
+  return `${month}월 ${day}일`;
+};
+
 const MAX_RECEIPTS = 2; // 서버 한도 — 1차·2차 영수증
 
 // 분류 칩 — 누를 때마다 공통 → 술 → 음료 순서로 바뀐다
@@ -120,7 +130,9 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [names, setNames] = useState<Record<string, string>>({}); // 그룹별 이름 입력 원문
   const [place, setPlace] = useState('');
-  const [day, setDay] = useState<'오늘' | '어제'>('어제'); // 보통 다음 날 정산 공지를 올린다
+  // 언제 뒤풀이였는지 — 보통 다음 날 공지라 기본 어제, 며칠 지났으면 [날짜]로 고른다
+  const [day, setDay] = useState<'오늘' | '어제' | '날짜'>('어제');
+  const [date, setDate] = useState(todayInput);
   const [copied, setCopied] = useState<'done' | 'failed' | null>(null);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [receipt, setReceipt] = useState<IReceiptReadResult | null>(null);
@@ -207,7 +219,8 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
       }),
     [total, alcohol, beverage, sponsorWon, groups],
   );
-  const text = result.ok ? settlementText({ total: toNumber(total), day, place, shares: result.shares }) : '';
+  const when = day === '날짜' ? monthDay(date) : day;
+  const text = result.ok ? settlementText({ total: toNumber(total), when, place, shares: result.shares }) : '';
 
   const copy = async () => {
     try {
@@ -383,26 +396,37 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
             <p className="text-right text-xs text-faint">전원 {headcount}명</p>
           </div>
 
-          {/* 카톡 문구 머리말 — "어제 옛날집 정산 안내드립니다!" */}
-          <div className="flex items-center gap-2 border-t border-line pt-3">
-            {(['오늘', '어제'] as const).map((d) => (
-              <button
-                key={d}
-                onClick={() => setDay(d)}
-                className={`h-10 shrink-0 rounded-lg border px-3 text-sm ${
-                  day === d ? 'border-court bg-court/15 text-court' : 'border-line text-dim'
-                }`}
-              >
-                {d}
-              </button>
-            ))}
+          {/* 카톡 문구 머리말 — "어제 옛날집 정산 안내드립니다!" / "10월 3일 옛날집 …" */}
+          <div className="flex flex-col gap-2 border-t border-line pt-3">
+            <div className="flex items-center gap-2">
+              {(['오늘', '어제', '날짜'] as const).map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setDay(d)}
+                  className={`h-10 shrink-0 rounded-lg border px-3 text-sm ${
+                    day === d ? 'border-court bg-court/15 text-court' : 'border-line text-dim'
+                  }`}
+                >
+                  {d}
+                </button>
+              ))}
+              {day === '날짜' && (
+                <input
+                  type="date"
+                  value={date}
+                  max={todayInput()}
+                  onChange={(e) => e.target.value && setDate(e.target.value)} // 지우기 버튼으로 빈 값이 오면 무시
+                  className="h-10 min-w-0 flex-1 rounded-lg border border-line bg-panel2 px-2 text-sm outline-none focus:border-court"
+                />
+              )}
+            </div>
             <input
               value={place}
               onChange={(e) => setPlace(e.target.value)}
               autoComplete="off"
               maxLength={30}
               placeholder="가게 이름 (선택)"
-              className="h-10 min-w-0 flex-1 rounded-lg border border-line bg-panel2 px-3 text-sm outline-none placeholder:text-faint focus:border-court"
+              className="h-10 rounded-lg border border-line bg-panel2 px-3 text-sm outline-none placeholder:text-faint focus:border-court"
             />
           </div>
 
