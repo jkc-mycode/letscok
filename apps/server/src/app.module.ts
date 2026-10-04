@@ -16,6 +16,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { PushModule } from './push/push.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { SessionsModule } from './sessions/sessions.module';
+import { SettlementModule } from './settlement/settlement.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { SessionsModule } from './sessions/sessions.module';
     HistoryModule,
     MemosModule,
     AiCheckInModule,
+    SettlementModule,
   ],
   controllers: [HealthController, AuthController],
   providers: [

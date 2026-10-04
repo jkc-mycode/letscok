@@ -402,6 +402,23 @@ export interface IAiCheckInResult {
   message: string; // 서버가 정해진 틀로 조립한 안내 문장 (AI가 쓴 문장이 아님)
 }
 
+// ===== 뒤풀이 정산 =====
+
+// 영수증 품목 분류 — 공통(전원)·술(술 마신 사람)·음료(음료 마신 사람)로 나눠 낸다
+export type ReceiptCategory = 'common' | 'alcohol' | 'beverage';
+
+export interface IReceiptItem {
+  name: string; // 영수증에 적힌 그대로
+  amount: number; // 그 줄의 금액(수량 × 단가), 할인 줄은 음수
+  category: ReceiptCategory;
+}
+
+// 영수증 AI 판독 결과 — 계산은 웹이 한다(서버는 읽기만)
+export interface IReceiptReadResult {
+  items: IReceiptItem[];
+  total: number | null; // 영수증의 최종 결제 금액(여러 장이면 합계), 못 읽으면 null
+}
+
 // ===== 공통 응답 래퍼 =====
 
 export interface IApiResponse<T> {
