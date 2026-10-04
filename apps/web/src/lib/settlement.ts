@@ -4,9 +4,11 @@
 export interface SettlementGroup {
   key: string;
   label: string;
+  phrase: string; // 카톡 문구용 — "음료만 마신 사람"
   alcohol: boolean; // 술값을 나눠 내는지
   beverage: boolean; // 음료값을 나눠 내는지
   count: number;
+  names: string[]; // 카톡 문구에 적을 이름(선택) — 있으면 인원수는 이름 수를 따른다
 }
 
 export interface SettlementInput {
@@ -32,10 +34,10 @@ export type SettlementResult =
   | { ok: false; error: string };
 
 export const DEFAULT_GROUPS: SettlementGroup[] = [
-  { key: 'both', label: '술+음료', alcohol: true, beverage: true, count: 0 },
-  { key: 'alcohol', label: '술만', alcohol: true, beverage: false, count: 0 },
-  { key: 'beverage', label: '음료만', alcohol: false, beverage: true, count: 0 },
-  { key: 'none', label: '안 마심', alcohol: false, beverage: false, count: 0 },
+  { key: 'both', label: '술+음료', phrase: '술과 음료 마신 사람', alcohol: true, beverage: true, count: 0, names: [] },
+  { key: 'alcohol', label: '술만', phrase: '주류만 마신 사람', alcohol: true, beverage: false, count: 0, names: [] },
+  { key: 'beverage', label: '음료만', phrase: '음료만 마신 사람', alcohol: false, beverage: true, count: 0, names: [] },
+  { key: 'none', label: '안 마심', phrase: '아무것도 안 마신 사람', alcohol: false, beverage: false, count: 0, names: [] },
 ];
 
 const isWon = (n: number) => Number.isSafeInteger(n) && n >= 0;
@@ -72,10 +74,33 @@ export function settle({ total, alcohol, beverage, groups }: SettlementInput): S
 
 export const won = (n: number) => `${n.toLocaleString('ko-KR')}원`;
 
-// 카톡에 붙여넣을 문구 — 계좌번호는 결제자가 뒤에 직접 붙인다
-export function settlementText(total: number, shares: SettlementShare[]): string {
+// "승주, 현석" / "승주 현석" 모두 받는다
+export const parseNames = (raw: string) => raw.split(/[,\s]+/).filter(Boolean);
+
+// 카톡에 붙여넣을 문구 — 운영진이 쓰던 공지 형식 그대로. 계좌번호는 결제자가 끝에 직접 붙인다
+export function settlementText({
+  total,
+  day,
+  place,
+  shares,
+}: {
+  total: number;
+  day: '오늘' | '어제';
+  place: string;
+  shares: SettlementShare[];
+}): string {
   return [
-    `🍻 뒤풀이 정산 (총 ${won(total)})`,
-    ...shares.map((s) => `${s.group.label} ${won(s.perPerson)} (${s.group.count}명)`),
+    '안녕하세요~',
+    `${day} ${place.trim() || '뒤풀이'} 정산 안내드립니다!`,
+    '',
+    ` 총 금액: ${won(total)}`,
+    '',
+    '개인별 입금 금액',
+    ...shares.flatMap((s) => [
+      `${s.group.phrase} (${won(s.perPerson)})`,
+      ` -> ${s.group.names.length > 0 ? s.group.names.join(', ') : `${s.group.count}명`}`,
+    ]),
+    '',
+    '카페나 아래 계좌 중에 편한걸로 부탁드립니다!',
   ].join('\n');
 }

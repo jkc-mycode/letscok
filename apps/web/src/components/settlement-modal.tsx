@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useBackClose } from '@/lib/back-stack';
 import { shrinkImage } from '@/lib/image';
-import { DEFAULT_GROUPS, settle, settlementText, won } from '@/lib/settlement';
+import { DEFAULT_GROUPS, parseNames, settle, settlementText, won } from '@/lib/settlement';
 
 // 뒤풀이 정산 — 인원수만 받고 저장하지 않는다(닫으면 사라짐). 결과는 카톡 문구로 복사해 공유한다
 
@@ -56,28 +56,56 @@ const NEXT_CATEGORY: Record<ReceiptCategory, ReceiptCategory> = {
 const sumBy = (items: IReceiptItem[], category?: ReceiptCategory) =>
   items.filter((i) => !category || i.category === category).reduce((sum, i) => sum + i.amount, 0);
 
-function Counter({ label, count, onChange }: { label: string; count: number; onChange: (n: number) => void }) {
+// 이름을 적으면 인원수가 이름 수로 고정된다(이름과 인원이 어긋나지 않게) — 이름을 지우면 다시 [-]/[+]
+function Counter({
+  label,
+  count,
+  onChange,
+  names,
+  onNamesChange,
+}: {
+  label: string;
+  count: number;
+  onChange: (n: number) => void;
+  names: string;
+  onNamesChange: (v: string) => void;
+}) {
+  const locked = parseNames(names).length > 0;
   return (
-    <div className="flex items-center gap-2">
-      <span className="flex-1 text-sm">{label}</span>
-      <button
-        onClick={() => onChange(Math.max(0, count - 1))}
-        disabled={count === 0}
-        className="h-10 w-10 rounded-lg border border-line text-lg text-dim disabled:opacity-40"
-      >
-        −
-      </button>
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2">
+        <span className="flex-1 text-sm">{label}</span>
+        <button
+          onClick={() => onChange(Math.max(0, count - 1))}
+          disabled={locked || count === 0}
+          className="h-10 w-10 rounded-lg border border-line text-lg text-dim disabled:opacity-40"
+        >
+          −
+        </button>
+        <input
+          value={count === 0 ? '' : String(count)}
+          onChange={(e) => onChange(Number(e.target.value.replace(/\D/g, '').slice(0, 3) || 0))}
+          disabled={locked}
+          inputMode="numeric"
+          autoComplete="off"
+          placeholder="0"
+          className="tabular h-10 w-12 rounded-lg border border-line bg-panel2 text-center text-base outline-none placeholder:text-faint focus:border-court"
+        />
+        <button
+          onClick={() => onChange(count + 1)}
+          disabled={locked}
+          className="h-10 w-10 rounded-lg border border-line text-lg text-dim disabled:opacity-40"
+        >
+          +
+        </button>
+      </div>
       <input
-        value={count === 0 ? '' : String(count)}
-        onChange={(e) => onChange(Number(e.target.value.replace(/\D/g, '').slice(0, 3) || 0))}
-        inputMode="numeric"
+        value={names}
+        onChange={(e) => onNamesChange(e.target.value)}
         autoComplete="off"
-        placeholder="0"
-        className="tabular h-10 w-12 rounded-lg border border-line bg-panel2 text-center text-base outline-none placeholder:text-faint focus:border-court"
+        placeholder="이름 (선택, 쉼표나 띄어쓰기로 구분)"
+        className="h-9 rounded-lg border border-line bg-panel2 px-3 text-sm outline-none placeholder:text-faint focus:border-court"
       />
-      <button onClick={() => onChange(count + 1)} className="h-10 w-10 rounded-lg border border-line text-lg text-dim">
-        +
-      </button>
     </div>
   );
 }
@@ -88,6 +116,9 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
   const [alcohol, setAlcohol] = useState('');
   const [beverage, setBeverage] = useState('');
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [names, setNames] = useState<Record<string, string>>({}); // 그룹별 이름 입력 원문
+  const [place, setPlace] = useState('');
+  const [day, setDay] = useState<'오늘' | '어제'>('어제'); // 보통 다음 날 정산 공지를 올린다
   const [copied, setCopied] = useState<'done' | 'failed' | null>(null);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [receipt, setReceipt] = useState<IReceiptReadResult | null>(null);
@@ -150,14 +181,21 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
 
   const itemsSum = receipt ? sumBy(receipt.items) : 0;
 
-  const groups = useMemo(() => DEFAULT_GROUPS.map((g) => ({ ...g, count: counts[g.key] ?? 0 })), [counts]);
+  const groups = useMemo(
+    () =>
+      DEFAULT_GROUPS.map((g) => {
+        const list = parseNames(names[g.key] ?? '');
+        return { ...g, names: list, count: list.length > 0 ? list.length : (counts[g.key] ?? 0) };
+      }),
+    [counts, names],
+  );
   const headcount = groups.reduce((sum, g) => sum + g.count, 0);
   const common = toNumber(total) - toNumber(alcohol) - toNumber(beverage);
   const result = useMemo(
     () => settle({ total: toNumber(total), alcohol: toNumber(alcohol), beverage: toNumber(beverage), groups }),
     [total, alcohol, beverage, groups],
   );
-  const text = result.ok ? settlementText(toNumber(total), result.shares) : '';
+  const text = result.ok ? settlementText({ total: toNumber(total), day, place, shares: result.shares }) : '';
 
   const copy = async () => {
     try {
@@ -292,9 +330,34 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
                 label={g.label}
                 count={g.count}
                 onChange={(n) => setCounts((c) => ({ ...c, [g.key]: n }))}
+                names={names[g.key] ?? ''}
+                onNamesChange={(v) => setNames((c) => ({ ...c, [g.key]: v }))}
               />
             ))}
             <p className="text-right text-xs text-faint">전원 {headcount}명</p>
+          </div>
+
+          {/* 카톡 문구 머리말 — "어제 옛날집 정산 안내드립니다!" */}
+          <div className="flex items-center gap-2 border-t border-line pt-3">
+            {(['오늘', '어제'] as const).map((d) => (
+              <button
+                key={d}
+                onClick={() => setDay(d)}
+                className={`h-10 shrink-0 rounded-lg border px-3 text-sm ${
+                  day === d ? 'border-court bg-court/15 text-court' : 'border-line text-dim'
+                }`}
+              >
+                {d}
+              </button>
+            ))}
+            <input
+              value={place}
+              onChange={(e) => setPlace(e.target.value)}
+              autoComplete="off"
+              maxLength={30}
+              placeholder="가게 이름 (선택)"
+              className="h-10 min-w-0 flex-1 rounded-lg border border-line bg-panel2 px-3 text-sm outline-none placeholder:text-faint focus:border-court"
+            />
           </div>
 
           {/* 결과 — 입력이 바뀔 때마다 바로 계산 */}
