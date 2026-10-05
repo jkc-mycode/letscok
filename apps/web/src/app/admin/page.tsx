@@ -1553,7 +1553,6 @@ function ManualCheckInModal({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="모임원 이름을 검색하세요"
-            autoFocus
             className="h-12 rounded-xl border border-line bg-panel2 px-4 outline-none focus:border-court"
           />
           <p className="pt-2 text-xs text-faint">
