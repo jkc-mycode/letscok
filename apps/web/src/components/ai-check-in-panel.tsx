@@ -131,8 +131,9 @@ export function AiCheckInPanel({
         <span className="ml-auto text-xs font-normal text-dim">{open ? '접기' : '열기'}</span>
       </button>
 
+      {/* 스크롤은 감싸는 수동 체크인 팝업이 맡는다(이중 스크롤 방지) */}
       {open && (
-        <div className="mt-3 flex max-h-[45dvh] flex-col gap-2 scroll-area">
+        <div className="mt-3 flex flex-col gap-2">
           <input
             ref={fileInput}
             type="file"

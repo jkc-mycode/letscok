@@ -1542,141 +1542,145 @@ function ManualCheckInModal({
           </button>
         </div>
 
-        {/* AI 체크인 — 서버에 AI 키가 없으면 스스로 숨는다 */}
-        <AiCheckInPanel sessionId={sessionId} attendances={attendances} run={run} />
+        {/* 머리글 아래 전체가 한 덩어리로 스크롤 — 검색 결과만 스크롤하면 AI 결과·선택 인원·신규 등록 폼이
+            커질 때 줄어들지 못하고 팝업 상자 밖으로 넘친다 */}
+        <div className="flex min-h-0 flex-1 flex-col scroll-area">
+          {/* AI 체크인 — 서버에 AI 키가 없으면 스스로 숨는다 */}
+          <AiCheckInPanel sessionId={sessionId} attendances={attendances} run={run} />
 
-        <input
-          autoComplete="off"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="모임원 이름을 검색하세요"
-          autoFocus
-          className="h-12 rounded-xl border border-line bg-panel2 px-4 outline-none focus:border-court"
-        />
-        <p className="pt-2 text-xs text-faint">
-          탭해서 선택한 뒤 아래 [체크인] 버튼을 누르면 한 번에 처리돼요. 검색에 없으면 아래 [신규
-          등록]으로 바로 등록할 수 있어요.
-        </p>
-        {lastDone && <p className="pt-1 text-xs font-medium text-court">{lastDone}</p>}
-        {failed.length > 0 && (
-          <div className="pt-1">
-            {failed.map((f) => (
-              <p key={f.name} className="text-xs font-medium text-coral">
-                {f.name}님 실패 — {f.message}
-              </p>
-            ))}
-          </div>
-        )}
-
-        <div className="mt-3 flex min-h-0 flex-1 flex-col gap-2 scroll-area">
-          {results.map((member) => {
-            const status = statusByMemberId.get(member.id);
-            const present = status !== undefined && status !== 'LEFT';
-            const picked = selected.has(member.id);
-            return (
-              <button
-                key={member.id}
-                onClick={() => !present && toggle(member)}
-                disabled={present}
-                className={`flex items-center gap-2 rounded-xl border p-3 text-left text-sm ${
-                  present
-                    ? 'border-line bg-panel2 opacity-50'
-                    : picked
-                      ? 'border-court bg-court/15'
-                      : 'border-line bg-panel2'
-                }`}
-              >
-                <span
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[11px] font-bold ${
-                    picked ? 'border-court bg-court text-bg' : 'border-line text-transparent'
-                  }`}
-                >
-                  ✓
-                </span>
-                <GradeBadge grade={member.grade} />
-                <span className="truncate font-medium">{member.name}</span>
-                <GenderMarker gender={member.gender} />
-                {member.isGuest && <span className="text-[10px] text-sky">G</span>}
-                {present && (
-                  <span className="shrink-0 rounded bg-court/15 px-1.5 py-0.5 text-[10px] font-medium text-court">
-                    출석 중
-                  </span>
-                )}
-                {status === 'LEFT' && (
-                  <span className="shrink-0 rounded bg-amber/15 px-1.5 py-0.5 text-[10px] font-medium text-amber">
-                    퇴장 — 재입장 처리
-                  </span>
-                )}
-                {/* 동명이인 구분용 생년월일 노출 */}
-                <span className="ml-auto shrink-0 text-xs text-dim">{member.birthDate}</span>
-              </button>
-            );
-          })}
-          {query.trim() && results.length === 0 && (
-            <p className="py-6 text-center text-sm text-faint">검색 결과가 없어요</p>
-          )}
-        </div>
-
-        {/* 선택 인원 — 검색어를 바꿔도 남으므로 여기서 전체를 확인하고 해제할 수 있게 */}
-        {selected.size > 0 && (
-          <div className="mt-3 flex flex-col gap-2 border-t border-line pt-3">
-            <div className="flex flex-wrap gap-1.5">
-              {[...selected.values()].map((member) => (
-                <button
-                  key={member.id}
-                  onClick={() => toggle(member)}
-                  className="flex items-center gap-1 rounded-lg border border-court/40 bg-court/10 px-2 py-1 text-xs font-medium text-court"
-                >
-                  {member.name}
-                  <span className="text-faint">✕</span>
-                </button>
+          <input
+            autoComplete="off"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="모임원 이름을 검색하세요"
+            autoFocus
+            className="h-12 rounded-xl border border-line bg-panel2 px-4 outline-none focus:border-court"
+          />
+          <p className="pt-2 text-xs text-faint">
+            탭해서 선택한 뒤 아래 [체크인] 버튼을 누르면 한 번에 처리돼요. 검색에 없으면 아래 [신규
+            등록]으로 바로 등록할 수 있어요.
+          </p>
+          {lastDone && <p className="pt-1 text-xs font-medium text-court">{lastDone}</p>}
+          {failed.length > 0 && (
+            <div className="pt-1">
+              {failed.map((f) => (
+                <p key={f.name} className="text-xs font-medium text-coral">
+                  {f.name}님 실패 — {f.message}
+                </p>
               ))}
             </div>
-            <button
-              onClick={checkInSelected}
-              disabled={busy}
-              className="h-11 w-full rounded-xl bg-court text-sm font-bold text-bg disabled:opacity-50"
-            >
-              {selected.size}명 체크인
-            </button>
-          </div>
-        )}
+          )}
 
-        {/* 신규 대리 등록 — 검색에 없는 인원을 즉석 등록+체크인 (기본 게스트, 정회원은 생년월일 추가) */}
-        <div className="mt-3 border-t border-line pt-3">
-          {!regOpen ? (
-            <button
-              onClick={() => setRegOpen(true)}
-              className="h-11 w-full rounded-xl border border-sky/40 text-sm font-medium text-sky"
-            >
-              + 신규 등록 — 검색에 없는 인원 (여러 명 가능)
-            </button>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center">
-                <p className="text-xs font-bold text-sky">신규 등록 + 체크인</p>
-                <button onClick={() => setRegOpen(false)} className="ml-auto text-xs text-faint">
-                  접기
+          <div className="mt-3 flex flex-col gap-2">
+            {results.map((member) => {
+              const status = statusByMemberId.get(member.id);
+              const present = status !== undefined && status !== 'LEFT';
+              const picked = selected.has(member.id);
+              return (
+                <button
+                  key={member.id}
+                  onClick={() => !present && toggle(member)}
+                  disabled={present}
+                  className={`flex items-center gap-2 rounded-xl border p-3 text-left text-sm ${
+                    present
+                      ? 'border-line bg-panel2 opacity-50'
+                      : picked
+                        ? 'border-court bg-court/15'
+                        : 'border-line bg-panel2'
+                  }`}
+                >
+                  <span
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[11px] font-bold ${
+                      picked ? 'border-court bg-court text-bg' : 'border-line text-transparent'
+                    }`}
+                  >
+                    ✓
+                  </span>
+                  <GradeBadge grade={member.grade} />
+                  <span className="truncate font-medium">{member.name}</span>
+                  <GenderMarker gender={member.gender} />
+                  {member.isGuest && <span className="text-[10px] text-sky">G</span>}
+                  {present && (
+                    <span className="shrink-0 rounded bg-court/15 px-1.5 py-0.5 text-[10px] font-medium text-court">
+                      출석 중
+                    </span>
+                  )}
+                  {status === 'LEFT' && (
+                    <span className="shrink-0 rounded bg-amber/15 px-1.5 py-0.5 text-[10px] font-medium text-amber">
+                      퇴장 — 재입장 처리
+                    </span>
+                  )}
+                  {/* 동명이인 구분용 생년월일 노출 */}
+                  <span className="ml-auto shrink-0 text-xs text-dim">{member.birthDate}</span>
                 </button>
+              );
+            })}
+            {query.trim() && results.length === 0 && (
+              <p className="py-6 text-center text-sm text-faint">검색 결과가 없어요</p>
+            )}
+          </div>
+
+          {/* 선택 인원 — 검색어를 바꿔도 남으므로 여기서 전체를 확인하고 해제할 수 있게 */}
+          {selected.size > 0 && (
+            <div className="mt-3 flex flex-col gap-2 border-t border-line pt-3">
+              <div className="flex flex-wrap gap-1.5">
+                {[...selected.values()].map((member) => (
+                  <button
+                    key={member.id}
+                    onClick={() => toggle(member)}
+                    className="flex items-center gap-1 rounded-lg border border-court/40 bg-court/10 px-2 py-1 text-xs font-medium text-court"
+                  >
+                    {member.name}
+                    <span className="text-faint">✕</span>
+                  </button>
+                ))}
               </div>
-              <MultiMemberForm
-                defaultGuest
-                initialName={query.trim()} // 방금 검색한 이름 이어받기
-                actionLabel="등록 + 체크인"
-                register={registerAndCheckIn}
-                onFinished={(done, remaining) => {
-                  // 체크인은 소켓 스냅샷으로 보드에 바로 반영된다 — 여기선 결과 문구만
-                  if (done.length > 0) setLastDone(`${done.join(', ')}님 체크인 완료`);
-                  setFailed([]);
-                  if (remaining === 0) setRegOpen(false);
-                }}
-              />
-              <p className="text-[11px] text-faint">
-                게스트는 생년월일을 받지 않아요. 정회원은 본인 폰으로 코드 체크인하면 이 계정으로
-                연결돼요. 등록은 본인에게 구두로 동의받아 주세요.
-              </p>
+              <button
+                onClick={checkInSelected}
+                disabled={busy}
+                className="h-11 w-full rounded-xl bg-court text-sm font-bold text-bg disabled:opacity-50"
+              >
+                {selected.size}명 체크인
+              </button>
             </div>
           )}
+
+          {/* 신규 대리 등록 — 검색에 없는 인원을 즉석 등록+체크인 (기본 게스트, 정회원은 생년월일 추가) */}
+          <div className="mt-3 border-t border-line pt-3">
+            {!regOpen ? (
+              <button
+                onClick={() => setRegOpen(true)}
+                className="h-11 w-full rounded-xl border border-sky/40 text-sm font-medium text-sky"
+              >
+                + 신규 등록 — 검색에 없는 인원 (여러 명 가능)
+              </button>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center">
+                  <p className="text-xs font-bold text-sky">신규 등록 + 체크인</p>
+                  <button onClick={() => setRegOpen(false)} className="ml-auto text-xs text-faint">
+                    접기
+                  </button>
+                </div>
+                <MultiMemberForm
+                  defaultGuest
+                  initialName={query.trim()} // 방금 검색한 이름 이어받기
+                  actionLabel="등록 + 체크인"
+                  register={registerAndCheckIn}
+                  onFinished={(done, remaining) => {
+                    // 체크인은 소켓 스냅샷으로 보드에 바로 반영된다 — 여기선 결과 문구만
+                    if (done.length > 0) setLastDone(`${done.join(', ')}님 체크인 완료`);
+                    setFailed([]);
+                    if (remaining === 0) setRegOpen(false);
+                  }}
+                />
+                <p className="text-[11px] text-faint">
+                  게스트는 생년월일을 받지 않아요. 정회원은 본인 폰으로 코드 체크인하면 이 계정으로
+                  연결돼요. 등록은 본인에게 구두로 동의받아 주세요.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
