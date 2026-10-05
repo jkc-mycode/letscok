@@ -191,7 +191,7 @@ function SearchPanel({
       {needsConsent && (
         <button
           onClick={() => setConsent((v) => !v)}
-          className={`rounded-xl border p-4 text-left ${
+          className={`rounded-xl border p-4 text-left whitespace-normal ${
             consent ? 'border-court bg-court/10' : 'border-line bg-panel'
           }`}
         >
@@ -215,7 +215,7 @@ function SearchPanel({
       <button
         onClick={() => selected && void onSelect(selected, needsConsent)}
         disabled={blocked}
-        className="h-14 rounded-xl bg-court text-lg font-bold text-bg disabled:bg-panel2 disabled:text-faint"
+        className="min-h-14 rounded-xl bg-court px-3 text-lg font-bold whitespace-normal text-bg disabled:bg-panel2 disabled:text-faint"
       >
         {!selected
           ? '본인을 선택해주세요'

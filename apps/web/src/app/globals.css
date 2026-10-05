@@ -24,6 +24,20 @@ body {
   color: var(--color-ink);
 }
 
+/* 한글 줄바꿈 — 브라우저 기본값은 한글을 글자 단위로 끊어 좁은 화면에서 "닫/기"처럼 쪼개진다.
+   단어(띄어쓰기) 단위로만 끊고, 띄어쓰기 없는 긴 문자열만 넘칠 때 끊는다.
+   버튼 글자는 한 줄로 고정 — 고정 높이 버튼이 두 줄로 쪼개지면 글자가 버튼 밖으로 넘친다.
+   문장형 버튼(긴 안내 문구)만 whitespace-normal로 푼다. @layer base라 유틸리티가 이긴다 */
+@layer base {
+  body {
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
+  button {
+    white-space: nowrap;
+  }
+}
+
 /* PWA 안전 영역 — 홈 화면에서 실행하면 상태바·홈 인디케이터 아래까지 화면이 넓어져
    (viewport-fit=cover + black-translucent) 콘텐츠가 노치에 물린다. 그 여백을 body가 준다.
    일반 브라우저·태블릿·데스크톱에선 inset이 전부 0이라 아무 변화가 없다 */

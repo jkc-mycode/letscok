@@ -121,7 +121,7 @@ export default function MyStatusPage() {
         <button
           onClick={() => void toggleRest()}
           disabled={busy}
-          className="h-12 rounded-xl border border-sky/40 text-sm font-medium text-sky disabled:opacity-50"
+          className="min-h-12 rounded-xl border border-sky/40 px-3 text-sm font-medium whitespace-normal text-sky disabled:opacity-50"
         >
           잠깐 쉴래요 — 게임 조합에서 빼주세요
         </button>
@@ -130,7 +130,7 @@ export default function MyStatusPage() {
         <button
           onClick={() => void toggleRest()}
           disabled={busy}
-          className="h-12 rounded-xl bg-court text-sm font-bold text-bg disabled:opacity-50"
+          className="min-h-12 rounded-xl bg-court px-3 text-sm font-bold whitespace-normal text-bg disabled:opacity-50"
         >
           다시 뛸래요 — 대기로 복귀
         </button>

@@ -128,11 +128,11 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
         className="flex h-[min(92dvh,760px)] w-full max-w-md flex-col rounded-2xl border border-line bg-panel p-4 sm:p-5"
       >
         <div className="flex items-center pb-3">
-          <h2 className="text-lg font-bold text-court">🎂 생일 캘린더</h2>
+          <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">🎂 생일 캘린더</h2>
           <span className="ml-2 text-xs text-faint">정회원 {birthdays.length}명</span>
           <button
             onClick={onClose}
-            className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
+            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
           >
             닫기
           </button>

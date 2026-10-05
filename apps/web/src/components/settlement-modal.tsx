@@ -285,10 +285,10 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
         className="flex max-h-[92dvh] w-full max-w-md flex-col rounded-2xl border border-line bg-panel p-4 sm:p-5"
       >
         <div className="flex items-center pb-3">
-          <h2 className="text-lg font-bold text-court">🍻 뒤풀이 정산</h2>
+          <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">🍻 뒤풀이 정산</h2>
           <button
             onClick={onClose}
-            className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
+            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
           >
             닫기
           </button>

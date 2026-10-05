@@ -480,7 +480,7 @@ function BoardBody({
                 action.onClick();
                 if (!action.keepMenuOpen) setMenuOpen(false);
               }}
-              className={`h-11 rounded-lg border px-3 text-sm font-medium ${action.cls}`}
+              className={`h-11 rounded-lg border px-3 text-sm leading-tight font-medium whitespace-normal ${action.cls}`}
             >
               {action.label}
             </button>
@@ -829,9 +829,9 @@ function RecommendModal({
         className="flex max-h-[85dvh] w-full max-w-4xl flex-col rounded-2xl border border-line bg-panel p-5"
       >
         <div className="flex items-center gap-3 pb-3">
-          <h2 className="text-lg font-bold text-court">게임 추천</h2>
-          <p className="text-xs text-faint">참고용이에요 — 넣을지는 운영진 마음!</p>
-          <div className="ml-auto flex gap-2">
+          <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">게임 추천</h2>
+          <p className="min-w-0 text-xs text-faint">참고용이에요 — 넣을지는 운영진 마음!</p>
+          <div className="ml-auto flex shrink-0 gap-2">
             <button
               onClick={() => void load()}
               className="h-9 rounded-lg border border-line px-3 text-sm text-dim"
@@ -848,7 +848,7 @@ function RecommendModal({
         </div>
 
         {/* 종목 탭 — 전환 시 해당 구성으로 재요청 */}
-        <div className="flex gap-1.5 pb-3">
+        <div className="flex flex-wrap gap-1.5 pb-3">
           {CATEGORY_TABS.map((tab) => (
             <button
               key={tab.value}
@@ -956,10 +956,10 @@ function CheckInCodeModal({ onClose }: { onClose: () => void }) {
         className="flex w-full max-w-sm flex-col items-center gap-4 rounded-2xl border border-line bg-panel p-6 text-center"
       >
         <div className="flex w-full items-center">
-          <h2 className="text-lg font-bold text-court">체크인 코드</h2>
+          <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">체크인 코드</h2>
           <button
             onClick={onClose}
-            className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
+            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
           >
             닫기
           </button>
@@ -1117,13 +1117,13 @@ function ReplacePlayerModal({
         className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-2xl border border-line bg-panel p-5"
       >
         <div className="flex items-center pb-3">
-          <h2 className="text-lg font-bold text-court">선수 교체</h2>
-          <p className="ml-3 text-xs text-faint">
+          <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">선수 교체</h2>
+          <p className="ml-3 min-w-0 text-xs text-faint">
             {isPlaying ? '타이머는 그대로 이어져요' : '조합 순서는 그대로 유지돼요'}
           </p>
           <button
             onClick={onClose}
-            className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
+            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
           >
             닫기
           </button>
@@ -1532,11 +1532,11 @@ function ManualCheckInModal({
         className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-2xl border border-line bg-panel p-5"
       >
         <div className="flex items-center pb-3">
-          <h2 className="text-lg font-bold text-court">수동 체크인</h2>
-          <p className="ml-3 text-xs text-faint">사전 등록·현장 대리 체크인용</p>
+          <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">수동 체크인</h2>
+          <p className="ml-3 min-w-0 text-xs text-faint">사전 등록·현장 대리 체크인용</p>
           <button
             onClick={onClose}
-            className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
+            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
           >
             닫기
           </button>
@@ -1649,7 +1649,7 @@ function ManualCheckInModal({
             {!regOpen ? (
               <button
                 onClick={() => setRegOpen(true)}
-                className="h-11 w-full rounded-xl border border-sky/40 text-sm font-medium text-sky"
+                className="min-h-11 w-full rounded-xl border border-sky/40 px-3 text-sm font-medium whitespace-normal text-sky"
               >
                 + 신규 등록 — 검색에 없는 인원 (여러 명 가능)
               </button>
@@ -1796,7 +1796,7 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
         className="flex max-h-[92dvh] w-full max-w-2xl flex-col rounded-2xl border border-line bg-panel p-4 sm:p-5"
       >
         <div className="flex items-center pb-3">
-          <h2 className="text-lg font-bold text-court">모임원 관리</h2>
+          <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">모임원 관리</h2>
           {members && (
             <span className="ml-2 text-xs text-faint">
               {members.filter((m) => !m.deletedAt).length}명
@@ -1804,7 +1804,7 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
           )}
           <button
             onClick={onClose}
-            className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
+            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
           >
             닫기
           </button>
@@ -1924,11 +1924,11 @@ function MemberRegisterSheet({
         className="flex max-h-[92dvh] w-full max-w-md flex-col gap-2.5 overflow-y-auto rounded-t-2xl border border-line bg-panel p-5 sm:rounded-2xl"
       >
         <div className="flex items-center">
-          <h3 className="font-bold text-sky">신규 등록</h3>
+          <h3 className="shrink-0 font-bold whitespace-nowrap text-sky">신규 등록</h3>
           <p className="ml-2 text-[11px] text-faint">명단에만 추가 — 체크인 안 됨</p>
           <button
             onClick={onClose}
-            className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
+            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
           >
             닫기
           </button>
@@ -2016,12 +2016,12 @@ function MemberEditSheet({
         className="flex max-h-[92dvh] w-full max-w-md flex-col gap-2.5 overflow-y-auto rounded-t-2xl border border-line bg-panel p-5 sm:rounded-2xl"
       >
         <div className="flex items-center">
-          <h3 className="font-bold text-court">{member.name}</h3>
+          <h3 className="min-w-0 truncate font-bold text-court">{member.name}</h3>
           {member.isGuest && <span className="ml-2 text-[10px] text-sky">게스트</span>}
           {deleted && <span className="ml-2 text-[10px] text-coral">삭제됨</span>}
           <button
             onClick={onClose}
-            className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
+            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
           >
             닫기
           </button>
@@ -2045,7 +2045,7 @@ function MemberEditSheet({
             {member.isGuest && (
               <button
                 onClick={() => setPromote((v) => !v)}
-                className={`h-10 rounded-lg border text-sm font-bold ${
+                className={`min-h-10 rounded-lg border px-3 text-sm font-bold whitespace-normal ${
                   promote ? 'border-court bg-court/15 text-court' : 'border-line bg-panel2 text-dim'
                 }`}
               >
@@ -2144,7 +2144,7 @@ function MemberEditSheet({
                 })
               }
               disabled={busy}
-              className="h-11 rounded-xl border border-court/40 text-sm font-bold text-court disabled:opacity-50"
+              className="min-h-11 rounded-xl border border-court/40 px-3 text-sm font-bold whitespace-normal text-court disabled:opacity-50"
             >
               복구 — 명단에 다시 표시
             </button>
@@ -2161,7 +2161,7 @@ function MemberEditSheet({
                 });
               }}
               disabled={busy}
-              className={`h-11 rounded-xl border text-sm font-medium disabled:opacity-50 ${
+              className={`min-h-11 rounded-xl border px-3 text-sm font-medium whitespace-normal disabled:opacity-50 ${
                 confirmDelete ? 'border-coral bg-coral/15 text-coral' : 'border-line text-dim'
               }`}
             >
@@ -2180,7 +2180,7 @@ function MemberEditSheet({
               });
             }}
             disabled={busy}
-            className={`h-11 rounded-xl border text-sm font-medium disabled:opacity-50 ${
+            className={`min-h-11 rounded-xl border px-3 text-sm font-medium whitespace-normal disabled:opacity-50 ${
               confirmAnon ? 'border-coral bg-coral/15 text-coral' : 'border-line text-faint'
             }`}
           >
@@ -2246,10 +2246,10 @@ function StaleGuestCleanupSheet({
         className="flex max-h-[92dvh] w-full max-w-md flex-col rounded-t-2xl border border-line bg-panel p-5 sm:rounded-2xl"
       >
         <div className="flex items-center pb-2">
-          <h3 className="font-bold text-amber">오래 안 온 게스트 정리</h3>
+          <h3 className="shrink-0 font-bold whitespace-nowrap text-amber">오래 안 온 게스트 정리</h3>
           <button
             onClick={onClose}
-            className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
+            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
           >
             닫기
           </button>
@@ -2363,13 +2363,13 @@ function TodayGamesModal({
         className="flex max-h-[85dvh] w-full max-w-2xl flex-col rounded-2xl border border-line bg-panel p-5"
       >
         <div className="flex items-center gap-3 pb-3">
-          <h2 className="text-lg font-bold text-court">오늘 게임 기록</h2>
+          <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">오늘 게임 기록</h2>
           {detail && (
             <p className="text-xs text-faint">완료 {detail.session.finishedGameCount}게임</p>
           )}
           <button
             onClick={onClose}
-            className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
+            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
           >
             닫기
           </button>
@@ -2542,10 +2542,10 @@ function HelpModal({ onClose }: { onClose: () => void }) {
         className="flex max-h-[85dvh] w-full max-w-lg flex-col rounded-2xl border border-line bg-panel p-5"
       >
         <div className="flex items-center pb-3">
-          <h2 className="text-lg font-bold text-court">관제판 도움말</h2>
+          <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">관제판 도움말</h2>
           <button
             onClick={onClose}
-            className="ml-auto h-9 rounded-lg border border-line px-3 text-sm text-dim"
+            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
           >
             닫기
           </button>
@@ -2778,7 +2778,7 @@ function CourtCard({
         </span>
       </div>
       <PlayerGrid game={game} />
-      <div className="mt-3 flex gap-2">
+      <div className="mt-3 flex flex-wrap gap-2">
         <button
           onClick={() => void run(() => api(`/games/${game.id}/finish`, { method: 'PATCH', admin: true }))}
           className="h-11 flex-1 rounded-lg bg-court text-sm font-bold text-bg"
@@ -2886,7 +2886,7 @@ function QueueCard({
         </div>
       </div>
       <PlayerGrid game={game} overlapIds={overlapIds} />
-      <div className="mt-3 flex gap-2">
+      <div className="mt-3 flex flex-wrap gap-2">
         {busyNames.length > 0 ? (
           <span className="flex h-11 flex-1 items-center justify-center rounded-lg border border-dashed border-line px-2 text-center text-xs text-faint">
             {busyNames.join(', ')} 게임 종료 후 배정 가능

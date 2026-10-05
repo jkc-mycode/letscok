@@ -125,10 +125,10 @@ export function AiCheckInPanel({
     <div className="mb-3 rounded-xl border border-court/30 bg-court/5 p-3">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center text-left text-sm font-bold text-court"
+        className="flex w-full items-center gap-2 text-left text-sm font-bold whitespace-normal text-court"
       >
         ✨ AI 체크인 — 신청 명단 캡처·명령
-        <span className="ml-auto text-xs font-normal text-dim">{open ? '접기' : '열기'}</span>
+        <span className="ml-auto shrink-0 text-xs font-normal text-dim">{open ? '접기' : '열기'}</span>
       </button>
 
       {/* 스크롤은 감싸는 수동 체크인 팝업이 맡는다(이중 스크롤 방지) */}
@@ -148,7 +148,7 @@ export function AiCheckInPanel({
           <button
             onClick={() => fileInput.current?.click()}
             disabled={!!working}
-            className="h-11 rounded-xl bg-court text-sm font-bold text-bg disabled:opacity-50"
+            className="min-h-11 rounded-xl bg-court px-3 text-sm font-bold whitespace-normal text-bg disabled:opacity-50"
           >
             참석 신청 목록 캡처 올리기 (최대 {MAX_IMAGES}장)
           </button>

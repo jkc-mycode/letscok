@@ -72,7 +72,7 @@ export function PushToggle({ memberId }: { memberId: string }) {
         <button
           onClick={() => void toggle(true)}
           disabled={busy}
-          className="h-12 rounded-xl border border-court/40 text-sm font-medium text-court disabled:opacity-50"
+          className="min-h-12 rounded-xl border border-court/40 px-3 text-sm font-medium whitespace-normal text-court disabled:opacity-50"
         >
           🔔 내 게임 알림 받기 — 화면이 꺼져 있어도 알려드려요
         </button>
