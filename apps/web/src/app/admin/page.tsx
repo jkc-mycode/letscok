@@ -6,6 +6,7 @@ import {
   IAttendance,
   ICheckInCodeResponse,
   ICourt,
+  IFillCourtsResult,
   IGame,
   IAdminMemo,
   IHistorySessionDetail,
@@ -251,6 +252,42 @@ function BoardBody({
     () => courts.filter((c) => !playingByCourt.has(c.id)),
     [courts, playingByCourt],
   );
+  // [빈 코트 채우기]로 들어갈 조합 수 — 서버 fillCourts와 같은 규칙(공유 코트는 우리 차례만, 게임 중인 사람이 든 조합은 건너뜀)
+  const fillableCount = useMemo(() => {
+    let free = idleCourts.filter((c) => !c.isShared || c.ourTurn).length;
+    const busyIds = new Set(attendances.filter((a) => a.status === 'PLAYING').map((a) => a.id));
+    let count = 0;
+    for (const game of queuedGames) {
+      if (free === 0) break;
+      const ids = (game.players ?? []).map((p) => p.attendanceId);
+      if (ids.some((id) => busyIds.has(id))) continue;
+      ids.forEach((id) => busyIds.add(id));
+      free -= 1;
+      count += 1;
+    }
+    return count;
+  }, [idleCourts, queuedGames, attendances]);
+  const [fillNotice, setFillNotice] = useState<string | null>(null);
+  const fillNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (fillNoticeTimer.current) clearTimeout(fillNoticeTimer.current);
+  }, []);
+  const fillCourts = () =>
+    void run(async () => {
+      const result = await api<IFillCourtsResult>(`/sessions/${session.id}/fill-courts`, {
+        method: 'POST',
+        admin: true,
+      });
+      // 결과는 구역 안에 몇 초 보여 준다(보드 토스트는 오류 전용 빨간색이라)
+      const lines = [
+        ...result.assigned.map((a) => `${a.courtNo}번 코트 ← ${a.names[0]} 외 ${a.names.length - 1}명`),
+        ...result.skipped.map((s) => `건너뜀: ${s.reason}`),
+      ];
+      setFillNotice(lines.length > 0 ? lines.join(' · ') : '배정할 조합이 없어요');
+      if (fillNoticeTimer.current) clearTimeout(fillNoticeTimer.current);
+      fillNoticeTimer.current = setTimeout(() => setFillNotice(null), 5000);
+    });
+
   // 콕 확인 대기 — 확인 전엔 게임 배정이 막히므로 대기 인원과 분리해 구역 맨 위에 모은다
   // (운영진은 이 섹션이 비었는지만 확인하면 된다)
   const pendingShuttle = useMemo(
@@ -535,7 +572,29 @@ function BoardBody({
         </div>
 
         <div className={pane('queue')}>
-        <Zone title="대기 조합" accent="text-amber" count={queuedGames.length} className="flex-1">
+        <Zone
+          title="대기 조합"
+          accent="text-amber"
+          count={queuedGames.length}
+          className="flex-1"
+          headerExtra={
+            fillableCount > 0 && (
+              <button
+                onClick={fillCourts}
+                disabled={busy}
+                title="빈 코트에 대기 조합을 순서대로 한 번에 배정해요"
+                className="ml-auto h-8 shrink-0 rounded-lg bg-amber px-3 text-xs font-bold text-bg disabled:opacity-50"
+              >
+                빈 코트 채우기 ({fillableCount})
+              </button>
+            )
+          }
+        >
+          {fillNotice && (
+            <p className="rounded-lg border border-amber/40 bg-amber/10 px-3 py-2 text-xs font-medium whitespace-normal text-amber">
+              {fillNotice}
+            </p>
+          )}
           {queuedGames.length === 0 && <Empty>대기 인원에서 4명을 골라 조합을 만들어주세요</Empty>}
           <AnimatePresence initial={false}>
             {queuedGames.map((game, index) => (
