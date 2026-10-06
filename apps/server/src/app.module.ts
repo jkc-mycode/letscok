@@ -4,6 +4,7 @@ import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
 import { AiCheckInModule } from './ai-check-in/ai-check-in.module';
+import { AiCommandModule } from './ai-command/ai-command.module';
 import { AttendancesModule } from './attendances/attendances.module';
 import { AuthController } from './auth/auth.controller';
 import { CourtsModule } from './courts/courts.module';
@@ -38,6 +39,7 @@ import { SettlementModule } from './settlement/settlement.module';
     HistoryModule,
     MemosModule,
     AiCheckInModule,
+    AiCommandModule,
     SettlementModule,
   ],
   controllers: [HealthController, AuthController],

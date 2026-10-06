@@ -426,6 +426,45 @@ export interface IReceiptReadResult {
   total: number | null; // 영수증의 최종 결제 금액(여러 장이면 합계), 못 읽으면 null
 }
 
+// ===== AI 운영 명령 (/sessions/:id/ai-command) — 글·음성 명령을 미리보기로 바꿔 준다(실행은 웹이 확인 후) =====
+
+export interface IAiCommandDto {
+  text: string;
+}
+
+// 미리보기 후 실행하는 동작 — 실행은 기존 API(게임 종료·휴식·복귀·호출)를 그대로 쓴다
+export type AiCommandAction = 'make_game' | 'finish_game' | 'rest' | 'resume' | 'call';
+
+export interface IAiCommandTarget {
+  attendanceId: string;
+  name: string;
+  detail: string; // 동명이인 구분용 — "C급 · 97년생" / "B급 · 게스트"
+}
+
+export type IAiCommandResult =
+  // 게임 짜기 — 추천 후보(지정 인원은 players[].pinned)
+  | { kind: 'game_preview'; category: RecommendationCategory; recommendations: IGameRecommendation[] }
+  // 이름이 여러 명과 맞음 — 운영진이 고른 뒤 웹이 이어서 처리(AI 재호출 없음)
+  | {
+      kind: 'choose';
+      action: AiCommandAction;
+      category: RecommendationCategory;
+      resolved: IAiCommandTarget[];
+      unresolved: { name: string; candidates: IAiCommandTarget[] }[];
+    }
+  // 게임 종료·휴식·복귀·호출 — 대상과 문장을 보여 주고 확인 후 실행
+  | {
+      kind: 'action_preview';
+      action: Exclude<AiCommandAction, 'make_game'>;
+      label: string; // "3번 코트 게임 종료 — 김민수, 이준호, …"
+      gameId: string | null; // finish_game일 때
+      targets: IAiCommandTarget[];
+    }
+  // 체크인 — 기존 AI 체크인 규칙 그대로(확실한 사람만 바로 체크인, 결과 카드에서 취소 가능)
+  | { kind: 'check_in'; result: IAiCheckInResult }
+  // 안내만(못 찾음·지원 안 함·못 알아들음) — 문구는 서버 고정, AI가 쓴 문장이 아니다
+  | { kind: 'message'; text: string };
+
 // ===== 공통 응답 래퍼 =====
 
 export interface IApiResponse<T> {
