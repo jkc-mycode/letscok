@@ -218,6 +218,12 @@ function StartScreen({
   );
 }
 
+// 폰 더보기 시트의 묶음 — 자주 쓰는 것 위, 관리 기능 아래(잠금·모임 종료는 시트 맨 아래 따로)
+const MORE_GROUPS: { title: string; keys: string[] }[] = [
+  { title: '모임 중', keys: ['code', 'log', 'courts'] },
+  { title: '관리', keys: ['members', 'history', 'birthday', 'settlement', 'help'] },
+];
+
 // 폰 전용 구역 탭 — md 이상에서는 전부 동시에 보이므로 무시된다
 type MobileTab = 'courts' | 'queue' | 'waiting' | 'memo';
 
@@ -446,6 +452,8 @@ function BoardBody({
     {
       key: 'history',
       label: '지난 기록',
+      // 화면 이동 — 더보기 시트를 먼저 닫으면 그 뒤로가기 정리(history.go)가 이동을 되돌릴 수 있어, 닫지 않고 이동한다(이동하면 시트도 사라짐)
+      keepMenuOpen: true,
       onClick: () => router.push('/admin/history'),
       cls: 'border-line text-dim',
     },
@@ -586,32 +594,14 @@ function BoardBody({
         </div>
         {/* 폰: 햄버거 (버튼 6개가 한 줄에 안 들어감) */}
         <button
-          onClick={() => setMenuOpen((v) => !v)}
-          title="메뉴"
-          className={`ml-auto h-9 w-9 shrink-0 rounded-lg border text-sm md:hidden ${
-            menuOpen ? 'border-court text-court' : 'border-line text-dim'
-          }`}
+          onClick={() => setMenuOpen(true)}
+          aria-label="더보기"
+          className="tap ml-auto h-9 w-9 shrink-0 rounded-lg border border-line text-sm text-dim md:hidden"
         >
           ☰
         </button>
       </header>
 
-      {menuOpen && (
-        <div className="mb-2 grid grid-cols-2 gap-2 rounded-xl border border-line bg-panel p-2 md:hidden">
-          {headerActions.map((action) => (
-            <button
-              key={action.key}
-              onClick={() => {
-                action.onClick();
-                if (!action.keepMenuOpen) setMenuOpen(false);
-              }}
-              className={`h-11 rounded-lg border px-3 text-sm leading-tight font-medium whitespace-normal ${action.cls}`}
-            >
-              {action.label}
-            </button>
-          ))}
-        </div>
-      )}
 
       {/* 구역 탭 — 폰에서만 (md 이상은 3열로 동시 표시). 선택 표시(.board-tab-indicator)가 스와이프를 따라 미끄러진다 */}
       <div className="relative mb-2 flex rounded-xl border border-line p-1 md:hidden">
@@ -898,6 +888,57 @@ function BoardBody({
           run={run}
           onClose={() => setAssignGameId(null)}
         />
+      )}
+      {/* 폰 더보기 — 햄버거가 보드를 밀어내던 격자 대신 아래에서 올라오는 목록. 위험한 항목은 맨 아래 따로 */}
+      {menuOpen && (
+        <Sheet
+          ariaLabel="더보기"
+          onClose={() => setMenuOpen(false)}
+          header={<h2 className="shrink-0 text-lg font-bold whitespace-nowrap">더보기</h2>}
+          bodyClassName="flex min-h-0 flex-1 flex-col gap-4 pb-1 scroll-area"
+        >
+          {MORE_GROUPS.map((group) => (
+            <div key={group.title} className="flex flex-col gap-1.5">
+              <p className="px-1 text-xs text-faint">{group.title}</p>
+              <div className="flex flex-col overflow-hidden rounded-xl border border-line bg-panel2">
+                {group.keys.map((key) => {
+                  const action = headerActions.find((a) => a.key === key);
+                  if (!action) return null;
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => {
+                        action.onClick();
+                        if (!action.keepMenuOpen) setMenuOpen(false);
+                      }}
+                      className="flex h-12 items-center border-b border-line px-4 text-left text-sm font-medium last:border-b-0"
+                    >
+                      {action.label}
+                      <span className="ml-auto text-faint">›</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          <div className="flex flex-col overflow-hidden rounded-xl border border-line bg-panel2">
+            <button
+              onClick={onLogout}
+              className="flex h-12 items-center border-b border-line px-4 text-left text-sm text-dim"
+            >
+              잠금 — 저장된 패스코드 지우기
+            </button>
+            {/* 2탭 확인(4초) — 첫 탭은 문구만 바뀌고 시트는 그대로 */}
+            <button
+              onClick={closeSession}
+              className={`flex h-12 items-center px-4 text-left text-sm font-bold ${
+                confirmClose ? 'bg-coral/15 text-coral' : 'text-coral'
+              }`}
+            >
+              {confirmClose ? '한 번 더 누르면 모임이 종료돼요' : '모임 종료'}
+            </button>
+          </div>
+        </Sheet>
       )}
       {commandOpen && (
         <CommandSheet
