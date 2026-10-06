@@ -3,7 +3,7 @@
 // 모임원 화면 — 관제판과 같은 보드를 읽기 전용으로 본다 (모바일 세로 스택)
 // 상단에 내 상태 한 줄 + 아래 3구역(게임 중/대기 조합/대기 인원), 내 이름은 초록 강조
 
-import { IAttendance } from '@letscok/shared-types';
+import { IAttendance, ICourt, IGame } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
@@ -113,7 +113,7 @@ export default function MyStatusPage() {
       <HomeLink className="self-center text-[11px] font-medium tracking-[0.3em] text-court/70 transition-opacity hover:opacity-70">
         LETSCOK
       </HomeLink>
-      <MyBanner me={me} waiting={waiting} now={now} />
+      <MyBanner me={me} waiting={waiting} queuedGames={queuedGames} games={games} courts={courts} now={now} />
       <PushToggle memberId={me.memberId} />
 
       {/* 콕 미확인 안내 — 이게 없으면 "왜 나만 게임에 안 넣어주지" 오해로 운영진 문의가 늘어난다 */}
@@ -252,49 +252,83 @@ export default function MyStatusPage() {
 }
 
 // 내 상태 한 줄 배너 — 지금 뭘 해야 하는지만 크게 (스크롤해도 상단 고정)
+// 내 상태 카드 — 모임원이 이 앱을 여는 이유("어디로 가요? 언제예요?")를 가장 크게 보여 준다
+// 숫자는 전부 지금 스냅샷에서 정확히 나오는 것만(코트 번호·경과·순번). 예상 시간은 [게임 종료]를 늦게 누르면 틀어져 넣지 않는다
 function MyBanner({
   me,
   waiting,
+  queuedGames,
+  games,
+  courts,
   now,
 }: {
   me: IAttendance;
   waiting: IAttendance[];
+  queuedGames: IGame[]; // queueOrder 순(서버 정렬)
+  games: IGame[];
+  courts: ICourt[];
   now: number;
 }) {
   const member = me.member;
+  const includesMe = (game: IGame) => (game.players ?? []).some((p) => p.attendanceId === me.id);
 
-  let statusText: string;
-  let statusClass = 'border-line bg-panel';
+  let title: string;
+  let right: string | null = null;
+  let sub: string;
+  let tone = 'border-line bg-panel';
   if (me.status === 'CHECKED_IN' && !me.shuttleConfirmedAt) {
-    // 콕 확인 전엔 대기 목록에 없어 순번이 안 잡힌다 — 순번 대신 대기 사유를 보여준다
-    statusClass = 'border-amber bg-amber/10 text-amber';
-    statusText = '콕 확인 대기 중';
+    // 콕 확인 전엔 대기 목록에 없어 순번이 안 잡힌다 — 순번 대신 할 일을 보여준다
+    tone = 'border-amber bg-amber/10 text-amber';
+    title = '콕 확인 대기 중';
+    sub = '콕을 내고 운영진 확인을 받아주세요';
   } else if (me.status === 'CHECKED_IN') {
-    const position = waiting.findIndex((a) => a.id === me.id) + 1;
-    statusText = `대기 ${position}번째 · ${formatWaitingMinutes(me.waitingSince, now)}`;
+    title = `대기 ${waiting.findIndex((a) => a.id === me.id) + 1}번째`;
+    right = formatWaitingMinutes(me.waitingSince, now);
+    sub = '조합을 기다리는 중';
   } else if (me.status === 'MATCHED') {
-    statusClass = 'border-amber bg-amber/10 text-amber';
-    statusText = '게임 예정 — 곧 불러요!';
+    tone = 'border-amber bg-amber/10 text-amber';
+    // 겹쳐 들어간 조합이 여럿이면 가장 앞의 것 기준
+    const order = queuedGames.findIndex(includesMe) + 1;
+    if (order === 1) {
+      title = '바로 다음 게임';
+      sub = '코트가 비면 불러요';
+    } else if (order > 1) {
+      title = `다음 게임 ${order}번째`;
+      sub = `앞에 ${order - 1}조합`;
+    } else {
+      title = '게임 예정';
+      sub = '곧 불러요';
+    }
   } else if (me.status === 'PLAYING') {
-    statusClass = 'border-court bg-court/10 text-court';
-    statusText = '게임 중';
+    tone = 'border-court bg-court/10 text-court';
+    const game = games.find((g) => g.status === 'PLAYING' && includesMe(g));
+    const court = courts.find((c) => c.id === game?.courtId);
+    title = court ? `${court.courtNo}번 코트` : '게임 중';
+    right = game?.startedAt ? formatElapsed(game.startedAt, now) : null;
+    sub = '게임 중';
   } else if (me.status === 'RESTING') {
-    statusClass = 'border-sky bg-sky/10 text-sky';
-    statusText = `휴식 중 · ${formatWaitingMinutes(me.waitingSince, now)}`;
+    tone = 'border-sky bg-sky/10 text-sky';
+    title = '휴식 중';
+    right = formatWaitingMinutes(me.waitingSince, now);
+    sub = '다시 뛰려면 아래 [다시 뛸래요]';
   } else {
-    statusText = '퇴장 — 다시 오면 코드로 재체크인';
+    title = '퇴장';
+    sub = '다시 오면 코드로 재체크인';
   }
 
   return (
     <header
-      className={`sticky top-[var(--safe-top)] z-10 flex items-center gap-2 rounded-xl border p-3 backdrop-blur transition-colors duration-300 ${statusClass}`}
+      className={`sticky top-[var(--safe-top)] z-10 rounded-2xl border p-4 backdrop-blur transition-colors duration-300 ${tone}`}
     >
-      {member && <GradeBadge grade={member.grade} />}
-      <span className="font-bold">{member?.name}</span>
-      <span className="text-sm">{statusText}</span>
-      <span className="tabular ml-auto font-mono text-sm opacity-80">
-        {me.gamesPlayed}게임
-      </span>
+      <div className="flex items-baseline gap-3">
+        <p className="min-w-0 flex-1 text-2xl font-bold">{title}</p>
+        {right && <span className="tabular shrink-0 font-mono text-2xl font-semibold">{right}</span>}
+      </div>
+      <p className="mt-1.5 flex items-center gap-1.5 text-sm opacity-90">
+        {member && <GradeBadge grade={member.grade} />}
+        <span className="font-medium">{member?.name}</span>
+        <span className="opacity-70">· {sub} · 오늘 {me.gamesPlayed}게임</span>
+      </p>
     </header>
   );
 }
