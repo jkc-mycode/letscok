@@ -190,7 +190,7 @@ export function CommandSheet({
   return (
     <Sheet
       ariaLabel="AI 명령"
-      dismissible={false} // 명령을 고치는 중일 수 있어 [닫기]·뒤로가기로만
+      dismissible={false} // 명령을 고치는 중일 수 있어 바깥 배경 탭으로는 닫지 않음
       onClose={onClose}
       header={
         <>

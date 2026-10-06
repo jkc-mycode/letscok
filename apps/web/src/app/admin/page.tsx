@@ -1736,7 +1736,7 @@ function ManualCheckInModal({
   };
 
   return (
-    // 입력 중인 시트라 바깥 탭·끌어내리기로 닫지 않는다 — [닫기]·뒤로가기로만
+    // 입력 중인 시트라 바깥 배경 탭으로는 닫지 않는다(끌어내리기·[닫기]·뒤로가기는 됨)
     <Sheet
       ariaLabel="수동 체크인"
       dismissible={false}
@@ -2112,7 +2112,7 @@ function MemberRegisterSheet({
   const [notice, setNotice] = useState<string | null>(null);
 
   return (
-    // 입력 중인 시트라 바깥 탭·끌어내리기로 닫지 않는다 — [닫기]·뒤로가기로만
+    // 입력 중인 시트라 바깥 배경 탭으로는 닫지 않는다(끌어내리기·[닫기]·뒤로가기는 됨)
     <Sheet
       ariaLabel="신규 등록"
       layer="z-50"
@@ -2198,7 +2198,7 @@ function MemberEditSheet({
     busy || !name.trim() || (promote && !birthDate) || (asRegular && birthDigits.length === 8 && !birthDate);
 
   return (
-    // 입력 중인 시트라 바깥 탭·끌어내리기로 닫지 않는다 — [닫기]·뒤로가기로만
+    // 입력 중인 시트라 바깥 배경 탭으로는 닫지 않는다(끌어내리기·[닫기]·뒤로가기는 됨)
     <Sheet
       ariaLabel={`${member.name} 수정`}
       layer="z-50"

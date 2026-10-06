@@ -275,7 +275,7 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    // 입력 중인 시트라 바깥 탭·끌어내리기로 닫지 않는다 — [닫기]·뒤로가기로만
+    // 입력 중인 시트라 바깥 배경 탭으로는 닫지 않는다(끌어내리기·[닫기]·뒤로가기는 됨)
     <Sheet
       ariaLabel="뒤풀이 정산"
       dismissible={false}
