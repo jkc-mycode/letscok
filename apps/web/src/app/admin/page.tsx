@@ -43,7 +43,6 @@ import { HomeLink } from '@/components/home-link';
 import { MotionCard } from '@/components/motion-card';
 import { GRADES, MultiMemberForm, NewMemberBody } from '@/components/multi-member-form';
 import { api, ApiError } from '@/lib/api';
-import { useBackClose } from '@/lib/back-stack';
 import { formatBirthInput, parseBirthDate } from '@/lib/birth-input';
 import {
   formatElapsed,
@@ -924,7 +923,6 @@ function RecommendModal({
   busy: boolean;
   onClose: () => void;
 }) {
-  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 팝업 닫기
   const [category, setCategory] = useState<RecommendationCategory>('ALL');
   const [candidates, setCandidates] = useState<IGameRecommendation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -959,114 +957,104 @@ function RecommendModal({
     });
 
   return (
-    <div
-      onClick={onClose}
-      className="fade-in fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[85dvh] w-full max-w-4xl flex-col rounded-2xl border border-line bg-panel p-5"
-      >
-        <div className="flex items-center gap-3 pb-3">
+    <Sheet
+      ariaLabel="게임 추천"
+      onClose={onClose}
+      width="sm:max-w-4xl"
+      bodyClassName="flex min-h-0 flex-1 flex-col"
+      header={
+        <>
           <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">게임 추천</h2>
           <p className="min-w-0 text-xs text-faint">참고용이에요 — 넣을지는 운영진 마음!</p>
-          <div className="ml-auto flex shrink-0 gap-2">
-            <button
-              onClick={() => void load()}
-              className="h-9 rounded-lg border border-line px-3 text-sm text-dim"
-            >
-              다시 추천
-            </button>
-            <button
-              onClick={onClose}
-              className="h-9 rounded-lg border border-line px-3 text-sm text-dim"
-            >
-              닫기
-            </button>
-          </div>
-        </div>
+          <button
+            onClick={() => void load()}
+            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
+          >
+            다시 추천
+          </button>
+        </>
+      }
+    >
+      {/* 종목 탭 — 전환 시 해당 구성으로 재요청 */}
+      <div className="flex flex-wrap gap-1.5 pb-3">
+        {CATEGORY_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => setCategory(tab.value)}
+            className={`h-9 rounded-lg border px-3 text-sm font-medium ${
+              category === tab.value
+                ? 'border-court bg-court/10 text-court'
+                : 'border-line text-dim'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-        {/* 종목 탭 — 전환 시 해당 구성으로 재요청 */}
-        <div className="flex flex-wrap gap-1.5 pb-3">
-          {CATEGORY_TABS.map((tab) => (
-            <button
-              key={tab.value}
-              onClick={() => setCategory(tab.value)}
-              className={`h-9 rounded-lg border px-3 text-sm font-medium ${
-                category === tab.value
-                  ? 'border-court bg-court/10 text-court'
-                  : 'border-line text-dim'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="min-h-0 flex-1 scroll-area">
-          {error && <p className="py-10 text-center text-sm text-coral">{error}</p>}
-          {!error && candidates === null && (
-            <p className="py-10 text-center text-sm text-dim">추천 계산 중...</p>
-          )}
-          {candidates?.length === 0 && (
-            <p className="py-10 text-center text-sm text-faint">
-              {emptyMessage(category, attendances)}
-            </p>
-          )}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {candidates?.map((rec) => {
-              const meta = KIND_META[rec.kind];
-              return (
-                <div
-                  key={rec.kind}
-                  className={`flex flex-col rounded-xl border bg-panel2 p-4 ${meta.border}`}
-                >
-                  {/* 종류 라벨 + 성별 구성(혼복/남복/여복/혼성 N:N)을 한 줄, 설명은 아래 줄 */}
-                  <div className="flex items-center gap-2">
-                    <span className={`shrink-0 font-bold ${meta.text}`}>{meta.label}</span>
-                    <span className="ml-auto shrink-0 rounded bg-panel px-1.5 py-0.5 text-[10px] font-medium text-dim">
-                      {rec.genderLabel}
-                    </span>
-                  </div>
-                  <span className="mt-0.5 text-[11px] text-faint">{meta.desc}</span>
-                  <div className="mt-3 flex flex-col gap-2">
-                    {rec.players.map((player) => (
-                      <div key={player.attendanceId} className="flex items-center gap-1.5 text-sm">
-                        <GradeBadge grade={player.grade} />
-                        {/* 이름이 핵심 정보 — 뱃지·통계에 밀려도 최소 한글 4자는 보장 */}
-                        <span className="min-w-[4em] truncate font-medium">{player.name}</span>
-                        <GenderMarker gender={player.gender} />
-                        {player.isGuest && <span className="text-[10px] text-sky">G</span>}
-                        {player.borrowedFrom && (
-                          <span className="shrink-0 rounded bg-court/15 px-1 py-0.5 text-[10px] font-medium text-court">
-                            {player.borrowedFrom === 'PLAYING' ? '게임 중' : '대기 조합'}
-                          </span>
-                        )}
-                        <span className="tabular ml-auto shrink-0 font-mono text-[11px] text-dim">
-                          {player.gamesPlayed}게임 · {player.waitingMinutes}분
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  {rec.repeatPairCount > 0 && (
-                    <p className="mt-2 text-[11px] text-faint">
-                      오늘 같이 뛴 쌍 {rec.repeatPairCount}개 포함
-                    </p>
-                  )}
-                  <button
-                    onClick={() => void addToQueue(rec)}
-                    disabled={busy}
-                    className="mt-3 h-11 rounded-lg bg-court text-sm font-bold text-bg disabled:opacity-50"
-                  >
-                    대기에 추가
-                  </button>
+      <div className="min-h-0 flex-1 scroll-area">
+        {error && <p className="py-10 text-center text-sm text-coral">{error}</p>}
+        {!error && candidates === null && (
+          <p className="py-10 text-center text-sm text-dim">추천 계산 중...</p>
+        )}
+        {candidates?.length === 0 && (
+          <p className="py-10 text-center text-sm text-faint">
+            {emptyMessage(category, attendances)}
+          </p>
+        )}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {candidates?.map((rec) => {
+            const meta = KIND_META[rec.kind];
+            return (
+              <div
+                key={rec.kind}
+                className={`flex flex-col rounded-xl border bg-panel2 p-4 ${meta.border}`}
+              >
+                {/* 종류 라벨 + 성별 구성(혼복/남복/여복/혼성 N:N)을 한 줄, 설명은 아래 줄 */}
+                <div className="flex items-center gap-2">
+                  <span className={`shrink-0 font-bold ${meta.text}`}>{meta.label}</span>
+                  <span className="ml-auto shrink-0 rounded bg-panel px-1.5 py-0.5 text-[10px] font-medium text-dim">
+                    {rec.genderLabel}
+                  </span>
                 </div>
-              );
-            })}
-          </div>
+                <span className="mt-0.5 text-[11px] text-faint">{meta.desc}</span>
+                <div className="mt-3 flex flex-col gap-2">
+                  {rec.players.map((player) => (
+                    <div key={player.attendanceId} className="flex items-center gap-1.5 text-sm">
+                      <GradeBadge grade={player.grade} />
+                      {/* 이름이 핵심 정보 — 뱃지·통계에 밀려도 최소 한글 4자는 보장 */}
+                      <span className="min-w-[4em] truncate font-medium">{player.name}</span>
+                      <GenderMarker gender={player.gender} />
+                      {player.isGuest && <span className="text-[10px] text-sky">G</span>}
+                      {player.borrowedFrom && (
+                        <span className="shrink-0 rounded bg-court/15 px-1 py-0.5 text-[10px] font-medium text-court">
+                          {player.borrowedFrom === 'PLAYING' ? '게임 중' : '대기 조합'}
+                        </span>
+                      )}
+                      <span className="tabular ml-auto shrink-0 font-mono text-[11px] text-dim">
+                        {player.gamesPlayed}게임 · {player.waitingMinutes}분
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {rec.repeatPairCount > 0 && (
+                  <p className="mt-2 text-[11px] text-faint">
+                    오늘 같이 뛴 쌍 {rec.repeatPairCount}개 포함
+                  </p>
+                )}
+                <button
+                  onClick={() => void addToQueue(rec)}
+                  disabled={busy}
+                  className="mt-3 h-11 rounded-lg bg-court text-sm font-bold text-bg disabled:opacity-50"
+                >
+                  대기에 추가
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
-    </div>
+    </Sheet>
   );
 }
 
@@ -1075,7 +1063,6 @@ function RecommendModal({
 // 모임원이 /checkin에서 입력하는 코드 — 소모임 공지사항의 작성월일(MMDD)에 맞춰 운영진이 관리
 // 코드는 운영진 전용 엔드포인트에서 취득(공개 스냅샷엔 없음)
 function CheckInCodeModal({ onClose }: { onClose: () => void }) {
-  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 팝업 닫기
   const [code, setCode] = useState<string | null | undefined>(undefined); // undefined=로딩, null=코드없음
   const [error, setError] = useState<string | null>(null);
 
@@ -1086,41 +1073,29 @@ function CheckInCodeModal({ onClose }: { onClose: () => void }) {
   }, []);
 
   return (
-    <div
-      onClick={onClose}
-      className="fade-in fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4"
+    <Sheet
+      ariaLabel="체크인 코드"
+      onClose={onClose}
+      width="sm:max-w-sm"
+      bodyClassName="flex min-h-0 flex-1 flex-col items-center gap-4 pb-2 text-center scroll-area"
+      header={<h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">체크인 코드</h2>}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="flex w-full max-w-sm flex-col items-center gap-4 rounded-2xl border border-line bg-panel p-6 text-center"
-      >
-        <div className="flex w-full items-center">
-          <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">체크인 코드</h2>
-          <button
-            onClick={onClose}
-            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
-          >
-            닫기
-          </button>
-        </div>
-
-        {error && <p className="py-8 text-sm text-coral">{error}</p>}
-        {code === undefined && !error && <p className="py-8 text-sm text-dim">불러오는 중...</p>}
-        {code === null && <p className="py-8 text-sm text-faint">이 모임엔 코드가 없어요(구 버전 세션)</p>}
-        {code && (
-          <>
-            <div>
-              <p className="tabular font-mono text-5xl font-bold tracking-[0.2em]">{code}</p>
-              <p className="mt-2 text-xs leading-relaxed text-dim">
-                모임원은 <b>[필독]공지사항</b>의 작성월일 4자리를 입력해 체크인해요
-              </p>
-              <p className="mt-1 text-xs text-faint">공지를 새로 올렸다면 코드도 함께 바꿔주세요</p>
-            </div>
-            <CodeEditor current={code} onChanged={setCode} />
-          </>
-        )}
-      </div>
-    </div>
+      {error && <p className="py-8 text-sm text-coral">{error}</p>}
+      {code === undefined && !error && <p className="py-8 text-sm text-dim">불러오는 중...</p>}
+      {code === null && <p className="py-8 text-sm text-faint">이 모임엔 코드가 없어요(구 버전 세션)</p>}
+      {code && (
+        <>
+          <div>
+            <p className="tabular font-mono text-5xl font-bold tracking-[0.2em]">{code}</p>
+            <p className="mt-2 text-xs leading-relaxed text-dim">
+              모임원은 <b>[필독]공지사항</b>의 작성월일 4자리를 입력해 체크인해요
+            </p>
+            <p className="mt-1 text-xs text-faint">공지를 새로 올렸다면 코드도 함께 바꿔주세요</p>
+          </div>
+          <CodeEditor current={code} onChanged={setCode} />
+        </>
+      )}
+    </Sheet>
   );
 }
 
@@ -1221,7 +1196,6 @@ function ReplacePlayerModal({
   busy: boolean;
   onClose: () => void;
 }) {
-  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 팝업 닫기
   const [outId, setOutId] = useState<string | null>(null);
   const [inId, setInId] = useState<string | null>(null);
 
@@ -1247,100 +1221,91 @@ function ReplacePlayerModal({
     });
 
   return (
-    <div
-      onClick={onClose}
-      className="fade-in fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-2xl border border-line bg-panel p-5"
-      >
-        <div className="flex items-center pb-3">
+    <Sheet
+      ariaLabel="선수 교체"
+      onClose={onClose}
+      bodyClassName="flex min-h-0 flex-1 flex-col"
+      header={
+        <>
           <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">선수 교체</h2>
-          <p className="ml-3 min-w-0 text-xs text-faint">
+          <p className="min-w-0 text-xs text-faint">
             {isPlaying ? '타이머는 그대로 이어져요' : '조합 순서는 그대로 유지돼요'}
           </p>
-          <button
-            onClick={onClose}
-            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
-          >
-            닫기
-          </button>
+        </>
+      }
+    >
+      <div className="min-h-0 flex-1 scroll-area">
+        <h3 className="pb-1.5 text-sm font-bold text-coral">빠질 사람</h3>
+        <div className="grid grid-cols-2 gap-2">
+          {(game.players ?? []).map((player) => {
+            const member = player.attendance?.member;
+            if (!member) return null;
+            return (
+              <button
+                key={player.attendanceId}
+                onClick={() => setOutId(player.attendanceId)}
+                className={`flex items-center gap-1.5 rounded-xl border p-3 text-sm ${
+                  outId === player.attendanceId
+                    ? 'border-coral bg-coral/10'
+                    : 'border-line bg-panel2'
+                }`}
+              >
+                <GradeBadge grade={member.grade} />
+                <span className="truncate font-medium">{member.name}</span>
+                <GenderMarker gender={member.gender} />
+              </button>
+            );
+          })}
         </div>
 
-        <div className="min-h-0 flex-1 scroll-area">
-          <h3 className="pb-1.5 text-sm font-bold text-coral">빠질 사람</h3>
-          <div className="grid grid-cols-2 gap-2">
-            {(game.players ?? []).map((player) => {
-              const member = player.attendance?.member;
-              if (!member) return null;
-              return (
-                <button
-                  key={player.attendanceId}
-                  onClick={() => setOutId(player.attendanceId)}
-                  className={`flex items-center gap-1.5 rounded-xl border p-3 text-sm ${
-                    outId === player.attendanceId
-                      ? 'border-coral bg-coral/10'
-                      : 'border-line bg-panel2'
-                  }`}
-                >
-                  <GradeBadge grade={member.grade} />
-                  <span className="truncate font-medium">{member.name}</span>
-                  <GenderMarker gender={member.gender} />
-                </button>
-              );
-            })}
-          </div>
-
-          <h3 className="pt-4 pb-1.5 text-sm font-bold text-court">들어올 사람</h3>
-          {candidates.length === 0 && (
-            <p className="py-6 text-center text-sm text-faint">교체 투입할 수 있는 인원이 없어요</p>
-          )}
-          <div className="flex flex-col gap-2">
-            {candidates.map((attendance) => {
-              const member = attendance.member;
-              if (!member) return null;
-              return (
-                <button
-                  key={attendance.id}
-                  onClick={() => setInId(attendance.id)}
-                  className={`flex items-center gap-1.5 rounded-xl border p-3 text-sm ${
-                    inId === attendance.id ? 'border-court bg-court/10' : 'border-line bg-panel2'
-                  }`}
-                >
-                  <GradeBadge grade={member.grade} />
-                  <span className="truncate font-medium">{member.name}</span>
-                  <GenderMarker gender={member.gender} />
-                  {member.isGuest && <span className="text-[10px] text-sky">G</span>}
-                  {attendance.status !== 'CHECKED_IN' && (
-                    <span
-                      className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                        attendance.status === 'PLAYING'
-                          ? 'bg-court/15 text-court'
-                          : 'bg-amber/15 text-amber'
-                      }`}
-                    >
-                      {attendance.status === 'PLAYING' ? '게임 중' : '대기 조합'}
-                    </span>
-                  )}
-                  <span className="tabular ml-auto shrink-0 font-mono text-[11px] text-dim">
-                    {attendance.gamesPlayed}게임
+        <h3 className="pt-4 pb-1.5 text-sm font-bold text-court">들어올 사람</h3>
+        {candidates.length === 0 && (
+          <p className="py-6 text-center text-sm text-faint">교체 투입할 수 있는 인원이 없어요</p>
+        )}
+        <div className="flex flex-col gap-2">
+          {candidates.map((attendance) => {
+            const member = attendance.member;
+            if (!member) return null;
+            return (
+              <button
+                key={attendance.id}
+                onClick={() => setInId(attendance.id)}
+                className={`flex items-center gap-1.5 rounded-xl border p-3 text-sm ${
+                  inId === attendance.id ? 'border-court bg-court/10' : 'border-line bg-panel2'
+                }`}
+              >
+                <GradeBadge grade={member.grade} />
+                <span className="truncate font-medium">{member.name}</span>
+                <GenderMarker gender={member.gender} />
+                {member.isGuest && <span className="text-[10px] text-sky">G</span>}
+                {attendance.status !== 'CHECKED_IN' && (
+                  <span
+                    className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                      attendance.status === 'PLAYING'
+                        ? 'bg-court/15 text-court'
+                        : 'bg-amber/15 text-amber'
+                    }`}
+                  >
+                    {attendance.status === 'PLAYING' ? '게임 중' : '대기 조합'}
                   </span>
-                </button>
-              );
-            })}
-          </div>
+                )}
+                <span className="tabular ml-auto shrink-0 font-mono text-[11px] text-dim">
+                  {attendance.gamesPlayed}게임
+                </span>
+              </button>
+            );
+          })}
         </div>
-
-        <button
-          onClick={() => void submit()}
-          disabled={!outId || !inId || busy}
-          className="mt-4 h-12 rounded-xl bg-court text-base font-bold text-bg disabled:bg-panel2 disabled:text-faint"
-        >
-          교체하기
-        </button>
       </div>
-    </div>
+
+      <button
+        onClick={() => void submit()}
+        disabled={!outId || !inId || busy}
+        className="mt-4 h-12 rounded-xl bg-court text-base font-bold text-bg disabled:bg-panel2 disabled:text-faint"
+      >
+        교체하기
+      </button>
+    </Sheet>
   );
 }
 
@@ -2416,7 +2381,6 @@ function TodayGamesModal({
   snapshot: ISessionSnapshot;
   onClose: () => void;
 }) {
-  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 팝업 닫기
   const [detail, setDetail] = useState<IHistorySessionDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -2455,85 +2419,77 @@ function TodayGamesModal({
       : '--:--';
 
   return (
-    <div
-      onClick={onClose}
-      className="fade-in fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[85dvh] w-full max-w-2xl flex-col rounded-2xl border border-line bg-panel p-5"
-      >
-        <div className="flex items-center gap-3 pb-3">
+    <Sheet
+      ariaLabel="오늘 게임 기록"
+      onClose={onClose}
+      width="sm:max-w-2xl"
+      bodyClassName="flex min-h-0 flex-1 flex-col"
+      header={
+        <>
           <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">오늘 게임 기록</h2>
           {detail && (
             <p className="text-xs text-faint">완료 {detail.session.finishedGameCount}게임</p>
           )}
-          <button
-            onClick={onClose}
-            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
-          >
-            닫기
-          </button>
-        </div>
+        </>
+      }
+    >
+      <input
+        autoComplete="off"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="이름으로 검색"
+        className="mb-3 h-11 rounded-lg border border-line bg-panel2 px-3 text-sm outline-none focus:border-court"
+      />
+      {q && detail && (
+        <p className="pb-2 text-xs text-dim">
+          &lsquo;{q}&rsquo; 포함 <span className="font-bold text-court">{games.length}</span>게임
+        </p>
+      )}
 
-        <input
-          autoComplete="off"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="이름으로 검색"
-          className="mb-3 h-11 rounded-lg border border-line bg-panel2 px-3 text-sm outline-none focus:border-court"
-        />
-        {q && detail && (
-          <p className="pb-2 text-xs text-dim">
-            &lsquo;{q}&rsquo; 포함 <span className="font-bold text-court">{games.length}</span>게임
+      <div className="min-h-0 flex-1 scroll-area">
+        {error && <p className="py-10 text-center text-sm text-coral">{error}</p>}
+        {!error && detail === null && (
+          <p className="py-10 text-center text-sm text-dim">불러오는 중...</p>
+        )}
+        {detail && games.length === 0 && (
+          <p className="py-10 text-center text-sm text-faint">
+            {q ? `'${q}' 이(가) 포함된 완료 게임이 없어요` : '아직 완료된 게임이 없어요'}
           </p>
         )}
-
-        <div className="min-h-0 flex-1 scroll-area">
-          {error && <p className="py-10 text-center text-sm text-coral">{error}</p>}
-          {!error && detail === null && (
-            <p className="py-10 text-center text-sm text-dim">불러오는 중...</p>
-          )}
-          {detail && games.length === 0 && (
-            <p className="py-10 text-center text-sm text-faint">
-              {q ? `'${q}' 이(가) 포함된 완료 게임이 없어요` : '아직 완료된 게임이 없어요'}
-            </p>
-          )}
-          <ul className="space-y-1.5">
-            {games.map((game) => (
-              <li
-                key={game.id}
-                className="flex items-center gap-3 rounded-xl bg-panel2 px-4 py-2.5"
-              >
-                <span className="tabular w-8 shrink-0 font-mono text-xs text-faint">
-                  #{game.no}
-                </span>
-                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1 text-sm">
-                  {game.players.map((player, i) => (
-                    <span key={i} className="flex items-center gap-1">
-                      <GradeBadge grade={player.grade} />
-                      <span
-                        className={
-                          q && player.name.includes(q) ? 'font-bold text-court' : 'font-medium'
-                        }
-                      >
-                        {player.name}
-                      </span>
+        <ul className="space-y-1.5">
+          {games.map((game) => (
+            <li
+              key={game.id}
+              className="flex items-center gap-3 rounded-xl bg-panel2 px-4 py-2.5"
+            >
+              <span className="tabular w-8 shrink-0 font-mono text-xs text-faint">
+                #{game.no}
+              </span>
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1 text-sm">
+                {game.players.map((player, i) => (
+                  <span key={i} className="flex items-center gap-1">
+                    <GradeBadge grade={player.grade} />
+                    <span
+                      className={
+                        q && player.name.includes(q) ? 'font-bold text-court' : 'font-medium'
+                      }
+                    >
+                      {player.name}
                     </span>
-                  ))}
-                </div>
-                <div className="shrink-0 text-right text-xs text-dim">
-                  <p>{game.courtNo != null ? `${game.courtNo}번 코트` : '코트 미지정'}</p>
-                  <p className="tabular font-mono text-faint">
-                    {timeOf(game.startedAt)} ~ {timeOf(game.endedAt)}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
+                  </span>
+                ))}
+              </div>
+              <div className="shrink-0 text-right text-xs text-dim">
+                <p>{game.courtNo != null ? `${game.courtNo}번 코트` : '코트 미지정'}</p>
+                <p className="tabular font-mono text-faint">
+                  {timeOf(game.startedAt)} ~ {timeOf(game.endedAt)}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
       </div>
-    </div>
+    </Sheet>
   );
 }
 
@@ -2632,42 +2588,30 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
 ];
 
 function HelpModal({ onClose }: { onClose: () => void }) {
-  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 팝업 닫기
   return (
-    <div
-      onClick={onClose}
-      className="fade-in fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
+    <Sheet
+      ariaLabel="관제판 도움말"
+      onClose={onClose}
+      width="sm:max-w-lg"
+      bodyClassName="flex min-h-0 flex-1 flex-col"
+      header={<h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">관제판 도움말</h2>}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[85dvh] w-full max-w-lg flex-col rounded-2xl border border-line bg-panel p-5"
-      >
-        <div className="flex items-center pb-3">
-          <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">관제판 도움말</h2>
-          <button
-            onClick={onClose}
-            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
-          >
-            닫기
-          </button>
-        </div>
-        <div className="min-h-0 flex-1 space-y-4 scroll-area">
-          {HELP_SECTIONS.map((section) => (
-            <section key={section.title}>
-              <h3 className="text-sm font-bold text-amber">{section.title}</h3>
-              <ul className="mt-1.5 space-y-1.5">
-                {section.items.map((item) => (
-                  <li key={item} className="flex gap-2 text-sm leading-relaxed text-dim">
-                    <span className="shrink-0 text-faint">·</span>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
+      <div className="min-h-0 flex-1 space-y-4 scroll-area">
+        {HELP_SECTIONS.map((section) => (
+          <section key={section.title}>
+            <h3 className="text-sm font-bold text-amber">{section.title}</h3>
+            <ul className="mt-1.5 space-y-1.5">
+              {section.items.map((item) => (
+                <li key={item} className="flex gap-2 text-sm leading-relaxed text-dim">
+                  <span className="shrink-0 text-faint">·</span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
       </div>
-    </div>
+    </Sheet>
   );
 }
 

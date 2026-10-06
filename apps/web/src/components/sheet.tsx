@@ -95,10 +95,10 @@ export function Sheet({
           </div>
         )}
         <div className={`flex shrink-0 items-center gap-2 pb-3 ${dismissible ? '' : 'pt-3 sm:pt-0'}`}>
-          {header}
+          <div className="flex min-w-0 flex-1 items-center gap-2">{header}</div>
           <button
             onClick={onClose}
-            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
+            className="h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
           >
             닫기
           </button>

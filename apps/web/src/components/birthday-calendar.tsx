@@ -3,8 +3,8 @@
 import { IMemberSummary } from '@letscok/shared-types';
 import { useEffect, useMemo, useState } from 'react';
 import { GenderMarker, GradeBadge } from '@/components/badges';
+import { Sheet } from '@/components/sheet';
 import { api } from '@/lib/api';
-import { useBackClose } from '@/lib/back-stack';
 
 // 모임원 생일 캘린더 — 운영진 전용 명단(GET /members)의 생년월일로 그린다 (서버 변경 없음)
 // 게스트는 생년월일을 받지 않는 정책이라 정회원만 나온다
@@ -52,7 +52,6 @@ function MemberLine({ member, note }: { member: IMemberSummary; note?: string })
 }
 
 export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
-  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 팝업 닫기
   const today = useMemo(startOfToday, []);
   const [members, setMembers] = useState<IMemberSummary[] | null>(null); // null = 로딩
   const [failed, setFailed] = useState(false);
@@ -118,131 +117,122 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
   const selected = selectedDay !== null ? (byDay.get(selectedDay) ?? []) : [];
 
   return (
-    <div
-      onClick={onClose}
-      className="fade-in fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-2 sm:p-4"
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        // 높이 고정 — 날짜를 고르거나 월을 넘겨도 팝업 크기가 변하지 않게
-        className="flex h-[min(92dvh,760px)] w-full max-w-md flex-col rounded-2xl border border-line bg-panel p-4 sm:p-5"
-      >
-        <div className="flex items-center pb-3">
+    <Sheet
+      ariaLabel="생일 캘린더"
+      onClose={onClose}
+      // 본문 높이 고정 — 날짜를 고르거나 월을 넘겨도 시트 크기가 변하지 않게
+      bodyClassName="flex h-[min(78dvh,680px)] flex-col"
+      header={
+        <>
           <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">🎂 생일 캘린더</h2>
-          <span className="ml-2 text-xs text-faint">정회원 {birthdays.length}명</span>
-          <button
-            onClick={onClose}
-            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
-          >
-            닫기
-          </button>
-        </div>
+          <span className="text-xs text-faint">정회원 {birthdays.length}명</span>
+        </>
+      }
+    >
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
+        {failed && <p className="py-6 text-center text-sm text-coral">명단을 불러오지 못했어요</p>}
+        {!failed && members === null && <p className="py-6 text-center text-sm text-dim">불러오는 중...</p>}
 
-        <div className="flex min-h-0 flex-1 flex-col gap-3">
-          {failed && <p className="py-6 text-center text-sm text-coral">명단을 불러오지 못했어요</p>}
-          {!failed && members === null && <p className="py-6 text-center text-sm text-dim">불러오는 중...</p>}
+        {members !== null && (
+          <>
+            {/* 월 이동 */}
+            <div className="flex items-center justify-between">
+              <button onClick={() => moveMonth(-1)} className="h-9 w-9 rounded-lg border border-line text-dim">
+                ‹
+              </button>
+              <button
+                onClick={() => {
+                  setSelectedDay(null);
+                  setView({ year: today.getFullYear(), month: today.getMonth() + 1 });
+                }}
+                title="이번 달로"
+                className="font-bold"
+              >
+                {view.year}년 {view.month}월
+              </button>
+              <button onClick={() => moveMonth(1)} className="h-9 w-9 rounded-lg border border-line text-dim">
+                ›
+              </button>
+            </div>
 
-          {members !== null && (
-            <>
-              {/* 월 이동 */}
-              <div className="flex items-center justify-between">
-                <button onClick={() => moveMonth(-1)} className="h-9 w-9 rounded-lg border border-line text-dim">
-                  ‹
-                </button>
-                <button
-                  onClick={() => {
-                    setSelectedDay(null);
-                    setView({ year: today.getFullYear(), month: today.getMonth() + 1 });
-                  }}
-                  title="이번 달로"
-                  className="font-bold"
+            {/* 달력 — 칸엔 첫 사람 이름만, 같은 날 여러 명이면 +N */}
+            <div className="grid grid-cols-7 gap-1 text-center">
+              {WEEKDAYS.map((w, i) => (
+                <span
+                  key={w}
+                  className={`pb-1 text-[11px] ${i === 0 ? 'text-coral' : i === 6 ? 'text-sky' : 'text-faint'}`}
                 >
-                  {view.year}년 {view.month}월
-                </button>
-                <button onClick={() => moveMonth(1)} className="h-9 w-9 rounded-lg border border-line text-dim">
-                  ›
-                </button>
-              </div>
-
-              {/* 달력 — 칸엔 첫 사람 이름만, 같은 날 여러 명이면 +N */}
-              <div className="grid grid-cols-7 gap-1 text-center">
-                {WEEKDAYS.map((w, i) => (
-                  <span
-                    key={w}
-                    className={`pb-1 text-[11px] ${i === 0 ? 'text-coral' : i === 6 ? 'text-sky' : 'text-faint'}`}
+                  {w}
+                </span>
+              ))}
+              {cells.map((day, i) => {
+                if (day === null) return <span key={`blank-${i}`} className="min-h-12" />; // 빈 주도 높이를 차지해야 6주 고정이 된다
+                const people = byDay.get(day) ?? [];
+                const isToday = isThisMonth && day === today.getDate();
+                return (
+                  <button
+                    key={day}
+                    onClick={() => people.length > 0 && setSelectedDay(day === selectedDay ? null : day)}
+                    disabled={people.length === 0}
+                    // 오늘 표시는 ring 대신 테두리 — ring은 상자 바깥에 그려져 스크롤 영역 가장자리(토요일 칸)에서 잘린다
+                    className={`flex min-h-12 flex-col items-center gap-0.5 rounded-lg border px-0.5 py-1 ${
+                      selectedDay === day
+                        ? 'border-court bg-court/15'
+                        : isToday
+                          ? `border-amber ${people.length > 0 ? 'bg-court/5' : ''}`
+                          : people.length > 0
+                            ? 'border-court/30 bg-court/5'
+                            : 'border-transparent'
+                    }`}
                   >
-                    {w}
-                  </span>
-                ))}
-                {cells.map((day, i) => {
-                  if (day === null) return <span key={`blank-${i}`} className="min-h-12" />; // 빈 주도 높이를 차지해야 6주 고정이 된다
-                  const people = byDay.get(day) ?? [];
-                  const isToday = isThisMonth && day === today.getDate();
-                  return (
-                    <button
-                      key={day}
-                      onClick={() => people.length > 0 && setSelectedDay(day === selectedDay ? null : day)}
-                      disabled={people.length === 0}
-                      // 오늘 표시는 ring 대신 테두리 — ring은 상자 바깥에 그려져 스크롤 영역 가장자리(토요일 칸)에서 잘린다
-                      className={`flex min-h-12 flex-col items-center gap-0.5 rounded-lg border px-0.5 py-1 ${
-                        selectedDay === day
-                          ? 'border-court bg-court/15'
-                          : isToday
-                            ? `border-amber ${people.length > 0 ? 'bg-court/5' : ''}`
-                            : people.length > 0
-                              ? 'border-court/30 bg-court/5'
-                              : 'border-transparent'
-                      }`}
-                    >
-                      <span className={`text-[11px] ${isToday ? 'font-bold text-amber' : 'text-dim'}`}>{day}</span>
-                      {people.length > 0 && (
-                        <span className="w-full truncate text-[10px] font-medium leading-tight text-court">
-                          {people[0].name}
-                          {people.length > 1 && <span className="text-faint"> +{people.length - 1}</span>}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+                    <span className={`text-[11px] ${isToday ? 'font-bold text-amber' : 'text-dim'}`}>{day}</span>
+                    {people.length > 0 && (
+                      <span className="w-full truncate text-[10px] font-medium leading-tight text-court">
+                        {people[0].name}
+                        {people.length > 1 && <span className="text-faint"> +{people.length - 1}</span>}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
 
-              {/* 아래 칸 하나 — 평소엔 다가오는 생일, 날짜를 고르면 같은 자리에 그날 생일자. 넘치면 이 칸만 스크롤 */}
-              <div className="flex min-h-24 flex-1 flex-col gap-1.5 border-t border-line pt-3 scroll-area">
-                {selectedDay !== null ? (
-                  <>
-                    <div className="flex items-center">
-                      <p className="text-xs font-bold text-court">
-                        {view.month}월 {selectedDay}일 생일 {selected.length}명
-                      </p>
-                      <button onClick={() => setSelectedDay(null)} className="tap ml-auto text-xs text-dim">
-                        ← 다가오는 생일
-                      </button>
-                    </div>
-                    {selected.map((m) => (
-                      <MemberLine key={m.id} member={m} />
-                    ))}
-                  </>
-                ) : (
-                  <>
-                    <p className="text-xs font-bold text-dim">다가오는 생일 ({UPCOMING_DAYS}일 안)</p>
-                    {upcoming.length === 0 && <p className="text-xs text-faint">한 달 안에 생일인 정회원이 없어요</p>}
-                    {upcoming.map((b) => (
-                      <MemberLine
-                        key={b.member.id}
-                        member={b.member}
-                        note={`${b.date.getMonth() + 1}/${b.date.getDate()} · ${
-                          b.days === 0 ? '오늘 🎂' : b.days === 1 ? '내일' : `${b.days}일 뒤`
-                        }`}
-                      />
-                    ))}
-                    <p className="pt-1 text-[11px] text-faint">게스트는 생년월일을 받지 않아 표시되지 않아요.</p>
-                  </>
-                )}
-              </div>
-            </>
-          )}
-        </div>
+            {/* 아래 칸 하나 — 평소엔 다가오는 생일, 날짜를 고르면 같은 자리에 그날 생일자. 넘치면 이 칸만 스크롤 */}
+            <div className="flex min-h-24 flex-1 flex-col gap-1.5 border-t border-line pt-3 scroll-area">
+              {selectedDay !== null ? (
+                <>
+                  <div className="flex items-center">
+                    <p className="text-xs font-bold text-court">
+                      {view.month}월 {selectedDay}일 생일 {selected.length}명
+                    </p>
+                    <button onClick={() => setSelectedDay(null)} className="tap ml-auto text-xs text-dim">
+                      ← 다가오는 생일
+                    </button>
+                  </div>
+                  {selected.map((m) => (
+                    <MemberLine key={m.id} member={m} />
+                  ))}
+                </>
+              ) : (
+                <>
+                  <p className="text-xs font-bold text-dim">다가오는 생일 ({UPCOMING_DAYS}일 안)</p>
+                  {upcoming.length === 0 && <p className="text-xs text-faint">한 달 안에 생일인 정회원이 없어요</p>}
+                  {upcoming.map((b) => (
+                    <MemberLine
+                      key={b.member.id}
+                      member={b.member}
+                      note={`${b.date.getMonth() + 1}/${b.date.getDate()} · ${
+                        b.days === 0 ? '오늘 🎂' : b.days === 1 ? '내일' : `${b.days}일 뒤`
+                      }`}
+                    />
+                  ))}
+                  <p className="pt-1 text-[11px] text-faint">게스트는 생년월일을 받지 않아 표시되지 않아요.</p>
+                </>
+              )}
+            </div>
+          </>
+        )}
       </div>
-    </div>
+    </Sheet>
   );
 }
