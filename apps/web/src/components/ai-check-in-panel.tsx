@@ -233,7 +233,7 @@ function ResultCard({
                   <button
                     onClick={() => void onCancel(attendance.id)}
                     title="잘못 체크인됐으면 취소"
-                    className="text-faint hover:text-coral"
+                    className="text-dim hover:text-coral"
                   >
                     ✕
                   </button>

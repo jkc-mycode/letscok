@@ -205,7 +205,7 @@ function StartScreen({
       <button
         onClick={onLogout}
         title="이 기기에 저장된 운영진 패스코드를 지우고 입력 화면으로 돌아가요"
-        className="text-xs text-faint underline-offset-4 hover:text-coral hover:underline"
+        className="text-xs text-dim underline-offset-4 hover:text-coral hover:underline"
       >
         잠금 — 저장된 패스코드 지우기
       </button>
@@ -716,7 +716,7 @@ function BoardBody({
                     });
                   }}
                   className={`h-7 rounded-lg border px-2.5 text-xs font-medium ${
-                    includeBusy ? 'border-court text-court' : 'border-line text-faint'
+                    includeBusy ? 'border-court text-court' : 'border-line text-dim'
                   }`}
                 >
                   게임 중 포함
@@ -730,7 +730,7 @@ function BoardBody({
               />
               <button
                 onClick={() => setManualOpen(true)}
-                className="h-7 rounded-lg border border-line px-2.5 text-xs font-medium text-faint"
+                className="h-7 rounded-lg border border-line px-2.5 text-xs font-medium text-dim"
               >
                 수동 체크인
               </button>
@@ -1410,7 +1410,7 @@ function MemoPanel({
           <button
             onClick={clearAll}
             className={`ml-auto h-7 rounded-lg border px-2.5 text-xs font-medium ${
-              confirmClear ? 'border-coral bg-coral/15 text-coral' : 'border-line text-faint'
+              confirmClear ? 'border-coral bg-coral/15 text-coral' : 'border-line text-dim'
             }`}
           >
             {confirmClear ? '한 번 더 누르면 전체 삭제' : '초기화'}
@@ -1429,7 +1429,7 @@ function MemoPanel({
                 onClick={() => void remove(memo.id)}
                 disabled={busy}
                 title="완료 (삭제)"
-                className="h-7 w-7 shrink-0 rounded-lg text-xs text-faint hover:text-coral"
+                className="h-7 w-7 shrink-0 rounded-lg text-xs text-dim hover:text-coral"
               >
                 ✕
               </button>
@@ -1795,7 +1795,7 @@ function ManualCheckInModal({
               <div className="flex flex-col gap-2">
                 <div className="flex items-center">
                   <p className="text-xs font-bold text-sky">신규 등록 + 체크인</p>
-                  <button onClick={() => setRegOpen(false)} className="ml-auto text-xs text-faint">
+                  <button onClick={() => setRegOpen(false)} className="ml-auto text-xs text-dim">
                     접기
                   </button>
                 </div>
@@ -2318,7 +2318,7 @@ function MemberEditSheet({
             }}
             disabled={busy}
             className={`min-h-11 rounded-xl border px-3 text-sm font-medium whitespace-normal disabled:opacity-50 ${
-              confirmAnon ? 'border-coral bg-coral/15 text-coral' : 'border-line text-faint'
+              confirmAnon ? 'border-coral bg-coral/15 text-coral' : 'border-line text-dim'
             }`}
           >
             {confirmAnon ? '한 번 더 누르면 개인정보가 지워져요 (복구 불가)' : '개인정보 삭제 (본인 요청 시)'}
@@ -2801,7 +2801,7 @@ function CourtsManager({
               }
               title="다른 모임과 번갈아 쓰는 코트 지정/해제"
               className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                court.isShared ? 'bg-sky/15 text-sky' : 'border border-line text-faint'
+                court.isShared ? 'bg-sky/15 text-sky' : 'border border-line text-dim'
               }`}
             >
               공유
@@ -2810,7 +2810,7 @@ function CourtsManager({
               onClick={() => void run(() => api(`/courts/${court.id}`, { method: 'DELETE', admin: true }))}
               disabled={inGame}
               title={inGame ? '게임 진행 중' : '코트 해제'}
-              className="ml-1 text-faint disabled:opacity-30"
+              className="ml-1 text-dim disabled:opacity-30"
             >
               ✕
             </button>
@@ -3282,7 +3282,7 @@ function WaitingRow({
         label="호출"
         title="이 분 폰으로 '운영진이 찾고 있어요' 알림을 보내요"
         className="h-8 shrink-0 rounded-lg px-1.5 text-xs"
-        idleCls="text-faint hover:text-court"
+        idleCls="text-dim hover:text-court"
       />
       {resting && (
         <button
@@ -3307,7 +3307,7 @@ function WaitingRow({
             );
           }}
           title="휴식 처리 — 게임 조합 대상에서 제외"
-          className="h-8 shrink-0 rounded-lg px-1.5 text-xs text-faint hover:text-sky"
+          className="h-8 shrink-0 rounded-lg px-1.5 text-xs text-dim hover:text-sky"
         >
           휴식
         </button>

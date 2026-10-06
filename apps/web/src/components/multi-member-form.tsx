@@ -109,13 +109,13 @@ export function MultiMemberForm({
               <div className="flex shrink-0 overflow-hidden rounded-lg border border-line text-xs font-bold">
                 <button
                   onClick={() => update(row.key, { isGuest: false })}
-                  className={`h-9 px-2.5 ${!row.isGuest ? 'bg-court/15 text-court' : 'text-faint'}`}
+                  className={`h-9 px-2.5 ${!row.isGuest ? 'bg-court/15 text-court' : 'text-dim'}`}
                 >
                   정회원
                 </button>
                 <button
                   onClick={() => update(row.key, { isGuest: true })}
-                  className={`h-9 px-2.5 ${row.isGuest ? 'bg-sky/15 text-sky' : 'text-faint'}`}
+                  className={`h-9 px-2.5 ${row.isGuest ? 'bg-sky/15 text-sky' : 'text-dim'}`}
                 >
                   게스트
                 </button>
@@ -132,7 +132,7 @@ export function MultiMemberForm({
                 <button
                   onClick={() => remove(row.key)}
                   title="이 줄 빼기"
-                  className="h-9 w-8 shrink-0 text-faint hover:text-coral"
+                  className="h-9 w-8 shrink-0 text-dim hover:text-coral"
                 >
                   ✕
                 </button>

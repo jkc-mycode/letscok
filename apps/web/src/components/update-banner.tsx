@@ -48,7 +48,7 @@ export function UpdateBanner() {
     >
       <div className="fade-in flex w-full max-w-md items-center gap-3 rounded-xl border border-court/40 bg-panel px-4 py-3 shadow-lg">
         <p className="flex-1 text-sm font-medium">새 버전이 나왔어요</p>
-        <button onClick={() => setHidden(true)} className="text-xs text-faint">
+        <button onClick={() => setHidden(true)} className="text-xs text-dim">
           나중에
         </button>
         <button

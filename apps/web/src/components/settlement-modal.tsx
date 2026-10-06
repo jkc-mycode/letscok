@@ -347,7 +347,7 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
                 <div className="flex flex-col gap-1 rounded-xl border border-line bg-panel2 p-3">
                   <div className="flex items-center pb-1">
                     <p className="text-xs text-dim">분류를 누르면 공통 → 술 → 음료로 바뀌고, 이름·금액은 눌러서 고쳐요</p>
-                    <button onClick={() => setReceipt(null)} className="ml-auto text-xs text-faint">
+                    <button onClick={() => setReceipt(null)} className="ml-auto text-xs text-dim">
                       접기
                     </button>
                   </div>
@@ -380,7 +380,7 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
                       <button
                         onClick={() => removeItem(item.key)}
                         title="이 줄 지우기"
-                        className="h-8 w-7 shrink-0 text-faint hover:text-coral"
+                        className="h-8 w-7 shrink-0 text-dim hover:text-coral"
                       >
                         ✕
                       </button>

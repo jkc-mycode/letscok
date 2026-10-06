@@ -72,7 +72,7 @@ function Ranking() {
             key={period.label}
             onClick={() => setMonths(period.months)}
             className={`h-8 rounded-lg border px-3 text-xs font-medium ${
-              months === period.months ? 'border-court text-court' : 'border-line text-faint'
+              months === period.months ? 'border-court text-court' : 'border-line text-dim'
             }`}
           >
             {period.label}
