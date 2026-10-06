@@ -2,8 +2,8 @@
 
 import { IAiCheckInStatus, IReceiptReadResult, ReceiptCategory } from '@letscok/shared-types';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Sheet } from '@/components/sheet';
 import { api, ApiError } from '@/lib/api';
-import { useBackClose } from '@/lib/back-stack';
 import { shrinkImage } from '@/lib/image';
 import { DEFAULT_GROUPS, parseNames, settle, settlementText, won } from '@/lib/settlement';
 
@@ -145,7 +145,6 @@ function Counter({
 }
 
 export function SettlementModal({ onClose }: { onClose: () => void }) {
-  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 팝업 닫기
   const [total, setTotal] = useState('');
   const [alcohol, setAlcohol] = useState('');
   const [beverage, setBeverage] = useState('');
@@ -276,276 +275,265 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    // 입력 중인 팝업이라 바깥을 눌러도 닫지 않는다(실수 한 번에 적던 내용이 날아감) — [닫기]·뒤로가기로만 닫는다
-    <div
-      className="fade-in fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-2 sm:p-4"
+    // 입력 중인 시트라 바깥 탭·끌어내리기로 닫지 않는다 — [닫기]·뒤로가기로만
+    <Sheet
+      ariaLabel="뒤풀이 정산"
+      dismissible={false}
+      onClose={onClose}
+      bodyClassName="flex min-h-0 flex-1 flex-col"
+      header={<h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">🍻 뒤풀이 정산</h2>}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[92dvh] w-full max-w-md flex-col rounded-2xl border border-line bg-panel p-4 sm:p-5"
-      >
-        <div className="flex items-center pb-3">
-          <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">🍻 뒤풀이 정산</h2>
-          <button
-            onClick={onClose}
-            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
-          >
-            닫기
-          </button>
-        </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-4 scroll-area">
+        {/* 영수증으로 채우기 — AI가 품목을 공통·술·음료로 나누고, 칩을 눌러 고친다 */}
+        {aiEnabled && (
+          <div className="flex flex-col gap-2">
+            {/* 촬영 = 바로 후면 카메라(1장), 앨범 = 찍어 둔 사진 최대 2장(1차·2차) */}
+            <input
+              ref={cameraInput}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                void readReceipt(e.target.files);
+                e.target.value = ''; // 같은 사진을 다시 골라도 onChange가 오게
+              }}
+            />
+            <input
+              ref={fileInput}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                void readReceipt(e.target.files);
+                e.target.value = '';
+              }}
+            />
+            {reading ? (
+              <p className="flex h-11 items-center justify-center rounded-xl border border-court/50 text-sm font-bold text-court opacity-60">
+                영수증을 읽는 중이에요…
+              </p>
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => cameraInput.current?.click()}
+                  className="h-11 flex-1 rounded-xl border border-court/50 text-sm font-bold text-court"
+                >
+                  📷 영수증 촬영
+                </button>
+                <button
+                  onClick={() => fileInput.current?.click()}
+                  className="h-11 flex-1 rounded-xl border border-court/50 text-sm font-bold text-court"
+                >
+                  🖼 앨범 (최대 {MAX_RECEIPTS}장)
+                </button>
+              </div>
+            )}
+            {receiptError && <p className="text-xs font-medium text-coral">{receiptError}</p>}
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 scroll-area">
-          {/* 영수증으로 채우기 — AI가 품목을 공통·술·음료로 나누고, 칩을 눌러 고친다 */}
-          {aiEnabled && (
-            <div className="flex flex-col gap-2">
-              {/* 촬영 = 바로 후면 카메라(1장), 앨범 = 찍어 둔 사진 최대 2장(1차·2차) */}
-              <input
-                ref={cameraInput}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={(e) => {
-                  void readReceipt(e.target.files);
-                  e.target.value = ''; // 같은 사진을 다시 골라도 onChange가 오게
-                }}
-              />
-              <input
-                ref={fileInput}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  void readReceipt(e.target.files);
-                  e.target.value = '';
-                }}
-              />
-              {reading ? (
-                <p className="flex h-11 items-center justify-center rounded-xl border border-court/50 text-sm font-bold text-court opacity-60">
-                  영수증을 읽는 중이에요…
-                </p>
-              ) : (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => cameraInput.current?.click()}
-                    className="h-11 flex-1 rounded-xl border border-court/50 text-sm font-bold text-court"
-                  >
-                    📷 영수증 촬영
-                  </button>
-                  <button
-                    onClick={() => fileInput.current?.click()}
-                    className="h-11 flex-1 rounded-xl border border-court/50 text-sm font-bold text-court"
-                  >
-                    🖼 앨범 (최대 {MAX_RECEIPTS}장)
+            {receipt && (
+              <div className="flex flex-col gap-1 rounded-xl border border-line bg-panel2 p-3">
+                <div className="flex items-center pb-1">
+                  <p className="text-xs text-dim">분류를 누르면 공통 → 술 → 음료로 바뀌고, 이름·금액은 눌러서 고쳐요</p>
+                  <button onClick={() => setReceipt(null)} className="tap ml-auto text-xs text-dim">
+                    접기
                   </button>
                 </div>
-              )}
-              {receiptError && <p className="text-xs font-medium text-coral">{receiptError}</p>}
-
-              {receipt && (
-                <div className="flex flex-col gap-1 rounded-xl border border-line bg-panel2 p-3">
-                  <div className="flex items-center pb-1">
-                    <p className="text-xs text-dim">분류를 누르면 공통 → 술 → 음료로 바뀌고, 이름·금액은 눌러서 고쳐요</p>
-                    <button onClick={() => setReceipt(null)} className="tap ml-auto text-xs text-dim">
-                      접기
+                {receipt.items.map((item) => (
+                  <div key={item.key} className="flex items-center gap-1.5 text-sm">
+                    <button
+                      onClick={() => editItem(item.key, { category: NEXT_CATEGORY[item.category] }, false)}
+                      className={`tap h-8 w-11 shrink-0 rounded-md border text-xs font-medium ${CATEGORY_CLS[item.category]}`}
+                    >
+                      {CATEGORY_LABEL[item.category]}
+                    </button>
+                    <input
+                      value={item.name}
+                      onChange={(e) => editItem(item.key, { name: e.target.value }, false)}
+                      autoComplete="off"
+                      maxLength={40}
+                      placeholder="품목 이름"
+                      className="h-8 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 outline-none placeholder:text-faint focus:border-court"
+                    />
+                    <input
+                      value={amountDisplay(item.amountText)}
+                      onChange={(e) => editItem(item.key, { amountText: cleanAmount(e.target.value) }, true)}
+                      inputMode="numeric"
+                      autoComplete="off"
+                      placeholder="0"
+                      className={`tabular h-8 w-24 shrink-0 rounded-md border border-line bg-panel px-2 text-right outline-none placeholder:text-faint focus:border-court ${
+                        amountOf(item.amountText) < 0 ? 'text-coral' : ''
+                      }`}
+                    />
+                    <button
+                      onClick={() => removeItem(item.key)}
+                      title="이 줄 지우기"
+                      className="tap h-8 w-7 shrink-0 text-dim hover:text-coral"
+                    >
+                      ✕
                     </button>
                   </div>
-                  {receipt.items.map((item) => (
-                    <div key={item.key} className="flex items-center gap-1.5 text-sm">
-                      <button
-                        onClick={() => editItem(item.key, { category: NEXT_CATEGORY[item.category] }, false)}
-                        className={`tap h-8 w-11 shrink-0 rounded-md border text-xs font-medium ${CATEGORY_CLS[item.category]}`}
-                      >
-                        {CATEGORY_LABEL[item.category]}
-                      </button>
-                      <input
-                        value={item.name}
-                        onChange={(e) => editItem(item.key, { name: e.target.value }, false)}
-                        autoComplete="off"
-                        maxLength={40}
-                        placeholder="품목 이름"
-                        className="h-8 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 outline-none placeholder:text-faint focus:border-court"
-                      />
-                      <input
-                        value={amountDisplay(item.amountText)}
-                        onChange={(e) => editItem(item.key, { amountText: cleanAmount(e.target.value) }, true)}
-                        inputMode="numeric"
-                        autoComplete="off"
-                        placeholder="0"
-                        className={`tabular h-8 w-24 shrink-0 rounded-md border border-line bg-panel px-2 text-right outline-none placeholder:text-faint focus:border-court ${
-                          amountOf(item.amountText) < 0 ? 'text-coral' : ''
-                        }`}
-                      />
-                      <button
-                        onClick={() => removeItem(item.key)}
-                        title="이 줄 지우기"
-                        className="tap h-8 w-7 shrink-0 text-dim hover:text-coral"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-                  <button onClick={addItem} className="mt-1 h-8 rounded-md border border-dashed border-line text-xs text-dim">
-                    + 품목 추가
-                  </button>
-                  <p className="pt-1 text-right text-xs text-dim">품목 합계 {won(itemsSum)}</p>
-                  {receipt.edited ? (
-                    <p className="text-right text-xs text-faint">품목을 고쳐서 총 금액을 품목 합계로 채웠어요</p>
-                  ) : receipt.total === null ? (
-                    <p className="text-right text-xs text-amber">영수증 총액을 못 읽어 품목 합계로 채웠어요</p>
-                  ) : (
-                    receipt.total !== itemsSum && (
-                      <p className="text-right text-xs text-amber">
-                        영수증 총액 {won(receipt.total)}과 {won(Math.abs(receipt.total - itemsSum))} 달라요. 할인이나
-                        봉사료일 수 있어요(차액은 공통에 포함)
-                      </p>
-                    )
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 금액 — 공통은 자동(총액 − 술 − 음료) */}
-          <div className="flex flex-col gap-2">
-            <AmountField label="총 금액" value={total} onChange={setTotal} />
-            <AmountField label="술값" value={alcohol} onChange={setAlcohol} />
-            <AmountField label="음료값" value={beverage} onChange={setBeverage} />
-            <p className="text-right text-xs text-faint">
-              공통(안주·식사) {common >= 0 ? won(common) : '—'}
-            </p>
-            {/* 찬조 — 원 또는 %. 공통·술·음료를 같은 비율로 줄인다. 카톡 문구엔 표시하지 않는다 */}
-            <div className="flex items-center gap-3">
-              <span className="w-16 shrink-0 text-sm text-dim">찬조</span>
-              <input
-                value={sponsorUnit === 'won' ? withCommas(sponsor) : sponsor}
-                onChange={(e) => {
-                  const digits = digitsOnly(e.target.value);
-                  setSponsor(sponsorUnit === 'won' ? digits : digits.slice(0, 3)); // %는 세 자리까지
-                }}
-                inputMode="numeric"
-                autoComplete="off"
-                placeholder="0"
-                className="tabular h-11 min-w-0 flex-1 rounded-lg border border-line bg-panel2 px-3 text-right text-base outline-none placeholder:text-faint focus:border-court"
-              />
-              <div className="flex shrink-0 overflow-hidden rounded-lg border border-line text-sm">
-                {(['won', 'percent'] as const).map((unit) => (
-                  <button
-                    key={unit}
-                    onClick={() => {
-                      setSponsorUnit(unit);
-                      setSponsor(''); // 단위가 바뀌면 숫자의 의미가 달라져 비운다
-                    }}
-                    className={`h-11 w-9 ${sponsorUnit === unit ? 'bg-court/15 font-bold text-court' : 'text-dim'}`}
-                  >
-                    {unit === 'won' ? '원' : '%'}
-                  </button>
                 ))}
+                <button onClick={addItem} className="mt-1 h-8 rounded-md border border-dashed border-line text-xs text-dim">
+                  + 품목 추가
+                </button>
+                <p className="pt-1 text-right text-xs text-dim">품목 합계 {won(itemsSum)}</p>
+                {receipt.edited ? (
+                  <p className="text-right text-xs text-faint">품목을 고쳐서 총 금액을 품목 합계로 채웠어요</p>
+                ) : receipt.total === null ? (
+                  <p className="text-right text-xs text-amber">영수증 총액을 못 읽어 품목 합계로 채웠어요</p>
+                ) : (
+                  receipt.total !== itemsSum && (
+                    <p className="text-right text-xs text-amber">
+                      영수증 총액 {won(receipt.total)}과 {won(Math.abs(receipt.total - itemsSum))} 달라요. 할인이나
+                      봉사료일 수 있어요(차액은 공통에 포함)
+                    </p>
+                  )
+                )}
               </div>
-            </div>
-            {sponsorWon > 0 && (
-              <p className="text-right text-xs text-faint">
-                찬조 {won(sponsorWon)} 빼고 {won(Math.max(0, toNumber(total) - sponsorWon))}을 나눠요
-              </p>
             )}
           </div>
+        )}
 
-          {/* 인원 — 술·음료 마신 여부로 4그룹 */}
-          <div className="flex flex-col gap-2 border-t border-line pt-3">
-            {groups.map((g) => (
-              <Counter
-                key={g.key}
-                label={g.label}
-                count={g.count}
-                onChange={(n) => setCounts((c) => ({ ...c, [g.key]: n }))}
-                names={names[g.key] ?? ''}
-                onNamesChange={(v) => setNames((c) => ({ ...c, [g.key]: v }))}
-              />
-            ))}
-            <p className="text-right text-xs text-faint">전원 {headcount}명</p>
-          </div>
-
-          {/* 카톡 문구 머리말 — "어제 옛날집 정산 안내드립니다!" / "10월 3일 옛날집 …" */}
-          <div className="flex flex-col gap-2 border-t border-line pt-3">
-            <div className="flex items-center gap-2">
-              {(['오늘', '어제', '날짜'] as const).map((d) => (
+        {/* 금액 — 공통은 자동(총액 − 술 − 음료) */}
+        <div className="flex flex-col gap-2">
+          <AmountField label="총 금액" value={total} onChange={setTotal} />
+          <AmountField label="술값" value={alcohol} onChange={setAlcohol} />
+          <AmountField label="음료값" value={beverage} onChange={setBeverage} />
+          <p className="text-right text-xs text-faint">
+            공통(안주·식사) {common >= 0 ? won(common) : '—'}
+          </p>
+          {/* 찬조 — 원 또는 %. 공통·술·음료를 같은 비율로 줄인다. 카톡 문구엔 표시하지 않는다 */}
+          <div className="flex items-center gap-3">
+            <span className="w-16 shrink-0 text-sm text-dim">찬조</span>
+            <input
+              value={sponsorUnit === 'won' ? withCommas(sponsor) : sponsor}
+              onChange={(e) => {
+                const digits = digitsOnly(e.target.value);
+                setSponsor(sponsorUnit === 'won' ? digits : digits.slice(0, 3)); // %는 세 자리까지
+              }}
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="0"
+              className="tabular h-11 min-w-0 flex-1 rounded-lg border border-line bg-panel2 px-3 text-right text-base outline-none placeholder:text-faint focus:border-court"
+            />
+            <div className="flex shrink-0 overflow-hidden rounded-lg border border-line text-sm">
+              {(['won', 'percent'] as const).map((unit) => (
                 <button
-                  key={d}
-                  onClick={() => setDay(d)}
-                  className={`h-10 shrink-0 rounded-lg border px-3 text-sm ${
-                    day === d ? 'border-court bg-court/15 text-court' : 'border-line text-dim'
-                  }`}
+                  key={unit}
+                  onClick={() => {
+                    setSponsorUnit(unit);
+                    setSponsor(''); // 단위가 바뀌면 숫자의 의미가 달라져 비운다
+                  }}
+                  className={`h-11 w-9 ${sponsorUnit === unit ? 'bg-court/15 font-bold text-court' : 'text-dim'}`}
                 >
-                  {d}
+                  {unit === 'won' ? '원' : '%'}
                 </button>
               ))}
-              {day === '날짜' && (
-                <input
-                  type="date"
-                  value={date}
-                  max={todayInput()}
-                  onChange={(e) => e.target.value && setDate(e.target.value)} // 지우기 버튼으로 빈 값이 오면 무시
-                  className="h-10 min-w-0 flex-1 rounded-lg border border-line bg-panel2 px-2 text-sm outline-none focus:border-court"
-                />
-              )}
             </div>
-            <input
-              value={place}
-              onChange={(e) => setPlace(e.target.value)}
-              autoComplete="off"
-              maxLength={30}
-              placeholder="가게 이름 (선택)"
-              className="h-10 rounded-lg border border-line bg-panel2 px-3 text-sm outline-none placeholder:text-faint focus:border-court"
-            />
           </div>
+          {sponsorWon > 0 && (
+            <p className="text-right text-xs text-faint">
+              찬조 {won(sponsorWon)} 빼고 {won(Math.max(0, toNumber(total) - sponsorWon))}을 나눠요
+            </p>
+          )}
+        </div>
 
-          {/* 결과 — 입력이 바뀔 때마다 바로 계산 */}
-          <div className="flex flex-col gap-1.5 border-t border-line pt-3">
-            {!result.ok ? (
-              <p className="py-2 text-center text-sm text-dim">{result.error}</p>
-            ) : (
-              <>
-                {result.shares.map((s) => (
-                  <div
-                    key={s.group.key}
-                    className="flex items-center rounded-lg border border-line bg-panel2 px-3 py-2 text-sm"
-                  >
-                    <span className="font-medium">{s.group.label}</span>
-                    <span className="ml-1.5 text-xs text-faint">{s.group.count}명</span>
-                    <span className="tabular ml-auto font-bold text-court">{won(s.perPerson)}</span>
-                  </div>
-                ))}
-                {result.remainder > 0 && (
-                  <p className="text-right text-xs text-faint">
-                    나누어떨어지지 않아 결제자 부담 {won(result.remainder)}
-                  </p>
-                )}
-                <button
-                  onClick={() => void copy()}
-                  className={`mt-1 h-11 rounded-xl border text-sm font-bold ${
-                    copied === 'done' ? 'border-court bg-court/15 text-court' : 'border-court/50 text-court'
-                  }`}
-                >
-                  {copied === 'done' ? '복사했어요' : '카톡 문구 복사'}
-                </button>
-                {copied === 'failed' && (
-                  <>
-                    <p className="text-xs text-coral">자동 복사가 안 돼요. 아래 문구를 길게 눌러 복사해주세요.</p>
-                    <textarea
-                      readOnly
-                      value={text}
-                      rows={text.split('\n').length}
-                      onFocus={(e) => e.currentTarget.select()}
-                      className="resize-none rounded-lg border border-line bg-panel2 p-3 text-sm outline-none"
-                    />
-                  </>
-                )}
-              </>
+        {/* 인원 — 술·음료 마신 여부로 4그룹 */}
+        <div className="flex flex-col gap-2 border-t border-line pt-3">
+          {groups.map((g) => (
+            <Counter
+              key={g.key}
+              label={g.label}
+              count={g.count}
+              onChange={(n) => setCounts((c) => ({ ...c, [g.key]: n }))}
+              names={names[g.key] ?? ''}
+              onNamesChange={(v) => setNames((c) => ({ ...c, [g.key]: v }))}
+            />
+          ))}
+          <p className="text-right text-xs text-faint">전원 {headcount}명</p>
+        </div>
+
+        {/* 카톡 문구 머리말 — "어제 옛날집 정산 안내드립니다!" / "10월 3일 옛날집 …" */}
+        <div className="flex flex-col gap-2 border-t border-line pt-3">
+          <div className="flex items-center gap-2">
+            {(['오늘', '어제', '날짜'] as const).map((d) => (
+              <button
+                key={d}
+                onClick={() => setDay(d)}
+                className={`h-10 shrink-0 rounded-lg border px-3 text-sm ${
+                  day === d ? 'border-court bg-court/15 text-court' : 'border-line text-dim'
+                }`}
+              >
+                {d}
+              </button>
+            ))}
+            {day === '날짜' && (
+              <input
+                type="date"
+                value={date}
+                max={todayInput()}
+                onChange={(e) => e.target.value && setDate(e.target.value)} // 지우기 버튼으로 빈 값이 오면 무시
+                className="h-10 min-w-0 flex-1 rounded-lg border border-line bg-panel2 px-2 text-sm outline-none focus:border-court"
+              />
             )}
           </div>
+          <input
+            value={place}
+            onChange={(e) => setPlace(e.target.value)}
+            autoComplete="off"
+            maxLength={30}
+            placeholder="가게 이름 (선택)"
+            className="h-10 rounded-lg border border-line bg-panel2 px-3 text-sm outline-none placeholder:text-faint focus:border-court"
+          />
+        </div>
+
+        {/* 결과 — 입력이 바뀔 때마다 바로 계산 */}
+        <div className="flex flex-col gap-1.5 border-t border-line pt-3">
+          {!result.ok ? (
+            <p className="py-2 text-center text-sm text-dim">{result.error}</p>
+          ) : (
+            <>
+              {result.shares.map((s) => (
+                <div
+                  key={s.group.key}
+                  className="flex items-center rounded-lg border border-line bg-panel2 px-3 py-2 text-sm"
+                >
+                  <span className="font-medium">{s.group.label}</span>
+                  <span className="ml-1.5 text-xs text-faint">{s.group.count}명</span>
+                  <span className="tabular ml-auto font-bold text-court">{won(s.perPerson)}</span>
+                </div>
+              ))}
+              {result.remainder > 0 && (
+                <p className="text-right text-xs text-faint">
+                  나누어떨어지지 않아 결제자 부담 {won(result.remainder)}
+                </p>
+              )}
+              <button
+                onClick={() => void copy()}
+                className={`mt-1 h-11 rounded-xl border text-sm font-bold ${
+                  copied === 'done' ? 'border-court bg-court/15 text-court' : 'border-court/50 text-court'
+                }`}
+              >
+                {copied === 'done' ? '복사했어요' : '카톡 문구 복사'}
+              </button>
+              {copied === 'failed' && (
+                <>
+                  <p className="text-xs text-coral">자동 복사가 안 돼요. 아래 문구를 길게 눌러 복사해주세요.</p>
+                  <textarea
+                    readOnly
+                    value={text}
+                    rows={text.split('\n').length}
+                    onFocus={(e) => e.currentTarget.select()}
+                    className="resize-none rounded-lg border border-line bg-panel2 p-3 text-sm outline-none"
+                  />
+                </>
+              )}
+            </>
+          )}
         </div>
       </div>
-    </div>
+    </Sheet>
   );
 }
