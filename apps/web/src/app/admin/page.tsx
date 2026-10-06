@@ -39,10 +39,12 @@ import {
   mergeRefs,
   useBoardDragEnabled,
   useDropTarget,
+  useGameDrag,
   usePersonDrag,
-  type DragPerson,
+  type DragItem,
   type DropTarget,
 } from '@/components/board-dnd';
+import { arrayMove } from '@dnd-kit/sortable';
 import { CommandSheet } from '@/components/command-sheet';
 import { ConnectionError } from '@/components/connection-error';
 import { SessionReportModal } from '@/components/session-report-modal';
@@ -305,9 +307,51 @@ function BoardBody({
   const { session, courts, attendances, games } = snapshot;
   const dragEnabled = useBoardDragEnabled(); // 태블릿 이상 — 자석판처럼 끌어다 놓기
 
+
+  const playingByCourt = useMemo(() => {
+    const map = new Map<string, IGame>();
+    for (const game of games) {
+      if (game.status === 'PLAYING' && game.courtId) map.set(game.courtId, game);
+    }
+    return map;
+  }, [games]);
+  // 끌어서 바꾼 순서 — 다음 실시간 화면이 오면 버린다(그때는 서버 순서가 같아져 있다)
+  const [pendingOrder, setPendingOrder] = useState<string[] | null>(null);
+  useEffect(() => setPendingOrder(null), [games]);
+  const queuedGames = useMemo(() => {
+    const list = games.filter((g) => g.status === 'QUEUED');
+    if (!pendingOrder) return list;
+    const rank = new Map(pendingOrder.map((id, index) => [id, index]));
+    return [...list].sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity));
+  }, [games, pendingOrder]);
+
   // 끌어다 놓기 → 서버 호출. 카드에서 끌어낸 사람은 자석을 옮기듯 원래 조합에서 빠진다
   const onDrop = useCallback(
-    (person: DragPerson, target: DropTarget | null) => {
+    (item: DragItem, target: DropTarget | null) => {
+      if (item.kind === 'game') {
+        if (target?.kind === 'court') {
+          void run(() => api(`/games/${item.gameId}/assign`, { method: 'PATCH', admin: true, body: { courtId: target.courtId } }));
+          return;
+        }
+        if (target?.kind !== 'card') return;
+        // 놓은 카드 자리로 — 그 카드와 사이의 조합들이 한 칸씩 밀린다
+        const ids = queuedGames.map((g) => g.id);
+        const from = ids.indexOf(item.gameId);
+        const to = ids.indexOf(target.gameId);
+        if (from < 0 || to < 0 || from === to) return;
+        const next = arrayMove(ids, from, to);
+        setPendingOrder(next); // 서버 응답·실시간 화면을 기다리지 않고 바로 그 순서로 보여 준다
+        void run(async () => {
+          try {
+            await api(`/sessions/${session.id}/games/order`, { method: 'PATCH', admin: true, body: { gameIds: next } });
+          } catch (error) {
+            setPendingOrder(null);
+            throw error;
+          }
+        });
+        return;
+      }
+      const person = item;
       const from = person.fromGameId;
       const body = { attendanceId: person.attendanceId };
       const leaveOrigin = () =>
@@ -338,27 +382,20 @@ function BoardBody({
         });
         return;
       }
-      // 빈칸 또는 빈칸 있는 카드의 여백 — 같은 카드거나 다 찬 카드면 그대로
-      if (target.gameId === from || (target.kind === 'card' && target.full)) return;
+      // 빈칸 또는 빈칸 있는 카드의 여백 — 같은 카드거나 다 찬 카드면 그대로(사람은 코트 자체엔 못 놓는다)
+      if (target.kind === 'court' || target.gameId === from || (target.kind === 'card' && target.full)) return;
       void run(async () => {
         await api(`/games/${target.gameId}/players`, { method: 'POST', admin: true, body });
         await leaveOrigin();
       });
     },
-    [run, session.id],
+    [run, session.id, queuedGames],
   );
-
-  const playingByCourt = useMemo(() => {
-    const map = new Map<string, IGame>();
-    for (const game of games) {
-      if (game.status === 'PLAYING' && game.courtId) map.set(game.courtId, game);
-    }
-    return map;
-  }, [games]);
-  const queuedGames = useMemo(
-    () => games.filter((g) => g.status === 'QUEUED'),
-    [games],
-  );
+  // 폰: 조합 카드를 끄는 동안 구역 좌우 넘기기가 끼어들지 않게
+  const dndDragging = useRef(false);
+  const onDraggingChange = useCallback((dragging: boolean) => {
+    dndDragging.current = dragging;
+  }, []);
   const idleCourts = useMemo(
     () => courts.filter((c) => !playingByCourt.has(c.id)),
     [courts, playingByCourt],
@@ -612,6 +649,15 @@ function BoardBody({
   const onTouchMove = (e: ReactTouchEvent<HTMLDivElement>) => {
     const s = swipe.current;
     if (!s) return;
+    // 조합 카드를 끄는 중이면 구역 넘기기는 포기(끌다가 옆 구역으로 넘어가지 않게)
+    if (dndDragging.current) {
+      swipe.current = null;
+      if (s.dir === 'h') {
+        boardRef.current?.removeAttribute('data-dragging');
+        setDrag(0);
+      }
+      return;
+    }
     const touch = e.touches[0];
     const dx = touch.clientX - s.x;
     const dy = touch.clientY - s.y;
@@ -685,7 +731,7 @@ function BoardBody({
 
 
       {/* 3구역 — 폰: 탭 1구역 / 태블릿 세로: 2열(게임 중 | 조합+대기) / 데스크톱: 3열 */}
-      <BoardDnd onDrop={onDrop}>
+      <BoardDnd onDrop={onDrop} onDraggingChange={onDraggingChange}>
       <div
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
@@ -2760,6 +2806,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
       '명단에는 조합·게임에 든 사람도 늘 보여요(이름 옆에 "조합 2"·"1번 코트"). 그 사람도 골라서 다음 조합에 미리 넣을 수 있어요.',
       '1~3명만 골라 [빈칸 조합]을 누르거나 대기 조합 맨 아래 [+ 새 조합]을 누르면 빈칸이 있는 조합이 생겨요. 빈칸을 눌러 한 명씩 채우고, 이름 옆 ✕로 빼요. 4명이 다 차야 코트에 배정되고 모임원 앱에도 보여요.',
       '태블릿에서는 자석판처럼 끌어서 옮겨요. 명단의 이름을 살짝 길게 누르면 들려요 → [+ 새 조합] 자리에 놓으면 새 조합, 빈칸에 놓으면 채우기, 조합·코트 카드의 사람 위에 놓으면 교체.',
+      '대기 조합 카드 제목 옆 ⠿를 잡고 끌어 다른 조합 위에 놓으면 그 순서로 바뀌고(폰도 돼요), 빈 코트에 놓으면 배정돼요(4명 다 찬 조합만).',
       '대기 조합 카드의 사람을 끌어 다른 조합에 놓으면 옮겨지고, 명단 쪽에 놓으면 그 조합에서 빠져요. 게임 중인 코트의 사람은 끌어낼 수 없어요(교체만).',
       '조합에 게임 중인 사람이 있으면 그 게임이 끝날 때까지 코트 배정이 잠겨요.',
     ],
@@ -3015,7 +3062,17 @@ function CourtCard({
   dragEnabled: boolean;
 }) {
   // 게임 중인 카드의 여백에 놓으면 아무 일 없게(사람 위에 놓아야 교체) — 떼어 내기로 오인되지 않게
-  const cardDrop = useDropTarget(`card:${game?.id ?? court.id}`, { kind: 'card', gameId: game?.id ?? '', full: true }, dragEnabled && !!game);
+  const cardDrop = useDropTarget(
+    `card:${game?.id ?? court.id}`,
+    { kind: 'card', gameId: game?.id ?? '', full: true, queued: false },
+    dragEnabled && !!game,
+  );
+  // 빈 코트 — 대기 조합 카드를 손잡이로 끌어다 놓으면 배정(다른 모임 차례인 공유 코트는 제외)
+  const courtDrop = useDropTarget(
+    `court:${court.id}`,
+    { kind: 'court', courtId: court.id },
+    dragEnabled && !game && (!court.isShared || court.ourTurn),
+  );
   // 공유 코트 차례 전환 — 우리→상대는 수동으로도 넘길 수 있고(양보 등), 상대→우리는 이 탭이 유일한 복귀로
   const setTurn = (ourTurn: boolean) =>
     run(() =>
@@ -3044,13 +3101,22 @@ function CourtCard({
       );
     }
     return (
-      <MotionCard className="rounded-xl border border-dashed border-line p-4">
+      <MotionCard
+        ref={courtDrop.ref}
+        className={`rounded-xl border border-dashed p-4 ${
+          courtDrop.dragging ? 'border-court bg-court/5' : 'border-line'
+        } ${courtDrop.overCls}`}
+      >
         <div className="flex items-center justify-between gap-2">
           <span className="font-bold text-dim">
             {court.courtNo}번 코트 {court.isShared && <SharedBadge />}
           </span>
           <span className="text-xs text-faint">
-            {court.isShared ? '렛츠콕 차례 — 대기 조합에서 배정' : '비어 있음 — 대기 조합에서 배정'}
+            {courtDrop.dragging
+              ? '여기에 놓으면 배정'
+              : court.isShared
+                ? '렛츠콕 차례 — 대기 조합에서 배정'
+                : '비어 있음 — 대기 조합에서 배정'}
           </span>
         </div>
         {court.isShared && (
@@ -3450,7 +3516,19 @@ function QueueCard({
   dragEnabled: boolean;
 }) {
   const full = isFullGame(game);
-  const cardDrop = useDropTarget(`card:${game.id}`, { kind: 'card', gameId: game.id, full }, dragEnabled);
+  // 사람 놓기(태블릿)·조합 순서 놓기(폰 포함) 둘 다 받는다 — 무엇을 받을지는 board-dnd가 끄는 것에 따라 가린다
+  const cardDrop = useDropTarget(`card:${game.id}`, { kind: 'card', gameId: game.id, full, queued: true }, true);
+  // 손잡이로 이 조합을 끌어 다른 조합 위(순서)·빈 코트(배정, 태블릿)에 놓는다 — 폰도 같은 구역 안 순서 바꾸기는 된다
+  const gameDrag = useGameDrag(
+    {
+      kind: 'game',
+      gameId: game.id,
+      order,
+      names: (game.players ?? []).map((p) => p.attendance?.member?.name ?? '').filter(Boolean),
+      full,
+    },
+    true,
+  );
   // 바로 배정할 수 있는 코트(상대 차례인 공유 코트 제외) — 하나뿐이면 시트 없이 한 번에 넣는다
   const available = idleCourts.filter((court) => !court.isShared || court.ourTurn);
 
@@ -3481,11 +3559,20 @@ function QueueCard({
     <MotionCard
       ref={cardDrop.ref}
       className={`rounded-xl border bg-panel2 p-4 ${full ? 'border-amber/30' : 'border-dashed border-amber/50'} ${
-        full ? '' : cardDrop.overCls
-      }`}
+        cardDrop.overCls
+      } ${gameDrag.isDragging ? 'opacity-40' : ''}`}
     >
       <div className="flex items-center justify-between">
-        <span className="font-bold text-amber">
+        <span className="flex items-center gap-1 font-bold text-amber">
+          <span
+            ref={gameDrag.ref}
+            {...gameDrag.props}
+            aria-label={`다음 게임 ${order} 옮기기 — 길게 눌러 끌기`}
+            title="끌어서 순서 바꾸기·빈 코트에 놓아 배정"
+            className="tap -ml-1 flex h-8 w-6 cursor-grab touch-none items-center justify-center rounded text-base text-faint select-none"
+          >
+            ⠿
+          </span>
           다음 게임 {order}
           {!full && <span className="ml-1.5 text-xs font-medium text-faint">짜는 중</span>}
         </span>
