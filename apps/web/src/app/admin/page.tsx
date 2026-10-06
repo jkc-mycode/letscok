@@ -43,6 +43,7 @@ import {
   usePersonDrag,
   type DragItem,
   type DropTarget,
+  type GameRef,
 } from '@/components/board-dnd';
 import { arrayMove } from '@dnd-kit/sortable';
 import { CommandSheet } from '@/components/command-sheet';
@@ -1043,7 +1044,9 @@ function BoardBody({
             <p className="px-1 text-xs text-faint">화면</p>
             <ThemeToggle />
           </div>
-          <div className="flex flex-col overflow-hidden rounded-xl border border-line bg-panel2">
+          {/* shrink-0 — overflow-hidden 상자는 세로 목록에서 내용보다 작게 줄어든다. 낮은 폰에서 목록이 넘치면
+              스크롤 대신 이 상자가 눌려 [잠금]·[모임 종료]가 납작해지던 문제(위 묶음들은 바깥 div가 있어 안 줄어듦) */}
+          <div className="flex shrink-0 flex-col overflow-hidden rounded-xl border border-line bg-panel2">
             <button
               onClick={onLogout}
               className="flex h-12 items-center border-b border-line px-4 text-left text-sm text-dim"
@@ -3064,7 +3067,7 @@ function CourtCard({
   // 게임 중인 카드의 여백에 놓으면 아무 일 없게(사람 위에 놓아야 교체) — 떼어 내기로 오인되지 않게
   const cardDrop = useDropTarget(
     `card:${game?.id ?? court.id}`,
-    { kind: 'card', gameId: game?.id ?? '', full: true, queued: false },
+    { kind: 'card', full: true, queued: false, ...gameRef(game) },
     dragEnabled && !!game,
   );
   // 빈 코트 — 대기 조합 카드를 손잡이로 끌어다 놓으면 배정(다른 모임 차례인 공유 코트는 제외)
@@ -3185,6 +3188,15 @@ function CourtCard({
 
 // ===== 대기 조합 구역 =====
 
+// 놓는 곳이 속한 게임 정보(끄는 동안 못 놓을 곳을 미리 가리는 용도). 게임이 없는 빈 코트 카드는 빈 값
+function gameRef(game?: IGame): GameRef {
+  return {
+    gameId: game?.id ?? '',
+    memberIds: (game?.players ?? []).map((p) => p.attendanceId),
+    playing: game?.status === 'PLAYING',
+  };
+}
+
 // 4명이 다 찬 조합 — 코트 배정·모임원 앱 노출·빈 코트 채우기는 이것만(서버와 같은 기준)
 function isFullGame(game: IGame): boolean {
   return (game.players?.length ?? 0) >= GAME_SIZE;
@@ -3262,7 +3274,7 @@ function BoardSlots({
       )}
       {queued &&
         Array.from({ length: Math.max(0, GAME_SIZE - players.length) }, (_, i) => (
-          <EmptySlot key={`empty-${i}`} id={`slot:${game.id}:${i}`} gameId={game.id} dragEnabled={dragEnabled} onClick={onFillSlot} />
+          <EmptySlot key={`empty-${i}`} id={`slot:${game.id}:${i}`} game={game} dragEnabled={dragEnabled} onClick={onFillSlot} />
         ))}
     </div>
   );
@@ -3289,7 +3301,7 @@ function SlotPerson({
   const busyElsewhere = queued && player.attendance?.status === 'PLAYING';
   const drop = useDropTarget(
     `player:${game.id}:${player.attendanceId}`,
-    { kind: 'player', gameId: game.id, attendanceId: player.attendanceId },
+    { kind: 'player', attendanceId: player.attendanceId, ...gameRef(game) },
     dragEnabled,
   );
   // 게임 중인 코트의 사람은 끌어내지 않는다(게임을 깨지 않게 — 교체만)
@@ -3301,6 +3313,7 @@ function SlotPerson({
       grade: member.grade,
       gender: member.gender,
       fromGameId: game.id,
+      playing: player.attendance?.status === 'PLAYING',
     },
     dragEnabled && queued,
   );
@@ -3342,16 +3355,16 @@ function SlotPerson({
 
 function EmptySlot({
   id,
-  gameId,
+  game,
   dragEnabled,
   onClick,
 }: {
   id: string;
-  gameId: string;
+  game: IGame;
   dragEnabled: boolean;
   onClick?: () => void;
 }) {
-  const drop = useDropTarget(id, { kind: 'slot', gameId }, dragEnabled);
+  const drop = useDropTarget(id, { kind: 'slot', ...gameRef(game) }, dragEnabled);
   return (
     <button
       ref={drop.ref}
@@ -3517,7 +3530,7 @@ function QueueCard({
 }) {
   const full = isFullGame(game);
   // 사람 놓기(태블릿)·조합 순서 놓기(폰 포함) 둘 다 받는다 — 무엇을 받을지는 board-dnd가 끄는 것에 따라 가린다
-  const cardDrop = useDropTarget(`card:${game.id}`, { kind: 'card', gameId: game.id, full, queued: true }, true);
+  const cardDrop = useDropTarget(`card:${game.id}`, { kind: 'card', full, queued: true, ...gameRef(game) }, true);
   // 손잡이로 이 조합을 끌어 다른 조합 위(순서)·빈 코트(배정, 태블릿)에 놓는다 — 폰도 같은 구역 안 순서 바꾸기는 된다
   const gameDrag = useGameDrag(
     {
@@ -3526,6 +3539,7 @@ function QueueCard({
       order,
       names: (game.players ?? []).map((p) => p.attendance?.member?.name ?? '').filter(Boolean),
       full,
+      blocked: (game.players ?? []).some((p) => p.attendance?.status === 'PLAYING'),
     },
     true,
   );
@@ -3831,6 +3845,7 @@ function WaitingRow({
       grade: member?.grade ?? 'C',
       gender: member?.gender ?? null,
       fromGameId: null,
+      playing: attendance.status === 'PLAYING',
     },
     dragEnabled && !resting && !!member,
   );

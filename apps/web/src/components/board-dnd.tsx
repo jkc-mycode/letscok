@@ -34,6 +34,7 @@ export type DragPerson = {
   grade: Grade;
   gender: Gender | null;
   fromGameId: string | null;
+  playing: boolean; // 지금 다른 코트에서 게임 중 — 게임 중인 코트엔 넣을 수 없다(동시에 한 곳만)
 };
 
 // 끄는 것 — 대기 조합 카드(손잡이로)
@@ -43,6 +44,7 @@ export type DragGame = {
   order: number; // "다음 게임 N"
   names: string[];
   full: boolean;
+  blocked: boolean; // 다른 코트에서 아직 게임 중인 사람이 있다 — 코트에 놓을 수 없다
 };
 
 export type DragItem = DragPerson | DragGame;
@@ -50,18 +52,37 @@ export type DragItem = DragPerson | DragGame;
 // 놓는 곳
 export type DropTarget =
   | { kind: 'new-game' } // 대기 조합 맨 아래 새 조합 자리
-  | { kind: 'slot'; gameId: string } // 빈칸
-  | { kind: 'player'; gameId: string; attendanceId: string } // 찬 칸(교체)
-  | { kind: 'card'; gameId: string; full: boolean; queued: boolean } // 카드 여백 — 사람: 빈칸 있으면 넣기 / 조합: 대기 조합이면 그 자리로 순서 이동
+  | ({ kind: 'slot' } & GameRef) // 빈칸
+  | ({ kind: 'player'; attendanceId: string } & GameRef) // 찬 칸(교체)
+  | ({ kind: 'card'; full: boolean; queued: boolean } & GameRef) // 카드 여백 — 사람: 빈칸 있으면 넣기 / 조합: 대기 조합이면 그 자리로 순서 이동
   | { kind: 'roster' } // 명단 구역 — 카드에서 끌어낸 사람을 빼기
   | { kind: 'court'; courtId: string }; // 빈 코트 — 조합 카드를 놓으면 배정
 
-// 끄는 것마다 받는 곳이 다르다 — 사람은 칸·새 조합·명단·카드 여백, 조합은 다른 대기 조합 카드·빈 코트
-function accepts(item: DragItem, target: DropTarget): boolean {
+// 칸·카드가 속한 게임 — 놓기 전에 서버가 거절할 조합을 미리 가리는 데 쓴다
+export type GameRef = {
+  gameId: string;
+  memberIds: string[]; // 그 게임에 든 사람(출석 id)
+  playing: boolean; // 코트에서 게임 중
+};
+
+// 끄는 것을 이 곳이 어떻게 받나
+// yes = 놓으면 동작, noop = 받기만 하고 아무 일 없음(강조 안 함), no = 놓는 곳이 아님
+// noop이 필요한 이유: 받지 않으면 "아무 데도 아닌 곳"이 되어, 카드에서 끌어낸 사람이 원래 조합에서 빠져 버린다
+// 놓아도 서버가 거절할 곳(이미 든 조합, 게임 중인 사람을 게임 중 코트에, 아직 못 뛰는 조합을 코트에)은 미리 noop·no로 가린다
+type Judgement = 'yes' | 'noop' | 'no';
+function judge(item: DragItem, target: DropTarget): Judgement {
   if (item.kind === 'game') {
-    return (target.kind === 'card' && target.queued && target.gameId !== item.gameId) || (target.kind === 'court' && item.full);
+    if (target.kind === 'court') return item.full && !item.blocked ? 'yes' : 'no';
+    if (target.kind !== 'card' || !target.queued) return 'no';
+    return target.gameId === item.gameId ? 'noop' : 'yes';
   }
-  return target.kind !== 'court';
+  if (target.kind === 'court') return 'no';
+  if (target.kind === 'new-game' || target.kind === 'roster') return 'yes';
+  if (target.gameId === item.fromGameId) return 'noop'; // 제자리
+  if (target.memberIds.includes(item.attendanceId)) return 'noop'; // 이미 든 조합
+  if (target.playing && item.playing) return 'noop'; // 다른 코트에서 게임 중인 사람을 게임 중 코트에
+  if (target.kind === 'card' && target.full) return 'noop'; // 다 찬 카드 여백 — 사람 위에 놓아야 교체
+  return 'yes';
 }
 
 const LONG_PRESS_MS = 200; // 터치는 살짝 길게 눌러야 끌기 시작 — 짧게 누르면 선택, 밀면 스크롤
@@ -86,7 +107,7 @@ const smallestUnderPointer: CollisionDetection = (args) => {
   const item = args.active.data.current as DragItem | undefined;
   const droppableContainers = args.droppableContainers.filter((container) => {
     const target = container.data.current as DropTarget | undefined;
-    return !!item && !!target && accepts(item, target);
+    return !!item && !!target && judge(item, target) !== 'no';
   });
   const area = (id: string | number) => {
     const rect = args.droppableRects.get(id);
@@ -125,7 +146,10 @@ export function BoardDnd({
       setActive(null);
       onDraggingChange?.(false);
       const item = event.active.data.current as DragItem | undefined;
-      if (item) onDrop(item, (event.over?.data.current as DropTarget | undefined) ?? null);
+      const target = (event.over?.data.current as DropTarget | undefined) ?? null;
+      if (!item || (target && judge(item, target) === 'noop')) return; // 제자리·못 놓는 곳 — 그대로
+      if (target) navigator.vibrate?.(10); // 놓았다는 신호(안드로이드)
+      onDrop(item, target);
     },
     [onDrop, onDraggingChange],
   );
@@ -210,13 +234,11 @@ function activeItem(active: Active | null): DragItem | null {
 export function useDropTarget(id: string, target: DropTarget, enabled: boolean) {
   const { setNodeRef, isOver } = useDroppable({ id, data: target, disabled: !enabled });
   const item = activeItem(useDndContext().active);
-  const relevant = enabled && item !== null && accepts(item, target);
-  // 사람을 다 찬 카드 여백에 놓으면 아무 일 없다 — 받긴 하되(떼어 내기로 오인 방지) 놓을 곳처럼 보이지 않게
-  const noop = item?.kind === 'person' && target.kind === 'card' && target.full;
+  const relevant = enabled && item !== null && judge(item, target) === 'yes';
   return {
     ref: setNodeRef,
-    dragging: relevant && !noop,
-    overCls: relevant && !noop && isOver ? 'ring-2 ring-court ring-offset-1 ring-offset-bg' : '',
+    dragging: relevant,
+    overCls: relevant && isOver ? 'ring-2 ring-court ring-offset-1 ring-offset-bg' : '',
   };
 }
 
