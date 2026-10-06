@@ -6,7 +6,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { IGame, IPushCallResult } from '@letscok/shared-types';
+import { IFillCourtsResult, IGame, IPushCallResult } from '@letscok/shared-types';
 import { Prisma } from '../generated/prisma/client';
 import { toGameResponse } from '../common/mappers/entity.mappers';
 import { createCooldown } from '../common/utils/cooldown.util';
@@ -129,30 +129,92 @@ export class GamesService {
       );
     }
 
-    const attendanceIds = game.players.map((player) => player.attendanceId);
-    const assigned = await this.prisma.$transaction(async (tx) => {
-      await tx.court.update({
-        where: { id: court.id },
+    const assigned = await this.startOnCourt(id, court.id, game.players.map((p) => p.attendanceId));
+    this.realtime.broadcastSnapshot(game.sessionId);
+    this.push.notifyGame(id); // 4명에게 "N번 코트로 오세요"
+    return toGameResponse(assigned);
+  }
+
+  // 빈 코트 채우기 — 빈 코트(번호 순)에 대기 조합(순서대로)을 한 번에 배정한다
+  // 가능한 것만 넣는다: 다른 코트에서 게임 중인 사람이 든 조합은 건너뛰고 다음 조합을 넣는다(코트를 놀리지 않게)
+  async fillCourts(sessionId: string): Promise<IFillCourtsResult> {
+    await this.sessionsService.findOpenSessionOrThrow(sessionId);
+    const courts = (
+      await this.prisma.court.findMany({
+        where: { sessionId, deletedAt: null, status: 'IDLE' },
+        orderBy: { courtNo: 'asc' },
+      })
+    ).filter((court) => !court.isShared || court.ourTurn); // 다른 모임 차례인 공유 코트는 제외
+    const queued = await this.prisma.game.findMany({
+      where: { sessionId, status: 'QUEUED' },
+      orderBy: { queueOrder: 'asc' },
+      include: GAME_INCLUDE,
+    });
+
+    const result: IFillCourtsResult = { assigned: [], skipped: [] };
+    // 이번 채우기에서 코트에 들어간 사람도 "게임 중" — 겹친 뒤 조합이 같은 사람을 또 넣지 않게
+    const busy = new Set(
+      queued.flatMap((g) => g.players.filter((p) => p.attendance.status === 'PLAYING').map((p) => p.attendanceId)),
+    );
+    for (const game of queued) {
+      if (courts.length === 0) break;
+      const blocked = game.players.filter((p) => busy.has(p.attendanceId)).map((p) => p.attendance.member.name);
+      if (blocked.length > 0) {
+        result.skipped.push({ gameId: game.id, reason: `${blocked.join(', ')} 게임 중` });
+        continue;
+      }
+      const court = courts.shift()!;
+      const attendanceIds = game.players.map((p) => p.attendanceId);
+      try {
+        await this.startOnCourt(game.id, court.id, attendanceIds);
+      } catch (error) {
+        // 다른 기기가 먼저 배정한 경우 등 — 이 조합만 건너뛰고 계속
+        result.skipped.push({
+          gameId: game.id,
+          reason: error instanceof HttpException ? error.message : '배정하지 못했어요',
+        });
+        continue;
+      }
+      attendanceIds.forEach((id) => busy.add(id));
+      result.assigned.push({
+        gameId: game.id,
+        courtNo: court.courtNo,
+        names: game.players.map((p) => p.attendance.member.name),
+      });
+    }
+
+    if (result.assigned.length > 0) {
+      this.realtime.broadcastSnapshot(sessionId);
+      result.assigned.forEach((a) => this.push.notifyGame(a.gameId));
+    }
+    return result;
+  }
+
+  // 배정 실행(검증 끝난 뒤) — 코트·게임 상태를 조건부로 바꿔, 그 사이 다른 기기가 먼저 배정했으면 409
+  private startOnCourt(gameId: string, courtId: string, attendanceIds: string[]) {
+    return this.prisma.$transaction(async (tx) => {
+      const court = await tx.court.updateMany({
+        where: { id: courtId, status: 'IDLE' },
         data: { status: 'IN_GAME' },
       });
+      const game = await tx.game.updateMany({
+        where: { id: gameId, status: 'QUEUED' },
+        data: {
+          status: 'PLAYING',
+          courtId,
+          startedAt: new Date(),
+          queueOrder: null, // 큐에서 빠졌으므로 순서 제거
+        },
+      });
+      if (court.count === 0 || game.count === 0) {
+        throw new ConflictException('이미 다른 곳에서 배정된 코트나 조합입니다.');
+      }
       await tx.attendance.updateMany({
         where: { id: { in: attendanceIds } },
         data: { status: 'PLAYING' },
       });
-      return tx.game.update({
-        where: { id },
-        data: {
-          status: 'PLAYING',
-          courtId: court.id,
-          startedAt: new Date(),
-          queueOrder: null, // 큐에서 빠졌으므로 순서 제거
-        },
-        include: GAME_INCLUDE,
-      });
+      return tx.game.findUniqueOrThrow({ where: { id: gameId }, include: GAME_INCLUDE });
     });
-    this.realtime.broadcastSnapshot(game.sessionId);
-    this.push.notifyGame(id); // 4명에게 "N번 코트로 오세요"
-    return toGameResponse(assigned);
   }
 
   // 게임 종료: PLAYING → FINISHED, 코트 IDLE, 4명 대기 복귀(맨 뒤) + 게임 횟수 +1

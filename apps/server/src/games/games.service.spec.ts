@@ -247,6 +247,86 @@ describe('assign', () => {
   });
 });
 
+// ===== fillCourts (빈 코트 채우기) =====
+
+describe('fillCourts', () => {
+  async function queue(sessionId: string, ids: string[]) {
+    return service.create(sessionId, { attendanceIds: ids as [string, string, string, string] });
+  }
+
+  it('빈 코트(번호 순)에 대기 조합(순서대로)을 배정하고, 코트가 모자라면 남은 조합은 그대로 둔다', async () => {
+    const session = await seedSession();
+    const court2 = await seedCourt(session.id, 2);
+    const court1 = await seedCourt(session.id, 1);
+    const g1 = await queue(session.id, (await seedFour(session.id)).map((a) => a.id));
+    const g2 = await queue(session.id, (await seedFour(session.id)).map((a) => a.id));
+    const g3 = await queue(session.id, (await seedFour(session.id)).map((a) => a.id));
+    pushStub.notifyGame.mockClear();
+
+    const result = await service.fillCourts(session.id);
+
+    expect(result.assigned.map((a) => [a.gameId, a.courtNo])).toEqual([
+      [g1.id, 1],
+      [g2.id, 2],
+    ]);
+    expect(result.assigned[0].names).toHaveLength(4);
+    expect(result.skipped).toEqual([]);
+    const games = await prisma.game.findMany({ where: { sessionId: session.id } });
+    const byId = new Map(games.map((g) => [g.id, g]));
+    expect(byId.get(g1.id)?.courtId).toBe(court1.id);
+    expect(byId.get(g2.id)?.courtId).toBe(court2.id);
+    expect(byId.get(g3.id)?.status).toBe('QUEUED');
+    expect(pushStub.notifyGame).toHaveBeenCalledTimes(2);
+  });
+
+  it('앞 조합에 다른 코트에서 게임 중인 사람이 있으면 건너뛰고(이유 표시) 뒤 조합을 배정한다', async () => {
+    const session = await seedSession();
+    await seedCourt(session.id, 1);
+    const busy = await seedAttendance(session.id, { status: 'PLAYING' });
+    const busyMember = await prisma.member.findUniqueOrThrow({ where: { id: busy.memberId } });
+    const [a, b, c] = await seedFour(session.id);
+    const blocked = await queue(session.id, [busy.id, a.id, b.id, c.id]);
+    const next = await queue(session.id, (await seedFour(session.id)).map((x) => x.id));
+
+    const result = await service.fillCourts(session.id);
+
+    expect(result.assigned.map((x) => x.gameId)).toEqual([next.id]);
+    expect(result.skipped).toEqual([{ gameId: blocked.id, reason: `${busyMember.name} 게임 중` }]);
+  });
+
+  it('겹친 조합 — 앞 조합으로 코트에 들어간 사람이 있는 뒤 조합은 건너뛴다', async () => {
+    const session = await seedSession();
+    await seedCourt(session.id, 1);
+    await seedCourt(session.id, 2);
+    const [a, b, c, d] = await seedFour(session.id);
+    const [e, f, g] = await seedFour(session.id);
+    const first = await queue(session.id, [a.id, b.id, c.id, d.id]);
+    const overlap = await queue(session.id, [a.id, e.id, f.id, g.id]); // a가 겹침
+    const third = await queue(session.id, (await seedFour(session.id)).map((x) => x.id));
+
+    const result = await service.fillCourts(session.id);
+
+    expect(result.assigned.map((x) => x.gameId)).toEqual([first.id, third.id]);
+    expect(result.skipped.map((x) => x.gameId)).toEqual([overlap.id]);
+    expect(await statusOf(a.id)).toBe('PLAYING');
+  });
+
+  it('게임 중인 코트·다른 모임 차례인 공유 코트는 대상이 아니고, 넣을 게 없으면 빈 결과', async () => {
+    const session = await seedSession();
+    const playingCourt = await seedCourt(session.id, 1);
+    await prisma.court.create({
+      data: { sessionId: session.id, courtNo: 2, isShared: true, ourTurn: false },
+    });
+    const running = await queue(session.id, (await seedFour(session.id)).map((x) => x.id));
+    await service.assign(running.id, { courtId: playingCourt.id });
+    await queue(session.id, (await seedFour(session.id)).map((x) => x.id));
+
+    const result = await service.fillCourts(session.id);
+
+    expect(result).toEqual({ assigned: [], skipped: [] });
+  });
+});
+
 // ===== finish (게임 종료) =====
 
 describe('finish', () => {

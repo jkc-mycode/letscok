@@ -342,6 +342,12 @@ export interface ISessionSnapshot {
   games: IGame[]; // QUEUED + PLAYING (오늘 FINISHED 포함 여부는 쿼리 옵션)
 }
 
+// 빈 코트 채우기 결과 — 가능한 것만 배정하고, 못 넣은 조합은 이유와 함께 돌려준다
+export interface IFillCourtsResult {
+  assigned: { gameId: string; courtNo: number; names: string[] }[];
+  skipped: { gameId: string; reason: string }[]; // 예: "김OO 게임 중"
+}
+
 // ===== 웹 푸시 (/push/*) =====
 
 // 서버 비활성(VAPID 키 없음)이면 null — 웹은 구독 UI를 숨긴다

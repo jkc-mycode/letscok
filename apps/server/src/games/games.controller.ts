@@ -8,7 +8,13 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { IApiResponse, IGame, IGameRecommendation, IPushCallResult } from '@letscok/shared-types';
+import {
+  IApiResponse,
+  IFillCourtsResult,
+  IGame,
+  IGameRecommendation,
+  IPushCallResult,
+} from '@letscok/shared-types';
 import { AdminGuard } from '../common/guards/admin.guard';
 import {
   AssignGameDto,
@@ -55,6 +61,14 @@ export class GamesController {
     @Body() dto: AssignGameDto,
   ): Promise<IApiResponse<IGame>> {
     return { success: true, data: await this.gamesService.assign(id, dto) };
+  }
+
+  // 빈 코트 채우기 — 빈 코트에 대기 조합을 순서대로 한 번에 배정(가능한 것만)
+  @Post('sessions/:sessionId/fill-courts')
+  async fillCourts(
+    @Param('sessionId') sessionId: string,
+  ): Promise<IApiResponse<IFillCourtsResult>> {
+    return { success: true, data: await this.gamesService.fillCourts(sessionId) };
   }
 
   @Patch('games/:id/finish')
