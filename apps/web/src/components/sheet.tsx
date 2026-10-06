@@ -68,13 +68,29 @@ export function Sheet({
   footer?: React.ReactNode; // 스크롤 밖 하단 고정(주요 버튼)
   children: React.ReactNode;
 }) {
-  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 시트 닫기
-  useBodyScrollLock();
   const phone = useIsPhone();
   const panelRef = useRef<HTMLDivElement>(null);
-  const y = useMotionValue(0); // 시트의 세로 위치 — 올라오기·끌어내리기·제자리 복귀를 한 값으로
+  const y = useMotionValue(0); // 시트의 세로 위치 — 올라오기·끌어내리기·제자리 복귀·닫히기를 한 값으로
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const [closing, setClosing] = useState(false);
+  const closingRef = useRef(false);
+
+  // 모든 닫기([닫기]·뒤로가기·바깥 배경·끌어내리기)를 같은 모습으로 — 아래로 내려가고 배경이 흐려진 뒤 실제로 닫는다
+  const requestClose = () => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    setClosing(true);
+    if (phone) {
+      void animate(y, window.innerHeight, { duration: 0.2, ease: 'easeIn' }).then(() => onCloseRef.current());
+    }
+    // 넓은 화면은 아래 motion.div의 onAnimationComplete가 닫는다
+  };
+  const requestCloseRef = useRef(requestClose);
+  requestCloseRef.current = requestClose;
+
+  useBackClose(() => requestCloseRef.current()); // 안드로이드 뒤로가기 = 이 시트 닫기
+  useBodyScrollLock();
 
   // 폰: 화면 아래에서 올라온다
   useEffect(() => {
@@ -136,8 +152,7 @@ export function Sheet({
       const distance = y.get();
       const velocity = distance / Math.max(1, (performance.now() - startTime) / 1000);
       if (distance > CLOSE_DRAG_PX || (distance > CLOSE_FLICK_PX && velocity > CLOSE_VELOCITY)) {
-        // 마저 내려보낸 뒤 닫는다(뚝 사라지지 않게)
-        animate(y, window.innerHeight, { duration: 0.18, ease: 'easeIn' }).then(() => onCloseRef.current());
+        requestCloseRef.current(); // 놓은 자리에서 마저 내려보낸 뒤 닫는다
       } else {
         animate(y, 0, SPRING);
       }
@@ -156,9 +171,12 @@ export function Sheet({
   }, [phone, y]);
 
   return (
-    <div
-      onClick={dismissible ? onClose : undefined}
-      className={`fade-in fixed inset-0 ${layer} flex items-end justify-center bg-black/60 sm:items-center sm:p-4`}
+    <motion.div
+      onClick={dismissible ? requestClose : undefined}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: closing ? 0 : 1 }}
+      transition={{ duration: 0.2 }}
+      className={`fixed inset-0 ${layer} flex items-end justify-center bg-black/60 sm:items-center sm:p-4`}
     >
       <motion.div
         ref={panelRef}
@@ -168,8 +186,11 @@ export function Sheet({
         onClick={(e) => e.stopPropagation()}
         style={phone ? { y } : undefined}
         initial={phone ? false : { y: 12, opacity: 0 }}
-        animate={phone ? undefined : { y: 0, opacity: 1 }}
-        transition={SPRING}
+        animate={phone ? undefined : closing ? { y: 12, opacity: 0 } : { y: 0, opacity: 1 }}
+        transition={phone ? SPRING : closing ? { duration: 0.15 } : SPRING}
+        onAnimationComplete={() => {
+          if (!phone && closingRef.current) onCloseRef.current();
+        }}
         className={`flex max-h-[92dvh] w-full flex-col rounded-t-2xl border border-line bg-panel px-5 pt-2 pb-safe-sheet sm:rounded-2xl sm:pt-5 ${width}`}
       >
         <div
@@ -182,7 +203,7 @@ export function Sheet({
         <div className="flex shrink-0 items-center gap-2 pb-3">
           <div className="flex min-w-0 flex-1 items-center gap-2">{header}</div>
           <button
-            onClick={onClose}
+            onClick={requestClose}
             className="h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
           >
             닫기
@@ -191,6 +212,6 @@ export function Sheet({
         <div className={bodyClassName}>{children}</div>
         {footer && <div className="shrink-0 pt-3">{footer}</div>}
       </motion.div>
-    </div>
+    </motion.div>
   );
 }
