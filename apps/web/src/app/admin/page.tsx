@@ -38,6 +38,7 @@ import { ConnectionError } from '@/components/connection-error';
 import { SessionReportModal } from '@/components/session-report-modal';
 import { SettlementModal } from '@/components/settlement-modal';
 import { Sheet } from '@/components/sheet';
+import { ThemeCycleButton, ThemeToggle } from '@/components/theme-toggle';
 import { ExitGuard } from '@/components/exit-guard';
 import { GenderMarker, GradeBadge, PlayerGrid, Toast } from '@/components/badges';
 import { HomeLink } from '@/components/home-link';
@@ -202,6 +203,7 @@ function StartScreen({
           정산
         </button>
       </div>
+      <ThemeToggle className="w-64" />
       {/* 잠금 — 보드의 [잠금]과 같다. 저장된 패스코드를 지우고 입력 화면으로 (모임 전엔 보드가 없어 여기 둔다) */}
       <button
         onClick={onLogout}
@@ -581,6 +583,7 @@ function BoardBody({
         </p>
         {/* 데스크톱·태블릿: 가로 버튼 줄 */}
         <div className="ml-auto hidden items-center gap-2 md:flex">
+          <ThemeCycleButton className="h-10 w-10 rounded-lg border border-line text-base text-dim" />
           {headerActions.map((action) => (
             <button
               key={action.key}
@@ -931,6 +934,10 @@ function BoardBody({
               </div>
             </div>
           ))}
+          <div className="flex flex-col gap-1.5">
+            <p className="px-1 text-xs text-faint">화면</p>
+            <ThemeToggle />
+          </div>
           <div className="flex flex-col overflow-hidden rounded-xl border border-line bg-panel2">
             <button
               onClick={onLogout}

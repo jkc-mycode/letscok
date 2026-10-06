@@ -9,6 +9,8 @@ import { BAR_COLOR, ResolvedTheme, THEME_DEFAULT as DEFAULT, THEME_KEY as KEY } 
 
 export type ThemePref = 'system' | 'light' | 'dark';
 
+const CHANGE_EVENT = 'letscok:theme-change';
+
 function readPref(): ThemePref {
   try {
     const value = localStorage.getItem(KEY);
@@ -33,8 +35,12 @@ function apply(pref: ThemePref) {
 export function useTheme(): [ThemePref, (pref: ThemePref) => void] {
   const [pref, setPrefState] = useState<ThemePref>(DEFAULT);
 
+  // 같은 화면에 버튼이 둘(태블릿 헤더 아이콘 + 더보기 시트)일 수 있어 한쪽에서 바꾸면 다른 쪽 표시도 맞춘다
   useEffect(() => {
     setPrefState(readPref());
+    const onChange = (e: Event) => setPrefState((e as CustomEvent<ThemePref>).detail);
+    window.addEventListener(CHANGE_EVENT, onChange);
+    return () => window.removeEventListener(CHANGE_EVENT, onChange);
   }, []);
 
   useEffect(() => {
@@ -52,7 +58,7 @@ export function useTheme(): [ThemePref, (pref: ThemePref) => void] {
       // 저장이 막힌 브라우저(사생활 보호 모드 등) — 이번 실행 동안만 적용
     }
     apply(next);
-    setPrefState(next);
+    window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: next }));
   }, []);
 
   return [pref, setPref];
