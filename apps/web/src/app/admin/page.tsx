@@ -277,6 +277,7 @@ function BoardBody({
   const [menuOpen, setMenuOpen] = useState(false); // 폰 헤더 햄버거
   const [replaceGameId, setReplaceGameId] = useState<string | null>(null); // 선수 교체 대상 게임
   const [assignGameId, setAssignGameId] = useState<string | null>(null); // 코트 고르기 시트 대상 조합
+  const [actionId, setActionId] = useState<string | null>(null); // 폰 대기 줄 [⋯] 시트 대상 출석
 
   const { session, courts, attendances, games } = snapshot;
 
@@ -367,6 +368,11 @@ function BoardBody({
   const assignTarget = useMemo(
     () => games.find((g) => g.id === assignGameId && g.status === 'QUEUED') ?? null,
     [games, assignGameId],
+  );
+  // [⋯] 대상 — 실시간 스냅샷 기준, 퇴장·콕 취소되면 저절로 닫힌다
+  const actionTarget = useMemo(
+    () => attendances.find((a) => a.id === actionId && a.status !== 'LEFT' && a.shuttleConfirmedAt) ?? null,
+    [attendances, actionId],
   );
   const replaceTarget = useMemo(
     () =>
@@ -779,6 +785,7 @@ function BoardBody({
             {waiting.map((attendance) => (
               <WaitingRow
                 key={attendance.id}
+                onMore={(a) => setActionId(a.id)}
                 attendance={attendance}
                 now={now}
                 selected={selected.has(attendance.id)}
@@ -791,6 +798,7 @@ function BoardBody({
             {restingList.map((attendance) => (
               <WaitingRow
                 key={attendance.id}
+                onMore={(a) => setActionId(a.id)}
                 attendance={attendance}
                 now={now}
                 selected={false}
@@ -809,6 +817,7 @@ function BoardBody({
                 {busyList.map((attendance) => (
                   <WaitingRow
                     key={attendance.id}
+                    onMore={(a) => setActionId(a.id)}
                     attendance={attendance}
                     now={now}
                     selected={selected.has(attendance.id)}
@@ -879,6 +888,9 @@ function BoardBody({
           run={run}
           onClose={() => setAssignGameId(null)}
         />
+      )}
+      {actionTarget && (
+        <WaitingActionSheet attendance={actionTarget} run={run} onClose={() => setActionId(null)} />
       )}
       {replaceTarget && (
         <ReplacePlayerModal
@@ -3221,12 +3233,14 @@ function WaitingRow({
   run,
   busyStatus,
   resting,
+  onMore,
 }: {
   attendance: IAttendance;
   now: number;
   selected: boolean;
   onToggle: () => void;
   run: (a: () => Promise<unknown>) => Promise<void>;
+  onMore: (attendance: IAttendance) => void; // 폰: 줄 버튼 대신 [⋯] → 동작 시트
   busyStatus?: 'PLAYING' | 'MATCHED'; // 게임 중 포함 토글로 노출된 행 — 흐리게 + 상태 칩, 퇴장 버튼 없음
   resting?: boolean; // 휴식 행 — 선택 불가, 복귀·퇴장 버튼만
 }) {
@@ -3242,7 +3256,7 @@ function WaitingRow({
       }`}
     >
       <GradeBadge grade={member.grade} />
-      <span className="font-medium">{member.name}</span>
+      <span className="min-w-0 truncate font-medium">{member.name}</span>
       <GenderMarker gender={member.gender} />
       {member.isGuest && <span className="text-[10px] text-sky">게스트</span>}
       {busyStatus && (
@@ -3259,72 +3273,157 @@ function WaitingRow({
           휴식
         </span>
       )}
-      <span className="tabular ml-auto font-mono text-xs text-dim">
+      <span className="tabular ml-auto shrink-0 font-mono text-xs text-dim">
         {attendance.gamesPlayed}게임 · {formatWaitingMinutes(attendance.waitingSince, now)}
       </span>
+      {/* 폰: 줄이 좁아 작은 버튼 4개가 붙으면 잘못 누르기 쉽다 — [⋯] 하나로 모으고 시트에서 고른다 */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation(); // 행 선택 토글과 분리
+          onMore(attendance);
+        }}
+        aria-label={`${member.name} 동작 더보기`}
+        className="tap h-8 w-8 shrink-0 rounded-lg text-lg leading-none text-dim md:hidden"
+      >
+        ⋯
+      </button>
+      {/* 태블릿·데스크톱: 자리가 넉넉해 버튼을 그대로 펼쳐 둔다 */}
+      <div className="hidden shrink-0 items-center gap-2 md:flex">
+        <CallButton
+          path={`/attendances/${attendance.id}/call`}
+          label="호출"
+          title="이 분 폰으로 '운영진이 찾고 있어요' 알림을 보내요"
+          className="tap h-8 shrink-0 rounded-lg px-1.5 text-xs"
+          idleCls="text-dim hover:text-court"
+        />
+        {resting && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              void run(() =>
+                api(`/attendances/${attendance.id}/resume`, { method: 'PATCH' }),
+              );
+            }}
+            title="휴식 해제 — 대기로 복귀 (대기시간 리셋)"
+            className="tap h-8 shrink-0 rounded-lg border border-sky/40 px-2 text-xs font-medium text-sky"
+          >
+            복귀
+          </button>
+        )}
+        {!busyStatus && !resting && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation(); // 행 선택 토글과 분리
+              void run(() =>
+                api(`/attendances/${attendance.id}/rest`, { method: 'PATCH' }),
+              );
+            }}
+            title="휴식 처리 — 게임 조합 대상에서 제외"
+            className="tap h-8 shrink-0 rounded-lg px-1.5 text-xs text-dim hover:text-sky"
+          >
+            휴식
+          </button>
+        )}
+        {/* 콕을 잘못 확인했을 때의 유일한 복구 경로 — 되돌리면 콕 확인 대기로 올라간다 */}
+        {!busyStatus && (
+          <ConfirmButton
+            label="콕취소"
+            title="콕 확인 취소 — 콕 확인 대기로 되돌림"
+            onConfirm={() =>
+              void run(() =>
+                api(`/attendances/${attendance.id}/shuttle/cancel`, { method: 'PATCH', admin: true }),
+              )
+            }
+            className="tap h-8 shrink-0 rounded-lg px-1.5 text-xs"
+            idleCls="text-dim hover:text-amber"
+          />
+        )}
+        {!busyStatus && (
+          <ConfirmButton
+            label="✕"
+            confirmLabel="퇴장"
+            title="퇴장 처리"
+            onConfirm={() =>
+              void run(() =>
+                api(`/attendances/${attendance.id}/leave`, { method: 'PATCH', admin: true }),
+              )
+            }
+            className="tap h-8 min-w-8 shrink-0 rounded-lg px-1.5 text-xs"
+            idleCls="text-dim hover:text-coral"
+          />
+        )}
+      </div>
+    </MotionCard>
+  );
+}
+
+// 폰 대기 줄 [⋯] 시트 — 호출·휴식/복귀·콕 확인 취소·퇴장을 큰 버튼으로. 상태에 맞는 것만 보인다
+function WaitingActionSheet({
+  attendance,
+  run,
+  onClose,
+}: {
+  attendance: IAttendance;
+  run: (a: () => Promise<unknown>) => Promise<void>;
+  onClose: () => void;
+}) {
+  const member = attendance.member;
+  const resting = attendance.status === 'RESTING';
+  const busy = attendance.status === 'PLAYING' || attendance.status === 'MATCHED'; // 게임 중·조합에 든 사람은 호출만
+  const act = (path: string, admin: boolean) =>
+    void run(async () => {
+      await api(`/attendances/${attendance.id}/${path}`, { method: 'PATCH', ...(admin && { admin: true }) });
+      onClose();
+    });
+  const row = 'h-12 w-full rounded-xl px-4 text-left text-sm font-medium';
+  return (
+    <Sheet
+      ariaLabel={`${member?.name ?? ''} 동작`}
+      onClose={onClose}
+      header={
+        <>
+          {member && <GradeBadge grade={member.grade} />}
+          <h2 className="min-w-0 truncate text-lg font-bold">{member?.name}</h2>
+          <span className="shrink-0 font-mono text-xs text-dim">{attendance.gamesPlayed}게임</span>
+        </>
+      }
+      bodyClassName="flex flex-col gap-2 pb-1"
+    >
       <CallButton
         path={`/attendances/${attendance.id}/call`}
-        label="호출"
-        title="이 분 폰으로 '운영진이 찾고 있어요' 알림을 보내요"
-        className="tap h-8 shrink-0 rounded-lg px-1.5 text-xs"
-        idleCls="text-dim hover:text-court"
+        label="📣 호출 — 폰으로 '운영진이 찾고 있어요' 알림"
+        title="이 분 폰으로 알림을 보내요"
+        className={`${row} border border-line`}
+        idleCls="text-ink"
       />
       {resting && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            void run(() =>
-              api(`/attendances/${attendance.id}/resume`, { method: 'PATCH' }),
-            );
-          }}
-          title="휴식 해제 — 대기로 복귀 (대기시간 리셋)"
-          className="tap h-8 shrink-0 rounded-lg border border-sky/40 px-2 text-xs font-medium text-sky"
-        >
-          복귀
+        <button onClick={() => act('resume', false)} className={`${row} border border-sky/40 text-sky`}>
+          복귀 — 대기로 돌아가기(대기시간 새로 시작)
         </button>
       )}
-      {!busyStatus && !resting && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation(); // 행 선택 토글과 분리
-            void run(() =>
-              api(`/attendances/${attendance.id}/rest`, { method: 'PATCH' }),
-            );
-          }}
-          title="휴식 처리 — 게임 조합 대상에서 제외"
-          className="tap h-8 shrink-0 rounded-lg px-1.5 text-xs text-dim hover:text-sky"
-        >
-          휴식
+      {!busy && !resting && (
+        <button onClick={() => act('rest', false)} className={`${row} border border-line text-ink`}>
+          휴식 — 게임 조합에서 잠깐 빼기
         </button>
       )}
-      {/* 콕을 잘못 확인했을 때의 유일한 복구 경로 — 되돌리면 콕 확인 대기로 올라간다 */}
-      {!busyStatus && (
+      {!busy && (
         <ConfirmButton
-          label="콕취소"
-          title="콕 확인 취소 — 콕 확인 대기로 되돌림"
-          onConfirm={() =>
-            void run(() =>
-              api(`/attendances/${attendance.id}/shuttle/cancel`, { method: 'PATCH', admin: true }),
-            )
-          }
-          className="tap h-8 shrink-0 rounded-lg px-1.5 text-xs"
-          idleCls="text-dim hover:text-amber"
+          label="콕 확인 취소 — 콕 확인 대기로 되돌리기"
+          confirmLabel="한 번 더 누르면 콕 확인 취소"
+          onConfirm={() => act('shuttle/cancel', true)}
+          className={row}
+          idleCls="border border-line text-amber"
         />
       )}
-      {!busyStatus && (
+      {!busy && (
         <ConfirmButton
-          label="✕"
-          confirmLabel="퇴장"
-          title="퇴장 처리"
-          onConfirm={() =>
-            void run(() =>
-              api(`/attendances/${attendance.id}/leave`, { method: 'PATCH', admin: true }),
-            )
-          }
-          className="tap h-8 min-w-8 shrink-0 rounded-lg px-1.5 text-xs"
-          idleCls="text-dim hover:text-coral"
+          label="퇴장"
+          confirmLabel="한 번 더 누르면 퇴장"
+          onConfirm={() => act('leave', true)}
+          className={row}
+          idleCls="border border-coral/40 text-coral"
         />
       )}
-    </MotionCard>
+    </Sheet>
   );
 }
