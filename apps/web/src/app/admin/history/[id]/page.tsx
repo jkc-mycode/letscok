@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
 import { GenderMarker, GradeBadge } from '@/components/badges';
+import { SessionReportModal } from '@/components/session-report-modal';
 import { api, ApiError } from '@/lib/api';
 
 export default function HistoryDetailPage() {
@@ -27,6 +28,7 @@ function HistoryDetail() {
   const { id } = useParams<{ id: string }>();
   const [detail, setDetail] = useState<IHistorySessionDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reportOpen, setReportOpen] = useState(false); // 마무리 문구 — 모임 종료 직후에 못 만들었을 때 여기서 다시
 
   useEffect(() => {
     api<IHistorySessionDetail>(`/history/sessions/${id}`, { admin: true })
@@ -42,11 +44,20 @@ function HistoryDetail() {
         </Link>
         <h1 className="mt-1 text-2xl font-bold">{detail?.session.date ?? '모임 상세'}</h1>
         {detail && (
-          <p className="mt-1 text-sm text-dim">
-            출석 {detail.session.attendeeCount}명 · 게임 {detail.session.finishedGameCount}판
-          </p>
+          <div className="mt-1 flex items-center gap-2">
+            <p className="text-sm text-dim">
+              출석 {detail.session.attendeeCount}명 · 게임 {detail.session.finishedGameCount}판
+            </p>
+            <button
+              onClick={() => setReportOpen(true)}
+              className="ml-auto h-9 shrink-0 rounded-lg border border-court/50 px-3 text-sm font-medium text-court"
+            >
+              마무리 문구
+            </button>
+          </div>
         )}
       </header>
+      {reportOpen && <SessionReportModal sessionId={id} onClose={() => setReportOpen(false)} />}
 
       {error && <p className="py-10 text-center text-sm text-coral">{error}</p>}
       {!error && detail === null && (
