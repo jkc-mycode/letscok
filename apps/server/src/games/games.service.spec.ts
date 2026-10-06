@@ -157,6 +157,24 @@ describe('create', () => {
     expect(await statusOf(a.id)).toBe('MATCHED'); // 미배정만 승격
   });
 
+  it('똑같은 4명 조합이 이미 대기 중이면 409 — 순서가 달라도, 두 기기에서 동시에 넣어도 하나만', async () => {
+    const session = await seedSession();
+    const [a, b, c, d] = await seedFour(session.id);
+    await service.create(session.id, { attendanceIds: [a.id, b.id, c.id, d.id] });
+
+    await expect(
+      service.create(session.id, { attendanceIds: [d.id, c.id, b.id, a.id] }),
+    ).rejects.toThrow('같은 4명 조합이 이미 대기 중이에요.');
+
+    const [e, f, g, h] = await seedFour(session.id);
+    const results = await Promise.allSettled([
+      service.create(session.id, { attendanceIds: [e.id, f.id, g.id, h.id] }),
+      service.create(session.id, { attendanceIds: [e.id, f.id, g.id, h.id] }),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
+  });
+
   it('LEFT 인원 포함 시 409, 같은 사람 중복 선택 시 400', async () => {
     const session = await seedSession();
     const left = await seedAttendance(session.id, { status: 'LEFT' });

@@ -64,6 +64,18 @@ export class GamesService {
     }
 
     const game = await this.prisma.$transaction(async (tx) => {
+      // 같은 모임의 조합 생성은 한 줄로 세운다 — 운영진 두 명이 동시에 같은 추천을 넣어도 중복 검사가 서로를 본다
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${sessionId}))`;
+      // 똑같은 4명이 이미 대기 조합에 있으면 막는다(두 기기에서 같은 "남복 짜줘"를 넣는 경우 등) — 겹침 허용과는 별개
+      const key = [...uniqueIds].sort().join('|');
+      const queuedGames = await tx.game.findMany({
+        where: { sessionId, status: 'QUEUED' },
+        select: { players: { select: { attendanceId: true } } },
+      });
+      if (queuedGames.some((g) => g.players.map((p) => p.attendanceId).sort().join('|') === key)) {
+        throw new ConflictException('같은 4명 조합이 이미 대기 중이에요.');
+      }
+
       // 대기 조합 큐의 맨 뒤에 붙인다
       const lastQueued = await tx.game.findFirst({
         where: { sessionId, status: 'QUEUED' },
