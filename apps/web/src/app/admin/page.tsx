@@ -34,6 +34,15 @@ import {
 import { LoginGate, useAdminAuth } from '@/components/admin-gate';
 import { AiCheckInPanel } from '@/components/ai-check-in-panel';
 import { BirthdayCalendarModal } from '@/components/birthday-calendar';
+import {
+  BoardDnd,
+  mergeRefs,
+  useBoardDragEnabled,
+  useDropTarget,
+  usePersonDrag,
+  type DragPerson,
+  type DropTarget,
+} from '@/components/board-dnd';
 import { CommandSheet } from '@/components/command-sheet';
 import { ConnectionError } from '@/components/connection-error';
 import { SessionReportModal } from '@/components/session-report-modal';
@@ -41,7 +50,7 @@ import { SettlementModal } from '@/components/settlement-modal';
 import { Sheet } from '@/components/sheet';
 import { ThemeCycleButton, ThemeToggle } from '@/components/theme-toggle';
 import { ExitGuard } from '@/components/exit-guard';
-import { GenderMarker, GradeBadge, PlayerGrid, Toast } from '@/components/badges';
+import { GenderMarker, GradeBadge, Toast } from '@/components/badges';
 import { HomeLink } from '@/components/home-link';
 import { MotionCard } from '@/components/motion-card';
 import { GRADES, MultiMemberForm, NewMemberBody } from '@/components/multi-member-form';
@@ -294,6 +303,50 @@ function BoardBody({
   const [slotTarget, setSlotTarget] = useState<{ gameId: string | null; pending?: IGame } | null>(null);
 
   const { session, courts, attendances, games } = snapshot;
+  const dragEnabled = useBoardDragEnabled(); // 태블릿 이상 — 자석판처럼 끌어다 놓기
+
+  // 끌어다 놓기 → 서버 호출. 카드에서 끌어낸 사람은 자석을 옮기듯 원래 조합에서 빠진다
+  const onDrop = useCallback(
+    (person: DragPerson, target: DropTarget | null) => {
+      const from = person.fromGameId;
+      const body = { attendanceId: person.attendanceId };
+      const leaveOrigin = () =>
+        from
+          ? api(`/games/${from}/players/${person.attendanceId}`, { method: 'DELETE', admin: true })
+          : Promise.resolve();
+      // 아무 데도 아닌 곳·명단 = 카드에서 떼어 내기(명단에서 끈 거면 아무 일 없음)
+      if (!target || target.kind === 'roster') {
+        if (from) void run(leaveOrigin);
+        return;
+      }
+      if (target.kind === 'new-game') {
+        void run(async () => {
+          await api(`/sessions/${session.id}/games/draft`, { method: 'POST', admin: true, body });
+          await leaveOrigin();
+        });
+        return;
+      }
+      if (target.kind === 'player') {
+        if (target.gameId === from || target.attendanceId === person.attendanceId) return; // 같은 카드 안 — 그대로
+        void run(async () => {
+          await api(`/games/${target.gameId}/players`, {
+            method: 'PATCH',
+            admin: true,
+            body: { outAttendanceId: target.attendanceId, inAttendanceId: person.attendanceId },
+          });
+          await leaveOrigin();
+        });
+        return;
+      }
+      // 빈칸 또는 빈칸 있는 카드의 여백 — 같은 카드거나 다 찬 카드면 그대로
+      if (target.gameId === from || (target.kind === 'card' && target.full)) return;
+      void run(async () => {
+        await api(`/games/${target.gameId}/players`, { method: 'POST', admin: true, body });
+        await leaveOrigin();
+      });
+    },
+    [run, session.id],
+  );
 
   const playingByCourt = useMemo(() => {
     const map = new Map<string, IGame>();
@@ -632,6 +685,7 @@ function BoardBody({
 
 
       {/* 3구역 — 폰: 탭 1구역 / 태블릿 세로: 2열(게임 중 | 조합+대기) / 데스크톱: 3열 */}
+      <BoardDnd onDrop={onDrop}>
       <div
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
@@ -675,6 +729,7 @@ function BoardBody({
                 now={now}
                 run={run}
                 onReplace={(g) => setReplaceGameId(g.id)}
+                dragEnabled={dragEnabled}
               />
             ))}
           </AnimatePresence>
@@ -720,22 +775,17 @@ function BoardBody({
                 onReplace={(g) => setReplaceGameId(g.id)}
                 onPickCourt={(g) => setAssignGameId(g.id)}
                 onFillSlot={(g) => setSlotTarget({ gameId: g.id })}
+                dragEnabled={dragEnabled}
               />
             ))}
           </AnimatePresence>
-          {/* 새 조합 자리 — 늘 맨 아래에 비어 있다. 첫 사람을 넣으면 빈칸 3개짜리 조합이 생긴다 */}
-          <button
-            onClick={() => setSlotTarget({ gameId: null })}
-            className="flex h-14 shrink-0 items-center justify-center rounded-xl border border-dashed border-amber/40 text-sm font-medium text-amber/80"
-          >
-            + 새 조합
-          </button>
+          <NewGameSlot dragEnabled={dragEnabled} onClick={() => setSlotTarget({ gameId: null })} />
         </Zone>
         </div>
 
         {/* 대기 인원 + 운영 메모 — md 이상은 한 컬럼 세로 분할, 폰은 각각 별도 탭(래퍼가 사라져 두 구역이 트랙에 바로 놓인다) */}
         <div className="flex min-h-0 flex-col gap-3 max-md:contents">
-        <div className={`${pane} flex-1`}>
+        <RosterDrop className={`${pane} flex-1`} dragEnabled={dragEnabled}>
         <Zone
           title="명단"
           accent="text-ink"
@@ -816,6 +866,7 @@ function BoardBody({
                 }
                 placeLabel={placeLabels.get(attendance.id)}
                 resting={attendance.status === 'RESTING'}
+                dragEnabled={dragEnabled}
               />
             ))}
           </AnimatePresence>
@@ -823,12 +874,13 @@ function BoardBody({
             <p className="pt-2 text-center text-xs text-faint">퇴장 {leftCount}명</p>
           )}
         </Zone>
-        </div>
+        </RosterDrop>
         <div className={`${pane} flex-1 md:max-h-[35%] md:flex-none`}>
           <MemoPanel snapshot={snapshot} run={run} busy={busy} />
         </div>
         </div>
       </div>
+      </BoardDnd>
 
       {/* 구역 탭 — 폰에서만, 화면 맨 아래(엄지 자리). md 이상은 3열로 동시 표시.
           선택 표시(.board-tab-indicator)가 스와이프를 따라 미끄러진다 */}
@@ -2707,6 +2759,8 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
       '한 사람이 여러 대기 조합에 들어갈 수 있어요 (잔여 인원을 미리 조합할 때 유용) — 두 곳 이상이면 "겹침" 배지.',
       '명단에는 조합·게임에 든 사람도 늘 보여요(이름 옆에 "조합 2"·"1번 코트"). 그 사람도 골라서 다음 조합에 미리 넣을 수 있어요.',
       '1~3명만 골라 [빈칸 조합]을 누르거나 대기 조합 맨 아래 [+ 새 조합]을 누르면 빈칸이 있는 조합이 생겨요. 빈칸을 눌러 한 명씩 채우고, 이름 옆 ✕로 빼요. 4명이 다 차야 코트에 배정되고 모임원 앱에도 보여요.',
+      '태블릿에서는 자석판처럼 끌어서 옮겨요. 명단의 이름을 살짝 길게 누르면 들려요 → [+ 새 조합] 자리에 놓으면 새 조합, 빈칸에 놓으면 채우기, 조합·코트 카드의 사람 위에 놓으면 교체.',
+      '대기 조합 카드의 사람을 끌어 다른 조합에 놓으면 옮겨지고, 명단 쪽에 놓으면 그 조합에서 빠져요. 게임 중인 코트의 사람은 끌어낼 수 없어요(교체만).',
       '조합에 게임 중인 사람이 있으면 그 게임이 끝날 때까지 코트 배정이 잠겨요.',
     ],
   },
@@ -2951,13 +3005,17 @@ function CourtCard({
   now,
   run,
   onReplace,
+  dragEnabled,
 }: {
   court: ICourt;
   game?: IGame;
   now: number;
   run: (a: () => Promise<unknown>) => Promise<void>;
   onReplace: (game: IGame) => void;
+  dragEnabled: boolean;
 }) {
+  // 게임 중인 카드의 여백에 놓으면 아무 일 없게(사람 위에 놓아야 교체) — 떼어 내기로 오인되지 않게
+  const cardDrop = useDropTarget(`card:${game?.id ?? court.id}`, { kind: 'card', gameId: game?.id ?? '', full: true }, dragEnabled && !!game);
   // 공유 코트 차례 전환 — 우리→상대는 수동으로도 넘길 수 있고(양보 등), 상대→우리는 이 탭이 유일한 복귀로
   const setTurn = (ourTurn: boolean) =>
     run(() =>
@@ -3008,7 +3066,7 @@ function CourtCard({
     );
   }
   return (
-    <MotionCard className="rounded-xl border border-court/40 bg-panel2 p-4">
+    <MotionCard ref={cardDrop.ref} className="rounded-xl border border-court/40 bg-panel2 p-4">
       <div className="flex items-center justify-between gap-2">
         <span className="font-bold text-court">
           {court.courtNo}번 코트 {court.isShared && <SharedBadge />}
@@ -3017,7 +3075,7 @@ function CourtCard({
           {game.startedAt ? formatElapsed(game.startedAt, now) : '--:--'}
         </span>
       </div>
-      <PlayerGrid game={game} />
+      <BoardSlots game={game} run={run} dragEnabled={dragEnabled} />
       <div className="mt-3 flex flex-wrap gap-2">
         <button
           onClick={() => void run(() => api(`/games/${game.id}/finish`, { method: 'PATCH', admin: true }))}
@@ -3103,50 +3161,174 @@ function buildPlaceLabels(
   return labels;
 }
 
-// 빈칸 있는 조합의 4칸 — 찬 칸은 이름 + ✕(빼기), 빈칸은 눌러서 사람 고르기
-function DraftSlots({
+// 조합·코트 카드의 4칸 — 사람 칸은 끌어다 놓기의 대상(교체), 대기 조합의 사람은 끌어서 옮기거나 떼어 낼 수 있다
+// 빈칸 있는 조합: 이름 옆 ✕(빼기) + 빈칸 [+ 넣기](사람 고르기 시트, 끌어다 놓기도 됨)
+function BoardSlots({
   game,
+  overlapIds,
   run,
+  dragEnabled,
   onFillSlot,
 }: {
   game: IGame;
+  overlapIds?: Set<string>;
   run: (a: () => Promise<unknown>) => Promise<void>;
-  onFillSlot: () => void;
+  dragEnabled: boolean;
+  onFillSlot?: () => void;
 }) {
   const players = game.players ?? [];
+  const queued = game.status === 'QUEUED';
+  const draft = queued && !isFullGame(game);
   return (
     <div className="mt-3 grid grid-cols-2 gap-1.5">
-      {players.map((player) => {
-        const member = player.attendance?.member;
-        if (!member) return null;
-        return (
-          <div key={player.id} className="flex h-10 items-center gap-1.5 rounded-lg bg-panel px-2 text-sm">
-            <GradeBadge grade={member.grade} />
-            <span className="min-w-0 truncate font-medium">{member.name}</span>
-            <GenderMarker gender={member.gender} />
-            <button
-              onClick={() =>
-                void run(() =>
-                  api(`/games/${game.id}/players/${player.attendanceId}`, { method: 'DELETE', admin: true }),
-                )
-              }
-              aria-label={`${member.name} 빼기`}
-              className="tap ml-auto h-7 w-7 shrink-0 rounded text-xs text-dim hover:text-coral"
-            >
-              ✕
-            </button>
-          </div>
-        );
-      })}
-      {Array.from({ length: GAME_SIZE - players.length }, (_, i) => (
-        <button
-          key={`empty-${i}`}
-          onClick={onFillSlot}
-          className="h-10 rounded-lg border border-dashed border-line text-xs text-faint"
+      {players.map((player) =>
+        player.attendance?.member ? (
+          <SlotPerson
+            key={player.id}
+            game={game}
+            player={player}
+            overlap={overlapIds?.has(player.attendanceId) ?? false}
+            removable={draft}
+            run={run}
+            dragEnabled={dragEnabled}
+          />
+        ) : null,
+      )}
+      {queued &&
+        Array.from({ length: Math.max(0, GAME_SIZE - players.length) }, (_, i) => (
+          <EmptySlot key={`empty-${i}`} id={`slot:${game.id}:${i}`} gameId={game.id} dragEnabled={dragEnabled} onClick={onFillSlot} />
+        ))}
+    </div>
+  );
+}
+
+function SlotPerson({
+  game,
+  player,
+  overlap,
+  removable,
+  run,
+  dragEnabled,
+}: {
+  game: IGame;
+  player: NonNullable<IGame['players']>[number];
+  overlap: boolean;
+  removable: boolean;
+  run: (a: () => Promise<unknown>) => Promise<void>;
+  dragEnabled: boolean;
+}) {
+  const member = player.attendance!.member!;
+  const queued = game.status === 'QUEUED';
+  // 대기 조합에 있는데 본인은 다른 코트에서 게임 중 = 미리 짜둔 조합의 차용 인원
+  const busyElsewhere = queued && player.attendance?.status === 'PLAYING';
+  const drop = useDropTarget(
+    `player:${game.id}:${player.attendanceId}`,
+    { kind: 'player', gameId: game.id, attendanceId: player.attendanceId },
+    dragEnabled,
+  );
+  // 게임 중인 코트의 사람은 끌어내지 않는다(게임을 깨지 않게 — 교체만)
+  const drag = usePersonDrag(
+    {
+      kind: 'person',
+      attendanceId: player.attendanceId,
+      name: member.name,
+      grade: member.grade,
+      gender: member.gender,
+      fromGameId: game.id,
+    },
+    dragEnabled && queued,
+  );
+  return (
+    <div
+      ref={mergeRefs(drop.ref, drag.ref)}
+      {...drag.props}
+      className={`flex h-10 min-w-0 items-center gap-1.5 rounded-lg bg-panel px-2 text-sm ${drag.dragCls} ${drop.overCls}`}
+    >
+      <GradeBadge grade={member.grade} />
+      <span className="min-w-0 truncate font-medium">{member.name}</span>
+      <GenderMarker gender={member.gender} />
+      {member.isGuest && <span className="text-[10px] text-sky">G</span>}
+      {busyElsewhere && (
+        <span className="shrink-0 rounded bg-court/15 px-1 py-0.5 text-[10px] font-medium text-court">게임 중</span>
+      )}
+      {!busyElsewhere && overlap && (
+        <span
+          title="다른 대기 조합에도 포함"
+          className="shrink-0 rounded bg-amber/15 px-1 py-0.5 text-[10px] font-medium text-amber"
         >
-          + 넣기
+          겹침
+        </span>
+      )}
+      {removable && (
+        <button
+          onClick={() =>
+            void run(() => api(`/games/${game.id}/players/${player.attendanceId}`, { method: 'DELETE', admin: true }))
+          }
+          aria-label={`${member.name} 빼기`}
+          className="tap ml-auto h-7 w-7 shrink-0 rounded text-xs text-dim hover:text-coral"
+        >
+          ✕
         </button>
-      ))}
+      )}
+    </div>
+  );
+}
+
+function EmptySlot({
+  id,
+  gameId,
+  dragEnabled,
+  onClick,
+}: {
+  id: string;
+  gameId: string;
+  dragEnabled: boolean;
+  onClick?: () => void;
+}) {
+  const drop = useDropTarget(id, { kind: 'slot', gameId }, dragEnabled);
+  return (
+    <button
+      ref={drop.ref}
+      onClick={onClick}
+      className={`h-10 rounded-lg border border-dashed text-xs ${
+        drop.dragging ? 'border-amber/60 text-amber' : 'border-line text-faint'
+      } ${drop.overCls}`}
+    >
+      {drop.dragging ? '여기에 놓기' : '+ 넣기'}
+    </button>
+  );
+}
+
+// 새 조합 자리 — 대기 조합 맨 아래에 늘 비어 있다. 눌러서 고르거나 사람을 끌어다 놓으면 빈칸 3개짜리 조합이 생긴다
+function NewGameSlot({ dragEnabled, onClick }: { dragEnabled: boolean; onClick: () => void }) {
+  const drop = useDropTarget('new-game', { kind: 'new-game' }, dragEnabled);
+  return (
+    <button
+      ref={drop.ref}
+      onClick={onClick}
+      className={`flex h-14 shrink-0 items-center justify-center rounded-xl border border-dashed text-sm font-medium ${
+        drop.dragging ? 'border-amber bg-amber/10 text-amber' : 'border-amber/40 text-amber/80'
+      } ${drop.overCls}`}
+    >
+      {drop.dragging ? '여기에 놓으면 새 조합' : '+ 새 조합'}
+    </button>
+  );
+}
+
+// 명단 구역 — 조합 카드에서 끌어낸 사람을 여기 놓으면 그 조합에서 빠진다(자석 떼기)
+function RosterDrop({
+  className,
+  dragEnabled,
+  children,
+}: {
+  className: string;
+  dragEnabled: boolean;
+  children: React.ReactNode;
+}) {
+  const drop = useDropTarget('roster', { kind: 'roster' }, dragEnabled);
+  return (
+    <div ref={drop.ref} className={`${className} rounded-2xl ${drop.overCls}`}>
+      {children}
     </div>
   );
 }
@@ -3253,6 +3435,7 @@ function QueueCard({
   onReplace,
   onPickCourt,
   onFillSlot,
+  dragEnabled,
 }: {
   game: IGame;
   order: number;
@@ -3264,8 +3447,10 @@ function QueueCard({
   onReplace: (game: IGame) => void;
   onPickCourt: (game: IGame) => void; // 빈 코트가 여럿이면 코트 고르기 시트
   onFillSlot: (game: IGame) => void; // 빈칸 → 사람 고르기 시트
+  dragEnabled: boolean;
 }) {
   const full = isFullGame(game);
+  const cardDrop = useDropTarget(`card:${game.id}`, { kind: 'card', gameId: game.id, full }, dragEnabled);
   // 바로 배정할 수 있는 코트(상대 차례인 공유 코트 제외) — 하나뿐이면 시트 없이 한 번에 넣는다
   const available = idleCourts.filter((court) => !court.isShared || court.ourTurn);
 
@@ -3294,7 +3479,10 @@ function QueueCard({
 
   return (
     <MotionCard
-      className={`rounded-xl border bg-panel2 p-4 ${full ? 'border-amber/30' : 'border-dashed border-amber/50'}`}
+      ref={cardDrop.ref}
+      className={`rounded-xl border bg-panel2 p-4 ${full ? 'border-amber/30' : 'border-dashed border-amber/50'} ${
+        full ? '' : cardDrop.overCls
+      }`}
     >
       <div className="flex items-center justify-between">
         <span className="font-bold text-amber">
@@ -3318,11 +3506,13 @@ function QueueCard({
           </button>
         </div>
       </div>
-      {full ? (
-        <PlayerGrid game={game} overlapIds={overlapIds} />
-      ) : (
-        <DraftSlots game={game} run={run} onFillSlot={() => onFillSlot(game)} />
-      )}
+      <BoardSlots
+        game={game}
+        overlapIds={overlapIds}
+        run={run}
+        dragEnabled={dragEnabled}
+        onFillSlot={() => onFillSlot(game)}
+      />
       <div className="mt-3 flex flex-wrap gap-2">
         {!full ? (
           <span className="flex h-11 flex-1 items-center justify-center rounded-lg border border-dashed border-line px-2 text-center text-xs text-faint">
@@ -3532,6 +3722,7 @@ function WaitingRow({
   placeLabel,
   resting,
   onMore,
+  dragEnabled,
 }: {
   attendance: IAttendance;
   now: number;
@@ -3542,17 +3733,31 @@ function WaitingRow({
   busyStatus?: 'PLAYING' | 'MATCHED'; // 조합·게임에 든 사람 — 흐리게 + 위치 칩, 휴식·퇴장 버튼 없음
   placeLabel?: string; // 위치 칩 문구("조합 2, 3"·"1번 코트")
   resting?: boolean; // 휴식 행 — 선택 불가, 복귀·퇴장 버튼만
+  dragEnabled: boolean; // 태블릿: 살짝 길게 눌러(마우스는 끌어) 조합 칸으로 옮긴다
 }) {
   const member = attendance.member;
+  const drag = usePersonDrag(
+    {
+      kind: 'person',
+      attendanceId: attendance.id,
+      name: member?.name ?? '',
+      grade: member?.grade ?? 'C',
+      gender: member?.gender ?? null,
+      fromGameId: null,
+    },
+    dragEnabled && !resting && !!member,
+  );
   if (!member) return null;
   return (
     <MotionCard
+      ref={drag.ref}
+      {...drag.props}
       onClick={resting ? undefined : onToggle}
       className={`flex items-center gap-2 rounded-xl border p-3 transition-colors ${
         selected ? 'border-amber bg-amber/10' : 'border-line bg-panel2'
       } ${(busyStatus && !selected) || resting ? 'opacity-60' : ''} ${
         resting ? '' : 'cursor-pointer'
-      }`}
+      } ${drag.dragCls}`}
     >
       <GradeBadge grade={member.grade} />
       <span className="min-w-0 truncate font-medium">{member.name}</span>
