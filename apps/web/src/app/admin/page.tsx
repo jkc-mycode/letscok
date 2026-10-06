@@ -276,6 +276,7 @@ function BoardBody({
   const swipe = useRef<{ x: number; y: number; dir: 'h' | 'v' | null; dx: number } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false); // 폰 헤더 햄버거
   const [replaceGameId, setReplaceGameId] = useState<string | null>(null); // 선수 교체 대상 게임
+  const [assignGameId, setAssignGameId] = useState<string | null>(null); // 코트 고르기 시트 대상 조합
 
   const { session, courts, attendances, games } = snapshot;
 
@@ -362,6 +363,11 @@ function BoardBody({
     return new Set([...counts].filter(([, count]) => count >= 2).map(([id]) => id));
   }, [queuedGames]);
   // 모달이 열린 동안에도 실시간 스냅샷을 따라가도록 id로 파생 — 게임이 끝나/해체되면 자동으로 닫힘
+  // 코트 고르기 대상 — 실시간 스냅샷 기준, 이미 배정·해체됐으면 시트가 저절로 닫힌다
+  const assignTarget = useMemo(
+    () => games.find((g) => g.id === assignGameId && g.status === 'QUEUED') ?? null,
+    [games, assignGameId],
+  );
   const replaceTarget = useMemo(
     () =>
       games.find(
@@ -456,9 +462,8 @@ function BoardBody({
     {
       key: 'courts',
       label: '코트 관리',
-      keepMenuOpen: true,
-      onClick: () => setCourtsOpen((v) => !v),
-      cls: courtsOpen ? 'border-court text-court' : 'border-line text-dim',
+      onClick: () => setCourtsOpen(true),
+      cls: 'border-line text-dim',
     },
     {
       key: 'close',
@@ -600,8 +605,6 @@ function BoardBody({
         </div>
       )}
 
-      {courtsOpen && <CourtsManager sessionId={session.id} courts={courts} playingByCourt={playingByCourt} run={run} />}
-
       {/* 구역 탭 — 폰에서만 (md 이상은 3열로 동시 표시). 선택 표시(.board-tab-indicator)가 스와이프를 따라 미끄러진다 */}
       <div className="relative mb-2 flex rounded-xl border border-line p-1 md:hidden">
         <span
@@ -687,6 +690,7 @@ function BoardBody({
                 overlapIds={overlapIds}
                 run={run}
                 onReplace={(g) => setReplaceGameId(g.id)}
+                onPickCourt={(g) => setAssignGameId(g.id)}
               />
             ))}
           </AnimatePresence>
@@ -858,6 +862,24 @@ function BoardBody({
         />
       )}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
+      {courtsOpen && (
+        <CourtsManager
+          sessionId={session.id}
+          courts={courts}
+          playingByCourt={playingByCourt}
+          run={run}
+          onClose={() => setCourtsOpen(false)}
+        />
+      )}
+      {/* 코트 고르기 — 대기 조합 카드는 보드 트랙(transform) 안이라 시트를 여기(바깥)에서 띄운다 */}
+      {assignTarget && (
+        <CourtPickSheet
+          game={assignTarget}
+          idleCourts={idleCourts}
+          run={run}
+          onClose={() => setAssignGameId(null)}
+        />
+      )}
       {replaceTarget && (
         <ReplacePlayerModal
           game={replaceTarget}
@@ -2664,11 +2686,13 @@ function CourtsManager({
   courts,
   playingByCourt,
   run,
+  onClose,
 }: {
   sessionId: string;
   courts: ICourt[];
   playingByCourt: Map<string, IGame>;
   run: (a: () => Promise<unknown>) => Promise<void>;
+  onClose: () => void;
 }) {
   const [courtNo, setCourtNo] = useState('');
 
@@ -2686,16 +2710,40 @@ function CourtsManager({
   };
 
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel p-3">
-      <span className="text-sm text-dim">사용 코트:</span>
+    <Sheet
+      ariaLabel="코트 관리"
+      onClose={onClose}
+      header={<h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">코트 관리</h2>}
+      footer={
+        <div className="flex gap-2">
+          <input
+            autoComplete="off"
+            inputMode="numeric"
+            enterKeyHint="done"
+            value={courtNo}
+            onChange={(e) => setCourtNo(e.target.value.replace(/\D/g, '').slice(0, 2))}
+            onKeyDown={(e) => e.key === 'Enter' && add()}
+            placeholder="코트 번호"
+            className="h-11 min-w-0 flex-1 rounded-xl border border-line bg-panel2 px-4 text-sm outline-none focus:border-court"
+          />
+          <button onClick={add} disabled={!courtNo} className="h-11 rounded-xl bg-court px-5 text-sm font-bold text-bg disabled:opacity-50">
+            추가
+          </button>
+        </div>
+      }
+    >
+      {courts.length === 0 && (
+        <p className="py-6 text-center text-sm text-faint">오늘 쓰는 코트 번호를 아래에서 추가해주세요</p>
+      )}
       {courts.map((court) => {
         const inGame = playingByCourt.has(court.id);
         return (
-          <span
+          <div
             key={court.id}
-            className="flex items-center gap-1 rounded-lg border border-line bg-panel2 px-3 py-1.5 text-sm"
+            className="flex items-center gap-2 rounded-xl border border-line bg-panel2 p-3"
           >
-            {court.courtNo}번
+            <span className="font-bold">{court.courtNo}번 코트</span>
+            {inGame && <span className="text-xs text-court">게임 중</span>}
             {/* 공유 토글 — 다른 모임과 콕 걸고 번갈아 쓰는 코트. 게임 중에도 전환 가능(치는 도중 공유가 시작되기도) */}
             <button
               onClick={() =>
@@ -2708,36 +2756,73 @@ function CourtsManager({
                 )
               }
               title="다른 모임과 번갈아 쓰는 코트 지정/해제"
-              className={`tap ml-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                court.isShared ? 'bg-sky/15 text-sky' : 'border border-line text-dim'
+              className={`ml-auto h-9 rounded-lg border px-3 text-xs font-medium ${
+                court.isShared ? 'border-sky/50 bg-sky/15 text-sky' : 'border-line text-dim'
               }`}
             >
-              공유
+              {court.isShared ? '공유 중' : '공유'}
             </button>
             <button
               onClick={() => void run(() => api(`/courts/${court.id}`, { method: 'DELETE', admin: true }))}
               disabled={inGame}
               title={inGame ? '게임 진행 중' : '코트 해제'}
-              className="tap ml-1 text-dim disabled:opacity-30"
+              className="h-9 rounded-lg border border-line px-3 text-xs text-dim disabled:opacity-30"
             >
-              ✕
+              해제
             </button>
-          </span>
+          </div>
         );
       })}
-      <input
-        autoComplete="off"
-        type="number"
-        value={courtNo}
-        onChange={(e) => setCourtNo(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && add()}
-        placeholder="번호"
-        className="h-9 w-20 rounded-lg border border-line bg-panel2 px-3 text-sm outline-none focus:border-court"
-      />
-      <button onClick={add} className="h-9 rounded-lg bg-court px-4 text-sm font-bold text-bg">
-        추가
-      </button>
-    </div>
+    </Sheet>
+  );
+}
+
+// 코트 고르기 — 빈 코트가 둘 이상일 때 [코트 배정]에서 열린다. 상대 차례인 공유 코트는 이유와 함께 비활성
+function CourtPickSheet({
+  game,
+  idleCourts,
+  run,
+  onClose,
+}: {
+  game: IGame;
+  idleCourts: ICourt[];
+  run: (a: () => Promise<unknown>) => Promise<void>;
+  onClose: () => void;
+}) {
+  const names = (game.players ?? []).map((p) => p.attendance?.member?.name).filter(Boolean);
+  return (
+    <Sheet
+      ariaLabel="코트 고르기"
+      onClose={onClose}
+      header={<h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-amber">몇 번 코트에 넣을까요?</h2>}
+    >
+      <p className="text-sm text-dim">{names.join(', ')}</p>
+      <div className="grid grid-cols-2 gap-2">
+        {idleCourts.map((court) => {
+          const theirTurn = court.isShared && !court.ourTurn;
+          return (
+            <button
+              key={court.id}
+              onClick={() =>
+                void run(async () => {
+                  await api(`/games/${game.id}/assign`, {
+                    method: 'PATCH',
+                    admin: true,
+                    body: { courtId: court.id },
+                  });
+                  onClose();
+                })
+              }
+              disabled={theirTurn}
+              className="flex h-16 flex-col items-center justify-center rounded-xl bg-amber text-lg font-bold text-bg disabled:bg-panel2 disabled:text-faint"
+            >
+              {court.courtNo}번 코트
+              {theirTurn && <span className="text-[11px] font-medium">다른 모임 차례</span>}
+            </button>
+          );
+        })}
+      </div>
+    </Sheet>
   );
 }
 
@@ -2875,6 +2960,7 @@ function QueueCard({
   overlapIds,
   run,
   onReplace,
+  onPickCourt,
 }: {
   game: IGame;
   order: number;
@@ -2884,8 +2970,10 @@ function QueueCard({
   overlapIds: Set<string>;
   run: (a: () => Promise<unknown>) => Promise<void>;
   onReplace: (game: IGame) => void;
+  onPickCourt: (game: IGame) => void; // 빈 코트가 여럿이면 코트 고르기 시트
 }) {
-  const [assignOpen, setAssignOpen] = useState(false);
+  // 바로 배정할 수 있는 코트(상대 차례인 공유 코트 제외) — 하나뿐이면 시트 없이 한 번에 넣는다
+  const available = idleCourts.filter((court) => !court.isShared || court.ourTurn);
 
   // 미리 짜둔 조합엔 아직 게임 중인 인원이 있을 수 있다 — 전원이 자유로워질 때까지 배정 불가
   const busyNames = (game.players ?? [])
@@ -2937,39 +3025,28 @@ function QueueCard({
           <span className="flex h-11 flex-1 items-center justify-center rounded-lg border border-dashed border-line px-2 text-center text-xs text-faint">
             {busyNames.join(', ')} 게임 종료 후 배정 가능
           </span>
-        ) : assignOpen ? (
-          idleCourts.length > 0 ? (
-            idleCourts.map((court) => {
-              // 상대 차례인 공유 코트 — 서버도 409로 막지만, 눌러보기 전에 이유가 보이게 비활성으로
-              const theirTurn = court.isShared && !court.ourTurn;
-              return (
-                <button
-                  key={court.id}
-                  onClick={() =>
-                    void run(() =>
-                      api(`/games/${game.id}/assign`, {
-                        method: 'PATCH',
-                        admin: true,
-                        body: { courtId: court.id },
-                      }),
-                    )
-                  }
-                  disabled={theirTurn}
-                  title={theirTurn ? '다른 모임 차례 — 코트 카드의 [우리 차례로]를 먼저' : undefined}
-                  className="h-11 flex-1 rounded-lg bg-amber text-sm font-bold text-bg disabled:bg-panel2 disabled:text-faint"
-                >
-                  {court.courtNo}번{theirTurn && ' (다른 모임)'}
-                </button>
-              );
-            })
-          ) : (
-            <span className="flex h-11 flex-1 items-center justify-center text-sm text-faint">
-              빈 코트가 없어요
-            </span>
-          )
+        ) : available.length === 0 ? (
+          <span className="flex h-11 flex-1 items-center justify-center rounded-lg border border-dashed border-line px-2 text-center text-xs text-faint">
+            빈 코트가 없어요
+          </span>
+        ) : available.length === 1 ? (
+          <button
+            onClick={() =>
+              void run(() =>
+                api(`/games/${game.id}/assign`, {
+                  method: 'PATCH',
+                  admin: true,
+                  body: { courtId: available[0].id },
+                }),
+              )
+            }
+            className="h-11 flex-1 rounded-lg bg-amber/90 text-sm font-bold text-bg"
+          >
+            {available[0].courtNo}번 코트로 배정
+          </button>
         ) : (
           <button
-            onClick={() => setAssignOpen(true)}
+            onClick={() => onPickCourt(game)}
             className="h-11 flex-1 rounded-lg bg-amber/90 text-sm font-bold text-bg"
           >
             코트 배정
