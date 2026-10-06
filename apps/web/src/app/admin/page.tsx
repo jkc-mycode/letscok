@@ -36,6 +36,7 @@ import { BirthdayCalendarModal } from '@/components/birthday-calendar';
 import { ConnectionError } from '@/components/connection-error';
 import { SessionReportModal } from '@/components/session-report-modal';
 import { SettlementModal } from '@/components/settlement-modal';
+import { Sheet } from '@/components/sheet';
 import { ExitGuard } from '@/components/exit-guard';
 import { GenderMarker, GradeBadge, PlayerGrid, Toast } from '@/components/badges';
 import { HomeLink } from '@/components/home-link';
@@ -2048,49 +2049,43 @@ function MemberRegisterSheet({
   onRegistered: () => Promise<unknown>; // 명단 다시 불러오기
   onClose: () => void;
 }) {
-  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 팝업 닫기
   const [notice, setNotice] = useState<string | null>(null);
 
   return (
-    // 입력 중인 팝업이라 바깥을 눌러도 닫지 않는다(실수 한 번에 적던 내용이 날아감) — [닫기]·뒤로가기로만 닫는다
-    <div
-      className="fade-in fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4"
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[92dvh] w-full max-w-md flex-col gap-2.5 overflow-y-auto rounded-t-2xl border border-line bg-panel p-5 pb-safe-sheet sm:rounded-2xl"
-      >
-        <div className="flex items-center">
+    // 입력 중인 시트라 바깥 탭·끌어내리기로 닫지 않는다 — [닫기]·뒤로가기로만
+    <Sheet
+      ariaLabel="신규 등록"
+      layer="z-50"
+      dismissible={false}
+      bodyClassName="flex min-h-0 flex-1 flex-col gap-2.5 scroll-area"
+      onClose={onClose}
+      header={
+        <>
           <h3 className="shrink-0 font-bold whitespace-nowrap text-sky">신규 등록</h3>
-          <p className="ml-2 text-[11px] text-faint">명단에만 추가 — 체크인 안 됨</p>
-          <button
-            onClick={onClose}
-            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
-          >
-            닫기
-          </button>
-        </div>
+          <p className="min-w-0 text-[11px] text-faint">명단에만 추가 — 체크인 안 됨</p>
+        </>
+      }
+    >
 
-        {/* 명단 정리 맥락은 정회원 등록이 기본 (현장 즉석 등록과 반대) */}
-        <MultiMemberForm
-          defaultGuest={false}
-          actionLabel="등록"
-          register={async (body) => {
-            await api('/members', { method: 'POST', admin: true, body });
-          }}
-          onFinished={(done, remaining) => {
-            void onRegistered();
-            if (remaining === 0) onClose();
-            else if (done.length > 0) setNotice(`${done.length}명 등록 완료 — 남은 줄을 확인해주세요`);
-          }}
-        />
-        {notice && <p className="text-xs font-medium text-court">{notice}</p>}
-        <p className="text-[11px] leading-relaxed text-faint">
-          개인정보 동의는 본인이 처음 코드로 체크인할 때 받아요. 등록은 본인에게 구두로 동의받아
-          주세요.
-        </p>
-      </div>
-    </div>
+      {/* 명단 정리 맥락은 정회원 등록이 기본 (현장 즉석 등록과 반대) */}
+      <MultiMemberForm
+        defaultGuest={false}
+        actionLabel="등록"
+        register={async (body) => {
+          await api('/members', { method: 'POST', admin: true, body });
+        }}
+        onFinished={(done, remaining) => {
+          void onRegistered();
+          if (remaining === 0) onClose();
+          else if (done.length > 0) setNotice(`${done.length}명 등록 완료 — 남은 줄을 확인해주세요`);
+        }}
+      />
+      {notice && <p className="text-xs font-medium text-court">{notice}</p>}
+      <p className="text-[11px] leading-relaxed text-faint">
+        개인정보 동의는 본인이 처음 코드로 체크인할 때 받아요. 등록은 본인에게 구두로 동의받아
+        주세요.
+      </p>
+    </Sheet>
   );
 }
 
@@ -2106,7 +2101,6 @@ function MemberEditSheet({
   busy: boolean;
   onClose: () => void;
 }) {
-  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 팝업 닫기
   const [name, setName] = useState(member.name);
   const [birth, setBirth] = useState(formatBirthInput(member.birthDate ?? ''));
   const [grade, setGrade] = useState<Grade>(member.grade);
@@ -2144,192 +2138,187 @@ function MemberEditSheet({
     busy || !name.trim() || (promote && !birthDate) || (asRegular && birthDigits.length === 8 && !birthDate);
 
   return (
-    // 입력 중인 팝업이라 바깥을 눌러도 닫지 않는다(실수 한 번에 적던 내용이 날아감) — [닫기]·뒤로가기로만 닫는다
-    <div
-      className="fade-in fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4"
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[92dvh] w-full max-w-md flex-col gap-2.5 overflow-y-auto rounded-t-2xl border border-line bg-panel p-5 pb-safe-sheet sm:rounded-2xl"
-      >
-        <div className="flex items-center">
+    // 입력 중인 시트라 바깥 탭·끌어내리기로 닫지 않는다 — [닫기]·뒤로가기로만
+    <Sheet
+      ariaLabel={`${member.name} 수정`}
+      layer="z-50"
+      dismissible={false}
+      bodyClassName="flex min-h-0 flex-1 flex-col gap-2.5 scroll-area"
+      onClose={onClose}
+      header={
+        <>
           <h3 className="min-w-0 truncate font-bold text-court">{member.name}</h3>
-          {member.isGuest && <span className="ml-2 text-[10px] text-sky">게스트</span>}
-          {deleted && <span className="ml-2 text-[10px] text-coral">삭제됨</span>}
-          <button
-            onClick={onClose}
-            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
-          >
-            닫기
-          </button>
-        </div>
-        <p className="text-[11px] text-faint">
-          출석 {member.totalSessions}회 · {member.totalGames}게임 · 최근{' '}
-          {formatLastAttended(member.lastAttendedAt)}
-        </p>
+          {member.isGuest && <span className="text-[10px] text-sky">게스트</span>}
+          {deleted && <span className="text-[10px] text-coral">삭제됨</span>}
+        </>
+      }
+    >
+      <p className="text-[11px] text-faint">
+        출석 {member.totalSessions}회 · {member.totalGames}게임 · 최근{' '}
+        {formatLastAttended(member.lastAttendedAt)}
+      </p>
 
-        {!deleted && (
-          <>
-            <input
-              autoComplete="off"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              maxLength={20}
-              placeholder="이름"
-              className="h-11 rounded-xl border border-line bg-panel2 px-4 text-sm outline-none focus:border-court"
-            />
+      {!deleted && (
+        <>
+          <input
+            autoComplete="off"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={20}
+            placeholder="이름"
+            className="h-11 rounded-xl border border-line bg-panel2 px-4 text-sm outline-none focus:border-court"
+          />
 
-            {member.isGuest && (
+          {member.isGuest && (
+            <button
+              onClick={() => setPromote((v) => !v)}
+              className={`min-h-10 rounded-lg border px-3 text-sm font-bold whitespace-normal ${
+                promote ? 'border-court bg-court/15 text-court' : 'border-line bg-panel2 text-dim'
+              }`}
+            >
+              {promote ? '정회원으로 승격 — 생년월일을 입력해주세요' : '정회원으로 승격하기'}
+            </button>
+          )}
+
+          {asRegular && (
+            <div>
+              <input
+                autoComplete="off"
+                type="text"
+                inputMode="numeric"
+                value={birth}
+                onChange={(e) => setBirth(formatBirthInput(e.target.value))}
+                placeholder="생년월일 8자리 (예: 19970312)"
+                className="h-11 w-full rounded-xl border border-line bg-panel2 px-4 text-sm outline-none focus:border-court"
+              />
+              {birthDigits.length === 8 && !birthDate && (
+                <p className="mt-1 text-xs text-coral">날짜가 올바르지 않아요</p>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-6 gap-1.5">
+            {GRADES.map((g) => (
               <button
-                onClick={() => setPromote((v) => !v)}
-                className={`min-h-10 rounded-lg border px-3 text-sm font-bold whitespace-normal ${
-                  promote ? 'border-court bg-court/15 text-court' : 'border-line bg-panel2 text-dim'
+                key={g}
+                onClick={() => setGrade(g)}
+                className={`h-10 rounded-lg border text-sm font-bold ${
+                  grade === g ? 'border-court bg-court/15 text-court' : 'border-line bg-panel2 text-dim'
                 }`}
               >
-                {promote ? '정회원으로 승격 — 생년월일을 입력해주세요' : '정회원으로 승격하기'}
+                {g}
               </button>
-            )}
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              onClick={() => setGender('MALE')}
+              className={`h-10 rounded-lg border text-sm font-bold ${
+                gender === 'MALE' ? 'border-sky bg-sky/15 text-sky' : 'border-line bg-panel2 text-dim'
+              }`}
+            >
+              ♂ 남
+            </button>
+            <button
+              onClick={() => setGender('FEMALE')}
+              className={`h-10 rounded-lg border text-sm font-bold ${
+                gender === 'FEMALE' ? 'border-pink bg-pink/15 text-pink' : 'border-line bg-panel2 text-dim'
+              }`}
+            >
+              ♀ 여
+            </button>
+          </div>
 
-            {asRegular && (
-              <div>
-                <input
-                  autoComplete="off"
-                  type="text"
-                  inputMode="numeric"
-                  value={birth}
-                  onChange={(e) => setBirth(formatBirthInput(e.target.value))}
-                  placeholder="생년월일 8자리 (예: 19970312)"
-                  className="h-11 w-full rounded-xl border border-line bg-panel2 px-4 text-sm outline-none focus:border-court"
-                />
-                {birthDigits.length === 8 && !birthDate && (
-                  <p className="mt-1 text-xs text-coral">날짜가 올바르지 않아요</p>
-                )}
-              </div>
-            )}
-
-            <div className="grid grid-cols-6 gap-1.5">
-              {GRADES.map((g) => (
+          {/* 역할 — 표시·명단 구분용. 권한은 단일 패스코드 그대로라 접근이 달라지진 않는다 */}
+          {asRegular && (
+            <div className="grid grid-cols-3 gap-1.5">
+              {(Object.keys(ROLE_LABEL) as MemberRole[]).map((r) => (
                 <button
-                  key={g}
-                  onClick={() => setGrade(g)}
+                  key={r}
+                  onClick={() => setRole(r)}
                   className={`h-10 rounded-lg border text-sm font-bold ${
-                    grade === g ? 'border-court bg-court/15 text-court' : 'border-line bg-panel2 text-dim'
+                    role === r
+                      ? r === 'LEADER'
+                        ? 'border-amber bg-amber/15 text-amber'
+                        : 'border-court bg-court/15 text-court'
+                      : 'border-line bg-panel2 text-dim'
                   }`}
                 >
-                  {g}
+                  {ROLE_LABEL[r]}
                 </button>
               ))}
             </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                onClick={() => setGender('MALE')}
-                className={`h-10 rounded-lg border text-sm font-bold ${
-                  gender === 'MALE' ? 'border-sky bg-sky/15 text-sky' : 'border-line bg-panel2 text-dim'
-                }`}
-              >
-                ♂ 남
-              </button>
-              <button
-                onClick={() => setGender('FEMALE')}
-                className={`h-10 rounded-lg border text-sm font-bold ${
-                  gender === 'FEMALE' ? 'border-pink bg-pink/15 text-pink' : 'border-line bg-panel2 text-dim'
-                }`}
-              >
-                ♀ 여
-              </button>
-            </div>
-
-            {/* 역할 — 표시·명단 구분용. 권한은 단일 패스코드 그대로라 접근이 달라지진 않는다 */}
-            {asRegular && (
-              <div className="grid grid-cols-3 gap-1.5">
-                {(Object.keys(ROLE_LABEL) as MemberRole[]).map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => setRole(r)}
-                    className={`h-10 rounded-lg border text-sm font-bold ${
-                      role === r
-                        ? r === 'LEADER'
-                          ? 'border-amber bg-amber/15 text-amber'
-                          : 'border-court bg-court/15 text-court'
-                        : 'border-line bg-panel2 text-dim'
-                    }`}
-                  >
-                    {ROLE_LABEL[r]}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <button
-              onClick={save}
-              disabled={blocked}
-              className="h-11 rounded-xl bg-court text-sm font-bold text-bg disabled:opacity-50"
-            >
-              저장
-            </button>
-          </>
-        )}
-
-        {/* 위험 구역 — 삭제·익명화는 2탭 확인 (단일 패스코드 구조라 권한 대신 실수 방지로 지킨다) */}
-        <div className="mt-1 flex flex-col gap-1.5 border-t border-line pt-3">
-          {deleted ? (
-            <button
-              onClick={() =>
-                void run(async () => {
-                  await api(`/members/${member.id}/restore`, { method: 'PATCH', admin: true });
-                  onClose();
-                })
-              }
-              disabled={busy}
-              className="min-h-11 rounded-xl border border-court/40 px-3 text-sm font-bold whitespace-normal text-court disabled:opacity-50"
-            >
-              복구 — 명단에 다시 표시
-            </button>
-          ) : (
-            <button
-              onClick={() => {
-                if (!confirmDelete) {
-                  setConfirmDelete(true);
-                  return;
-                }
-                void run(async () => {
-                  await api(`/members/${member.id}`, { method: 'DELETE', admin: true });
-                  onClose();
-                });
-              }}
-              disabled={busy}
-              className={`min-h-11 rounded-xl border px-3 text-sm font-medium whitespace-normal disabled:opacity-50 ${
-                confirmDelete ? 'border-coral bg-coral/15 text-coral' : 'border-line text-dim'
-              }`}
-            >
-              {confirmDelete ? '한 번 더 누르면 삭제돼요 (복구 가능)' : '명단에서 삭제'}
-            </button>
           )}
+
+          <button
+            onClick={save}
+            disabled={blocked}
+            className="h-11 rounded-xl bg-court text-sm font-bold text-bg disabled:opacity-50"
+          >
+            저장
+          </button>
+        </>
+      )}
+
+      {/* 위험 구역 — 삭제·익명화는 2탭 확인 (단일 패스코드 구조라 권한 대신 실수 방지로 지킨다) */}
+      <div className="mt-1 flex flex-col gap-1.5 border-t border-line pt-3">
+        {deleted ? (
+          <button
+            onClick={() =>
+              void run(async () => {
+                await api(`/members/${member.id}/restore`, { method: 'PATCH', admin: true });
+                onClose();
+              })
+            }
+            disabled={busy}
+            className="min-h-11 rounded-xl border border-court/40 px-3 text-sm font-bold whitespace-normal text-court disabled:opacity-50"
+          >
+            복구 — 명단에 다시 표시
+          </button>
+        ) : (
           <button
             onClick={() => {
-              if (!confirmAnon) {
-                setConfirmAnon(true);
+              if (!confirmDelete) {
+                setConfirmDelete(true);
                 return;
               }
               void run(async () => {
-                await api(`/members/${member.id}/anonymize`, { method: 'PATCH', admin: true });
+                await api(`/members/${member.id}`, { method: 'DELETE', admin: true });
                 onClose();
               });
             }}
             disabled={busy}
             className={`min-h-11 rounded-xl border px-3 text-sm font-medium whitespace-normal disabled:opacity-50 ${
-              confirmAnon ? 'border-coral bg-coral/15 text-coral' : 'border-line text-dim'
+              confirmDelete ? 'border-coral bg-coral/15 text-coral' : 'border-line text-dim'
             }`}
           >
-            {confirmAnon ? '한 번 더 누르면 개인정보가 지워져요 (복구 불가)' : '개인정보 삭제 (본인 요청 시)'}
+            {confirmDelete ? '한 번 더 누르면 삭제돼요 (복구 가능)' : '명단에서 삭제'}
           </button>
-          <p className="text-[11px] leading-relaxed text-faint">
-            삭제는 명단에서만 감춰요(기록 유지·복구 가능). 개인정보 삭제는 이름·생년월일·성별을
-            지우고 출석·게임 기록만 남겨요 — 본인이 요청했을 때만 사용하세요.
-          </p>
-        </div>
+        )}
+        <button
+          onClick={() => {
+            if (!confirmAnon) {
+              setConfirmAnon(true);
+              return;
+            }
+            void run(async () => {
+              await api(`/members/${member.id}/anonymize`, { method: 'PATCH', admin: true });
+              onClose();
+            });
+          }}
+          disabled={busy}
+          className={`min-h-11 rounded-xl border px-3 text-sm font-medium whitespace-normal disabled:opacity-50 ${
+            confirmAnon ? 'border-coral bg-coral/15 text-coral' : 'border-line text-dim'
+          }`}
+        >
+          {confirmAnon ? '한 번 더 누르면 개인정보가 지워져요 (복구 불가)' : '개인정보 삭제 (본인 요청 시)'}
+        </button>
+        <p className="text-[11px] leading-relaxed text-faint">
+          삭제는 명단에서만 감춰요(기록 유지·복구 가능). 개인정보 삭제는 이름·생년월일·성별을
+          지우고 출석·게임 기록만 남겨요 — 본인이 요청했을 때만 사용하세요.
+        </p>
       </div>
-    </div>
+    </Sheet>
   );
 }
 
@@ -2346,7 +2335,6 @@ function StaleGuestCleanupSheet({
   busy: boolean;
   onClose: () => void;
 }) {
-  useBackClose(onClose); // 안드로이드 뒤로가기 = 이 팝업 닫기
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(guests.map((g) => g.id)), // 기본 전체 선택 — 이미 조건으로 걸러진 명단이고 2탭 확인이 남아 있다
   );
@@ -2374,68 +2362,59 @@ function StaleGuestCleanupSheet({
   };
 
   return (
-    <div
-      onClick={onClose}
-      className="fade-in fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4"
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[92dvh] w-full max-w-md flex-col rounded-t-2xl border border-line bg-panel p-5 pb-safe-sheet sm:rounded-2xl"
-      >
-        <div className="flex items-center pb-2">
-          <h3 className="shrink-0 font-bold whitespace-nowrap text-amber">오래 안 온 게스트 정리</h3>
-          <button
-            onClick={onClose}
-            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
-          >
-            닫기
-          </button>
-        </div>
-        <p className="pb-3 text-xs leading-relaxed text-dim">
-          {STALE_GUEST_DAYS}일 이상 안 온 게스트예요. 체크인 검색을 어지럽히지 않게 정리하세요 —
-          삭제해도 지난 기록은 남고, [삭제됨] 탭에서 복구할 수 있어요.
-        </p>
-
-        <div className="flex min-h-0 flex-1 flex-col gap-1.5 scroll-area">
-          {guests.map((guest) => {
-            const picked = selected.has(guest.id);
-            return (
-              <button
-                key={guest.id}
-                onClick={() => toggle(guest.id)}
-                className={`flex items-center gap-2 rounded-xl border p-3 text-left text-sm ${
-                  picked ? 'border-amber bg-amber/10' : 'border-line bg-panel2'
-                }`}
-              >
-                <span
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[11px] font-bold ${
-                    picked ? 'border-amber bg-amber text-bg' : 'border-line text-transparent'
-                  }`}
-                >
-                  ✓
-                </span>
-                <GradeBadge grade={guest.grade} />
-                <span className="truncate font-medium">{guest.name}</span>
-                <GenderMarker gender={guest.gender} />
-                <span className="ml-auto shrink-0 text-[11px] text-dim">
-                  {formatLastAttended(guest.lastAttendedAt)}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
+    <Sheet
+      ariaLabel="오래 안 온 게스트 정리"
+      layer="z-50"
+      onClose={onClose}
+      header={<h3 className="shrink-0 font-bold whitespace-nowrap text-amber">오래 안 온 게스트 정리</h3>}
+      bodyClassName="flex min-h-0 flex-1 flex-col"
+      footer={
         <button
           onClick={removeSelected}
           disabled={busy || selected.size === 0}
-          className={`mt-3 h-11 rounded-xl border text-sm font-bold disabled:opacity-50 ${
+          className={`h-11 w-full rounded-xl border text-sm font-bold disabled:opacity-50 ${
             confirm ? 'border-coral bg-coral/15 text-coral' : 'border-amber/40 text-amber'
           }`}
         >
           {confirm ? `한 번 더 누르면 ${selected.size}명이 삭제돼요` : `${selected.size}명 삭제`}
         </button>
+      }
+    >
+      <p className="pb-3 text-xs leading-relaxed text-dim">
+        {STALE_GUEST_DAYS}일 이상 안 온 게스트예요. 체크인 검색을 어지럽히지 않게 정리하세요 —
+        삭제해도 지난 기록은 남고, [삭제됨] 탭에서 복구할 수 있어요.
+      </p>
+
+      <div className="flex min-h-0 flex-1 flex-col gap-1.5 scroll-area">
+        {guests.map((guest) => {
+          const picked = selected.has(guest.id);
+          return (
+            <button
+              key={guest.id}
+              onClick={() => toggle(guest.id)}
+              className={`flex items-center gap-2 rounded-xl border p-3 text-left text-sm ${
+                picked ? 'border-amber bg-amber/10' : 'border-line bg-panel2'
+              }`}
+            >
+              <span
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[11px] font-bold ${
+                  picked ? 'border-amber bg-amber text-bg' : 'border-line text-transparent'
+                }`}
+              >
+                ✓
+              </span>
+              <GradeBadge grade={guest.grade} />
+              <span className="truncate font-medium">{guest.name}</span>
+              <GenderMarker gender={guest.gender} />
+              <span className="ml-auto shrink-0 text-[11px] text-dim">
+                {formatLastAttended(guest.lastAttendedAt)}
+              </span>
+            </button>
+          );
+        })}
       </div>
-    </div>
+
+    </Sheet>
   );
 }
 
