@@ -34,6 +34,7 @@ import { LoginGate, useAdminAuth } from '@/components/admin-gate';
 import { AiCheckInPanel } from '@/components/ai-check-in-panel';
 import { BirthdayCalendarModal } from '@/components/birthday-calendar';
 import { ConnectionError } from '@/components/connection-error';
+import { SessionReportModal } from '@/components/session-report-modal';
 import { SettlementModal } from '@/components/settlement-modal';
 import { ExitGuard } from '@/components/exit-guard';
 import { GenderMarker, GradeBadge, PlayerGrid, Toast } from '@/components/badges';
@@ -72,6 +73,18 @@ function Board({ onLogout }: { onLogout: () => void }) {
   const { snapshot, noSession, failed, loading, refetch } = useSnapshot();
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // 방금 종료한 모임의 마무리 문구 — 종료하면 보드(BoardBody)가 사라지므로 상태는 여기서 들고 있다.
+  // 문구 팝업을 닫아야 패스코드를 지우고 로그인 화면으로 간다(종료 = 그날 운영 끝)
+  const [reportSessionId, setReportSessionId] = useState<string | null>(null);
+  const report = reportSessionId && (
+    <SessionReportModal
+      sessionId={reportSessionId}
+      onClose={() => {
+        setReportSessionId(null);
+        onLogout();
+      }}
+    />
+  );
 
   // 모든 변경 액션의 공통 실행기 — 실패 시 서버의 한국어 메시지를 토스트로
   // 성공 시 refetch: 소켓 룸 입장 전(세션 시작 직후)이나 연결 끊김 중에도 화면이 따라오게
@@ -101,10 +114,25 @@ function Board({ onLogout }: { onLogout: () => void }) {
     );
   }
   if (noSession || !snapshot) {
-    return <StartScreen run={run} busy={busy} toast={toast} onLogout={onLogout} />;
+    return (
+      <>
+        <StartScreen run={run} busy={busy} toast={toast} onLogout={onLogout} />
+        {report}
+      </>
+    );
   }
   return (
-    <BoardBody snapshot={snapshot} run={run} busy={busy} toast={toast} onLogout={onLogout} />
+    <>
+      <BoardBody
+        snapshot={snapshot}
+        run={run}
+        busy={busy}
+        toast={toast}
+        onLogout={onLogout}
+        onSessionClosed={setReportSessionId}
+      />
+      {report}
+    </>
   );
 }
 
@@ -202,12 +230,14 @@ function BoardBody({
   busy,
   toast,
   onLogout,
+  onSessionClosed,
 }: {
   snapshot: ISessionSnapshot;
   run: (a: () => Promise<unknown>) => Promise<void>;
   busy: boolean;
   toast: string | null;
   onLogout: () => void;
+  onSessionClosed: (sessionId: string) => void; // 모임 종료 성공 → 마무리 문구 띄우기
 }) {
   const router = useRouter();
   const now = useNow();
@@ -367,11 +397,11 @@ function BoardBody({
       setTimeout(() => setConfirmClose(false), 4000); // 4초 내 재탭 시 종료
       return;
     }
-    // 모임 종료 = 그날 운영 끝 → 패스코드를 지우고 게이트로 되돌린다
+    // 모임 종료 = 그날 운영 끝 → 마무리 문구를 띄우고, 그걸 닫으면 패스코드를 지우고 게이트로(Board가 처리)
     // (예전엔 홈으로 보냈지만, 홈은 관제판 앱 scope 밖이라 설치 상태에선 앱을 벗어나 버린다)
     void run(async () => {
       await api(`/sessions/${session.id}/close`, { method: 'PATCH', admin: true });
-      onLogout();
+      onSessionClosed(session.id);
     });
   };
 
@@ -2633,7 +2663,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
     title: '잠금 vs 모임 종료',
     items: [
       '[잠금] = 관제판 로그아웃만. 모임은 그대로 유지돼요.',
-      '[모임 종료] = 그날 마감 — 진행 중 게임 정리 · 전원 퇴장 · 코트 해제 후 로그아웃돼요. 두 번 눌러야 실행.',
+      '[모임 종료] = 그날 마감 — 진행 중 게임 정리 · 전원 퇴장 · 코트 해제 후 마무리 카톡 문구가 떠요. 문구 창을 닫으면 로그아웃돼요. 두 번 눌러야 실행.',
     ],
   },
 ];
