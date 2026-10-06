@@ -33,6 +33,7 @@ import {
 import { LoginGate, useAdminAuth } from '@/components/admin-gate';
 import { AiCheckInPanel } from '@/components/ai-check-in-panel';
 import { BirthdayCalendarModal } from '@/components/birthday-calendar';
+import { CommandSheet } from '@/components/command-sheet';
 import { ConnectionError } from '@/components/connection-error';
 import { SessionReportModal } from '@/components/session-report-modal';
 import { SettlementModal } from '@/components/settlement-modal';
@@ -278,6 +279,7 @@ function BoardBody({
   const [replaceGameId, setReplaceGameId] = useState<string | null>(null); // 선수 교체 대상 게임
   const [assignGameId, setAssignGameId] = useState<string | null>(null); // 코트 고르기 시트 대상 조합
   const [actionId, setActionId] = useState<string | null>(null); // 폰 대기 줄 [⋯] 시트 대상 출석
+  const [commandOpen, setCommandOpen] = useState(false); // AI 명령(글·음성)
 
   const { session, courts, attendances, games } = snapshot;
 
@@ -749,6 +751,14 @@ function BoardBody({
           footer={
             <>
               <button
+                onClick={() => setCommandOpen(true)}
+                aria-label="AI 명령 — 말하듯 적어서 게임 짜기·종료·휴식·호출·체크인"
+                title="AI 명령"
+                className="h-14 w-14 shrink-0 rounded-xl border border-court/40 text-xl"
+              >
+                🎙
+              </button>
+              <button
                 onClick={() => setRecommendOpen(true)}
                 disabled={busy}
                 className="h-14 rounded-xl border border-court/40 px-4 text-base font-bold text-court disabled:opacity-50"
@@ -888,6 +898,9 @@ function BoardBody({
           run={run}
           onClose={() => setAssignGameId(null)}
         />
+      )}
+      {commandOpen && (
+        <CommandSheet sessionId={session.id} run={run} onClose={() => setCommandOpen(false)} />
       )}
       {actionTarget && (
         <WaitingActionSheet attendance={actionTarget} run={run} onClose={() => setActionId(null)} />
@@ -2582,6 +2595,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
     title: '게임 추천',
     items: [
       '[게임 추천]은 참고용 초안 3종 — 공정성(오래 기다린 순) / 새 조합(오늘 안 만난 사람) / 믹스.',
+      '[🎙] AI 명령 — "민수랑 준호 넣어서 남복 짜줘", "3번 코트 끝났어", "민수 휴식", "홍길동 체크인"처럼 적으면 미리보기를 보여 주고, [확인]해야 실행돼요(체크인은 이름이 정확히 맞는 사람만 바로). 성 없이 이름만 말해도 오늘 출석자 중 한 명이면 알아들어요.',
       '게임 수는 "온 시간 대비"로 따져요 — 늦게 온 사람이 먼저 온 사람의 판수를 따라잡으려 연달아 추천되지 않고, 온 뒤부터 같은 속도로 돌아가요.',
       '대기시간·게임 수·함께 뛴 조합·성별 구성(남복/여복/혼복)을 점수로 계산해요. 넣을지는 운영진 마음!',
       '종목 탭(남복/여복/혼복/기타 3:1)을 누르면 그 구성으로만 추천해요. 성별 미지정 멤버는 [전체] 탭에서만 나와요.',
