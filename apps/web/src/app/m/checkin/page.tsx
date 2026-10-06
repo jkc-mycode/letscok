@@ -10,6 +10,7 @@ import { IAttendance, IMember } from '@letscok/shared-types';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { GenderMarker, GradeBadge, Toast } from '@/components/badges';
+import { ConnectionError } from '@/components/connection-error';
 import { HomeLink } from '@/components/home-link';
 import { InstallPrompt } from '@/components/install-prompt';
 import { api, ApiError } from '@/lib/api';
@@ -21,7 +22,7 @@ export default function CheckinPage() {
   // 숫자 4자리 — 서버도 같은 형식으로 검증하고, 틀리면 403(오입력 누적 시 429)
   const [inputCode, setInputCode] = useState('');
   const code = inputCode.length === 4 ? inputCode : null;
-  const { snapshot, noSession, loading } = useSnapshot();
+  const { snapshot, noSession, failed, loading, refetch } = useSnapshot();
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -52,6 +53,14 @@ export default function CheckinPage() {
 
   if (loading) {
     return <Shell><p className="text-center text-dim">불러오는 중...</p></Shell>;
+  }
+  // 서버에 닿지 못하면 체크인 폼을 보여 줘도 눌러지지 않는다 — 오류 화면으로
+  if (failed && !snapshot) {
+    return (
+      <Shell>
+        <ConnectionError onRetry={refetch} />
+      </Shell>
+    );
   }
   if (noSession) {
     return (

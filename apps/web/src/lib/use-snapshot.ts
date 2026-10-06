@@ -15,6 +15,9 @@ import { api, ApiError, API_URL } from './api';
 interface SnapshotState {
   snapshot: ISessionSnapshot | null;
   noSession: boolean; // 진행 중 모임 없음 (404)
+  // 서버에 닿지 못함(네트워크·5xx) — 404와 구분해야 "아직 모임 전"으로 잘못 보이지 않는다.
+  // 화면은 snapshot이 없을 때만 오류 화면을 띄운다(이미 보드가 떠 있으면 마지막 상태를 그대로 둔다)
+  failed: boolean;
   loading: boolean;
   refetch: () => Promise<void>;
 }
@@ -22,6 +25,7 @@ interface SnapshotState {
 export function useSnapshot(): SnapshotState {
   const [snapshot, setSnapshot] = useState<ISessionSnapshot | null>(null);
   const [noSession, setNoSession] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const socketRef = useRef<Socket | null>(null);
   const sessionIdRef = useRef<string | null>(null); // connect 핸들러가 최신 세션 id를 참조
@@ -31,10 +35,14 @@ export function useSnapshot(): SnapshotState {
       const data = await api<ISessionSnapshot>('/sessions/current');
       setSnapshot(data);
       setNoSession(false);
+      setFailed(false);
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
         setSnapshot(null);
         setNoSession(true);
+        setFailed(false);
+      } else {
+        setFailed(true);
       }
     } finally {
       setLoading(false);
@@ -71,6 +79,13 @@ export function useSnapshot(): SnapshotState {
     };
   }, [refetch]);
 
+  // 처음부터 서버에 닿지 못했으면 5초마다 다시 시도 — 서버가 깨어나면 저절로 화면이 돌아온다
+  useEffect(() => {
+    if (!failed || snapshot) return;
+    const timer = setTimeout(() => void refetch(), 5000);
+    return () => clearTimeout(timer);
+  }, [failed, snapshot, refetch]);
+
   // 세션 id를 알게 되는 시점(첫 로드·세션 시작)에 룸 입장 — 중복 join은 무해
   const sessionId = snapshot?.session.id ?? null;
   useEffect(() => {
@@ -80,7 +95,7 @@ export function useSnapshot(): SnapshotState {
     }
   }, [sessionId]);
 
-  return { snapshot, noSession, loading, refetch };
+  return { snapshot, noSession, failed, loading, refetch };
 }
 
 // 경과 시간 표시용 1초 틱

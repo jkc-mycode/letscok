@@ -33,6 +33,7 @@ import {
 import { LoginGate, useAdminAuth } from '@/components/admin-gate';
 import { AiCheckInPanel } from '@/components/ai-check-in-panel';
 import { BirthdayCalendarModal } from '@/components/birthday-calendar';
+import { ConnectionError } from '@/components/connection-error';
 import { SettlementModal } from '@/components/settlement-modal';
 import { ExitGuard } from '@/components/exit-guard';
 import { GenderMarker, GradeBadge, PlayerGrid, Toast } from '@/components/badges';
@@ -68,7 +69,7 @@ export default function AdminPage() {
 // ===== 보드 =====
 
 function Board({ onLogout }: { onLogout: () => void }) {
-  const { snapshot, noSession, loading, refetch } = useSnapshot();
+  const { snapshot, noSession, failed, loading, refetch } = useSnapshot();
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -90,6 +91,14 @@ function Board({ onLogout }: { onLogout: () => void }) {
 
   if (loading) {
     return <Centered>불러오는 중...</Centered>;
+  }
+  // 서버에 닿지 못했는데 "모임 전"으로 보이면 [오늘 모임 시작]을 누르게 된다 — 오류 화면을 따로 둔다
+  if (failed && !snapshot) {
+    return (
+      <main className="flex min-h-dvh flex-col">
+        <ConnectionError onRetry={refetch} />
+      </main>
+    );
   }
   if (noSession || !snapshot) {
     return <StartScreen run={run} busy={busy} toast={toast} onLogout={onLogout} />;

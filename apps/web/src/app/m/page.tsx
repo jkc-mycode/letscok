@@ -8,6 +8,7 @@ import { AnimatePresence } from 'motion/react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { GenderMarker, GradeBadge, MeChip, PlayerGrid, Toast } from '@/components/badges';
+import { ConnectionError } from '@/components/connection-error';
 import { HomeLink } from '@/components/home-link';
 import { ExitGuard } from '@/components/exit-guard';
 import { InstallPrompt } from '@/components/install-prompt';
@@ -23,7 +24,7 @@ import {
 } from '@/lib/use-snapshot';
 
 export default function MyStatusPage() {
-  const { snapshot, noSession, loading } = useSnapshot();
+  const { snapshot, noSession, failed, loading, refetch } = useSnapshot();
   const now = useNow();
 
   // localStorage는 클라이언트 전용 — hydration 불일치 방지를 위해 마운트 후 판독
@@ -58,6 +59,13 @@ export default function MyStatusPage() {
 
   if (!mounted || loading) {
     return <Shell><p className="py-20 text-center text-dim">불러오는 중...</p></Shell>;
+  }
+  if (failed && !snapshot) {
+    return (
+      <Shell>
+        <ConnectionError onRetry={refetch} />
+      </Shell>
+    );
   }
   if (noSession || !snapshot) {
     return (
