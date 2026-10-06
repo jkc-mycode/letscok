@@ -426,7 +426,9 @@ function BoardBody({
   };
 
   // 폰에서는 구역 4개를 가로로 늘어놓고(.board-track) 현재 탭 위치로 민다, md 이상은 그리드로 동시 표시
-  const pane = 'flex min-h-0 flex-col gap-3 max-md:w-full max-md:shrink-0';
+  // max-md:flex-none — 대기·메모 구역에 붙은 태블릿용 flex-1(폭 0에서 나눠 갖기)이 폰에서 이기면 폭이 내용 폭으로 바뀌어
+  // 구역마다 폭이 어긋나고 옆 구역이 밀린다. 폰에서는 늘이지도 줄이지도 않고 정확히 화면 폭(w-full)
+  const pane = 'flex min-h-0 flex-col gap-3 max-md:w-full max-md:flex-none';
 
   // 헤더 액션 — 데스크톱은 가로 버튼 줄, 폰은 햄버거 메뉴로 같은 목록을 재사용한다
   const headerActions: {
