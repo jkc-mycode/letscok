@@ -2914,13 +2914,14 @@ function CourtCard({
         >
           교체
         </button>
-        <button
-          onClick={() => void run(() => api(`/games/${game.id}/cancel`, { method: 'PATCH', admin: true }))}
+        <ConfirmButton
+          label="취소"
+          confirmLabel="정말 취소"
           title="잘못 시작한 게임 취소 — 조합까지 해체 (게임 수 미집계)"
-          className="h-11 rounded-lg border border-line px-3 text-sm text-dim"
-        >
-          취소
-        </button>
+          onConfirm={() => void run(() => api(`/games/${game.id}/cancel`, { method: 'PATCH', admin: true }))}
+          className="h-11 rounded-lg px-3 text-sm"
+          idleCls="border border-coral/40 text-coral"
+        />
       </div>
     </MotionCard>
   );
@@ -3044,12 +3045,14 @@ function QueueCard({
         >
           교체
         </button>
-        <button
-          onClick={() => void run(() => api(`/games/${game.id}/cancel`, { method: 'PATCH', admin: true }))}
-          className="h-11 rounded-lg border border-line px-3 text-sm text-dim"
-        >
-          해체
-        </button>
+        <ConfirmButton
+          label="해체"
+          confirmLabel="정말 해체"
+          title="이 조합을 없애고 4명을 대기로 돌려보내요"
+          onConfirm={() => void run(() => api(`/games/${game.id}/cancel`, { method: 'PATCH', admin: true }))}
+          className="h-11 rounded-lg px-3 text-sm"
+          idleCls="border border-coral/40 text-coral"
+        />
       </div>
     </MotionCard>
   );
@@ -3066,8 +3069,6 @@ function ShuttleRow({
   attendance: IAttendance;
   run: (a: () => Promise<unknown>) => Promise<void>;
 }) {
-  // 출석 취소(노쇼) 2탭 확인 — 콕 확인 바로 옆이라 오탭 한 번에 지워지면 안 된다
-  const [confirmCancel, setConfirmCancel] = useState(false);
   const member = attendance.member;
   if (!member) return null;
   return (
@@ -3077,22 +3078,14 @@ function ShuttleRow({
       <GenderMarker gender={member.gender} />
       {member.isGuest && <span className="text-[10px] text-sky">게스트</span>}
       {/* 사전 체크인 취소 — 개인 사정·노쇼 등으로 못 오게 된 사람을 출석 기록 없이 제거 (퇴장과 다름) */}
-      <button
-        onClick={() => {
-          if (!confirmCancel) {
-            setConfirmCancel(true);
-            setTimeout(() => setConfirmCancel(false), 3000); // 잠시 뒤 원복 — 눌러둔 채 잊는 실수 방지
-            return;
-          }
-          void run(() => api(`/attendances/${attendance.id}`, { method: 'DELETE', admin: true }));
-        }}
+      {/* 출석 취소(노쇼) 2탭 확인 — 콕 확인 바로 옆이라 오탭 한 번에 지워지면 안 된다 */}
+      <ConfirmButton
+        label="취소"
         title="체크인 취소 — 못 오게 된 사람을 출석 기록 없이 제거"
-        className={`ml-auto h-8 shrink-0 rounded-lg border px-2 text-xs font-medium ${
-          confirmCancel ? 'border-coral bg-coral/15 text-coral' : 'border-line text-faint'
-        }`}
-      >
-        {confirmCancel ? '한 번 더' : '취소'}
-      </button>
+        onConfirm={() => void run(() => api(`/attendances/${attendance.id}`, { method: 'DELETE', admin: true }))}
+        className="ml-auto h-8 shrink-0 rounded-lg px-2 text-xs font-medium"
+        idleCls="border border-line text-dim"
+      />
       <button
         onClick={() =>
           void run(() =>
@@ -3104,6 +3097,49 @@ function ShuttleRow({
         콕 확인
       </button>
     </MotionCard>
+  );
+}
+
+// 되돌리기 어려운 동작의 2탭 확인 버튼 — 첫 탭은 빨갛게 "한 번 더"로 바뀌기만 하고, 3초 안에 다시 눌러야 실행된다
+// (행 안에 있는 버튼이 많아 행 선택 토글로 번지지 않게 항상 stopPropagation)
+function ConfirmButton({
+  label,
+  confirmLabel = '한 번 더',
+  title,
+  className,
+  idleCls,
+  onConfirm,
+}: {
+  label: React.ReactNode;
+  confirmLabel?: string;
+  title?: string;
+  className: string; // 크기·모양만 — 색은 상태별로 갈린다
+  idleCls: string;
+  onConfirm: () => void;
+}) {
+  const [armed, setArmed] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        if (timer.current) clearTimeout(timer.current);
+        if (!armed) {
+          setArmed(true);
+          timer.current = setTimeout(() => setArmed(false), 3000); // 눌러둔 채 잊는 실수 방지
+          return;
+        }
+        setArmed(false);
+        onConfirm();
+      }}
+      title={title}
+      className={`${className} ${armed ? 'border border-coral bg-coral/15 font-bold text-coral' : idleCls}`}
+    >
+      {armed ? confirmLabel : label}
+    </button>
   );
 }
 
@@ -3249,35 +3285,31 @@ function WaitingRow({
       )}
       {/* 콕을 잘못 확인했을 때의 유일한 복구 경로 — 되돌리면 콕 확인 대기로 올라간다 */}
       {!busyStatus && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            void run(() =>
-              api(`/attendances/${attendance.id}/shuttle/cancel`, {
-                method: 'PATCH',
-                admin: true,
-              }),
-            );
-          }}
+        <ConfirmButton
+          label="콕취소"
           title="콕 확인 취소 — 콕 확인 대기로 되돌림"
-          className="h-8 shrink-0 rounded-lg px-1.5 text-xs text-faint hover:text-amber"
-        >
-          콕취소
-        </button>
+          onConfirm={() =>
+            void run(() =>
+              api(`/attendances/${attendance.id}/shuttle/cancel`, { method: 'PATCH', admin: true }),
+            )
+          }
+          className="h-8 shrink-0 rounded-lg px-1.5 text-xs"
+          idleCls="text-dim hover:text-amber"
+        />
       )}
       {!busyStatus && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation(); // 행 선택 토글과 분리
+        <ConfirmButton
+          label="✕"
+          confirmLabel="퇴장"
+          title="퇴장 처리"
+          onConfirm={() =>
             void run(() =>
               api(`/attendances/${attendance.id}/leave`, { method: 'PATCH', admin: true }),
-            );
-          }}
-          title="퇴장 처리"
-          className="h-8 w-8 shrink-0 rounded-lg text-faint hover:text-coral"
-        >
-          ✕
-        </button>
+            )
+          }
+          className="h-8 min-w-8 shrink-0 rounded-lg px-1.5 text-xs"
+          idleCls="text-dim hover:text-coral"
+        />
       )}
     </MotionCard>
   );
