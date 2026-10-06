@@ -57,6 +57,15 @@ body {
 .min-h-dvh {
   min-height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
 }
+/* 관제판 보드처럼 높이를 화면에 딱 맞추는 곳도 같은 이유로 재정의 — 안 하면 아이폰 설치 앱에서
+   하단 [조합 만들기]가 홈 인디케이터 쪽으로 밀리고 페이지가 살짝 넘친다 */
+.h-dvh {
+  height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
+}
+/* 화면 아래에 붙는 시트 — 고정 위치라 body 패딩을 받지 못하므로 안전 영역을 직접 더한다(데스크톱은 inset 0이라 p-5와 같다) */
+.pb-safe-sheet {
+  padding-bottom: calc(var(--safe-bottom) + 1.25rem);
+}
 
 /* 배드민턴 코트 라인 모티프 — 화면 전체에 아주 옅게 깔리는 배경 */
 .court-bg {

@@ -100,7 +100,7 @@ export function Toast({ message }: { message: string }) {
       // 가로 중앙 정렬도 motion transform으로 — tailwind translate 클래스는 motion이 덮어써서 못 씀
       initial={{ opacity: 0, y: 16, x: '-50%' }}
       animate={{ opacity: 1, y: 0, x: '-50%' }}
-      className="fixed bottom-6 left-1/2 z-50 rounded-xl border border-coral/40 bg-panel px-5 py-3 text-sm text-coral shadow-lg"
+      className="fixed bottom-[calc(var(--safe-bottom)+1.5rem)] left-1/2 z-50 rounded-xl border border-coral/40 bg-panel px-5 py-3 text-sm text-coral shadow-lg"
     >
       {message}
     </motion.div>

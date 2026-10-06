@@ -287,7 +287,7 @@ function MyBanner({
 
   return (
     <header
-      className={`sticky top-0 z-10 flex items-center gap-2 rounded-xl border p-3 backdrop-blur transition-colors duration-300 ${statusClass}`}
+      className={`sticky top-[var(--safe-top)] z-10 flex items-center gap-2 rounded-xl border p-3 backdrop-blur transition-colors duration-300 ${statusClass}`}
     >
       {member && <GradeBadge grade={member.grade} />}
       <span className="font-bold">{member?.name}</span>

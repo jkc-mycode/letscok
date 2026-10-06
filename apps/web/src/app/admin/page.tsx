@@ -2029,7 +2029,7 @@ function MemberRegisterSheet({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[92dvh] w-full max-w-md flex-col gap-2.5 overflow-y-auto rounded-t-2xl border border-line bg-panel p-5 sm:rounded-2xl"
+        className="flex max-h-[92dvh] w-full max-w-md flex-col gap-2.5 overflow-y-auto rounded-t-2xl border border-line bg-panel p-5 pb-safe-sheet sm:rounded-2xl"
       >
         <div className="flex items-center">
           <h3 className="shrink-0 font-bold whitespace-nowrap text-sky">신규 등록</h3>
@@ -2121,7 +2121,7 @@ function MemberEditSheet({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[92dvh] w-full max-w-md flex-col gap-2.5 overflow-y-auto rounded-t-2xl border border-line bg-panel p-5 sm:rounded-2xl"
+        className="flex max-h-[92dvh] w-full max-w-md flex-col gap-2.5 overflow-y-auto rounded-t-2xl border border-line bg-panel p-5 pb-safe-sheet sm:rounded-2xl"
       >
         <div className="flex items-center">
           <h3 className="min-w-0 truncate font-bold text-court">{member.name}</h3>
@@ -2351,7 +2351,7 @@ function StaleGuestCleanupSheet({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[92dvh] w-full max-w-md flex-col rounded-t-2xl border border-line bg-panel p-5 sm:rounded-2xl"
+        className="flex max-h-[92dvh] w-full max-w-md flex-col rounded-t-2xl border border-line bg-panel p-5 pb-safe-sheet sm:rounded-2xl"
       >
         <div className="flex items-center pb-2">
           <h3 className="shrink-0 font-bold whitespace-nowrap text-amber">오래 안 온 게스트 정리</h3>

@@ -7,7 +7,7 @@ export function ExitGuard() {
   const warning = useExitGuard();
   if (!warning) return null;
   return (
-    <p className="fade-in fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-line bg-panel px-5 py-3 text-sm whitespace-nowrap shadow-lg">
+    <p className="fade-in fixed bottom-[calc(var(--safe-bottom)+1.5rem)] left-1/2 z-50 -translate-x-1/2 rounded-xl border border-line bg-panel px-5 py-3 text-sm whitespace-nowrap shadow-lg">
       뒤로 한 번 더 누르면 종료돼요
     </p>
   );
