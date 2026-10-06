@@ -8,10 +8,10 @@ import type { ToastState } from '@/lib/use-toast';
 const GRADE_STYLE: Record<Grade, string> = {
   A: 'bg-coral/20 text-coral',
   B: 'bg-amber/20 text-amber',
-  C: 'bg-[#ffd76e]/15 text-[#ffd76e]',
+  C: 'bg-gold/15 text-gold',
   D: 'bg-court/15 text-court',
   E: 'bg-sky/15 text-sky',
-  F: 'bg-[#b7a8ff]/15 text-[#b7a8ff]',
+  F: 'bg-violet/15 text-violet',
 };
 
 export function GradeBadge({ grade }: { grade: Grade }) {

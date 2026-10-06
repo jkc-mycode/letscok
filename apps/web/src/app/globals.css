@@ -17,6 +17,32 @@
   --color-coral: #ff6b57; /* 경고·해체 */
   --color-sky: #6db8ff; /* 게스트·남성(♂) */
   --color-pink: #ff8fab; /* 여성(♀) */
+  --color-gold: #ffd76e; /* 급수 C 배지 */
+  --color-violet: #b7a8ff; /* 급수 F 배지 */
+}
+
+/* 테마 — 위 색 이름표만 바꿔 끼운다(모든 화면이 bg-bg·text-ink·bg-court/10처럼 이름표로 색을 쓴다).
+   <html data-theme>는 layout.tsx의 먼저 실행되는 스크립트와 lib/theme.ts가 정한다. 고른 적 없으면 다크 */
+:root {
+  color-scheme: dark;
+}
+:root[data-theme='light'] {
+  color-scheme: light;
+  --color-bg: #f3f6f4;
+  --color-panel: #ffffff;
+  --color-panel2: #edf2ee;
+  --color-line: #d3ddd6;
+  --color-ink: #13201a;
+  --color-dim: #4d6257; /* 흰 바탕 대비 약 6:1 — 누르는 글자용 */
+  --color-faint: #7b8f84; /* 보조 설명 전용 */
+  /* 상태 색은 흰 바탕에서 글자로 읽히게 한 단계 진하게 */
+  --color-court: #15965a;
+  --color-amber: #c46a00;
+  --color-coral: #d83f37;
+  --color-sky: #1f6fc4;
+  --color-pink: #c93a70;
+  --color-gold: #a87700;
+  --color-violet: #6d5bd0;
 }
 
 body {

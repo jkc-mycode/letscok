@@ -3,6 +3,7 @@ import { IBM_Plex_Mono, IBM_Plex_Sans_KR } from 'next/font/google';
 import Script from 'next/script';
 import { SwRegister } from '@/components/sw-register';
 import { UpdateBanner } from '@/components/update-banner';
+import { THEME_INIT_SCRIPT } from '@/lib/theme-init';
 import './globals.css';
 
 // 계기판 느낌의 산업적 서체 조합 — 본문 Plex Sans KR, 타이머/숫자 Plex Mono
@@ -45,10 +46,15 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ko" className={`${plexKr.variable} ${plexMono.variable}`}>
+    // data-theme은 아래 스크립트가 그리기 전에 붙인다 — 서버 HTML과 달라도 경고하지 않게
+    <html lang="ko" className={`${plexKr.variable} ${plexMono.variable}`} suppressHydrationWarning>
       {/* beforeinstallprompt는 로드 직후 딱 한 번 발생한다 — React 하이드레이션을 기다렸다
           useEffect에서 리스너를 붙이면 이미 지나가 버려 [홈 화면에 추가] 버튼이 영영 안 뜬다.
           하이드레이션보다 먼저 실행해 이벤트를 붙잡아 두고, 컴포넌트는 이 값을 주워 쓴다 */}
+      {/* 저장된 테마를 첫 화면을 그리기 전에 적용 — 하이드레이션 뒤에 바꾸면 라이트 사용자에게 다크가 번쩍인다 */}
+      <Script id="theme-init" strategy="beforeInteractive">
+        {THEME_INIT_SCRIPT}
+      </Script>
       <Script id="capture-install-prompt" strategy="beforeInteractive">
         {`window.__letscokInstallEvent=null;window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__letscokInstallEvent=e;window.dispatchEvent(new Event('letscok:installable'))});`}
       </Script>
