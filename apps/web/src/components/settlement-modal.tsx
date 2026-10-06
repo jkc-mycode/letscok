@@ -276,8 +276,8 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
+    // 입력 중인 팝업이라 바깥을 눌러도 닫지 않는다(실수 한 번에 적던 내용이 날아감) — [닫기]·뒤로가기로만 닫는다
     <div
-      onClick={onClose}
       className="fade-in fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-2 sm:p-4"
     >
       <div

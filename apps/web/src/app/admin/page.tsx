@@ -1631,8 +1631,8 @@ function ManualCheckInModal({
   };
 
   return (
+    // 입력 중인 팝업이라 바깥을 눌러도 닫지 않는다(실수 한 번에 적던 내용이 날아감) — [닫기]·뒤로가기로만 닫는다
     <div
-      onClick={onClose}
       className="fade-in fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
     >
       <div
@@ -2023,8 +2023,8 @@ function MemberRegisterSheet({
   const [notice, setNotice] = useState<string | null>(null);
 
   return (
+    // 입력 중인 팝업이라 바깥을 눌러도 닫지 않는다(실수 한 번에 적던 내용이 날아감) — [닫기]·뒤로가기로만 닫는다
     <div
-      onClick={onClose}
       className="fade-in fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4"
     >
       <div
@@ -2115,8 +2115,8 @@ function MemberEditSheet({
     busy || !name.trim() || (promote && !birthDate) || (asRegular && birthDigits.length === 8 && !birthDate);
 
   return (
+    // 입력 중인 팝업이라 바깥을 눌러도 닫지 않는다(실수 한 번에 적던 내용이 날아감) — [닫기]·뒤로가기로만 닫는다
     <div
-      onClick={onClose}
       className="fade-in fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4"
     >
       <div
