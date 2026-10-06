@@ -3,7 +3,7 @@
 // 모임원 화면 — 관제판과 같은 보드를 읽기 전용으로 본다 (모바일 세로 스택)
 // 상단에 내 상태 한 줄 + 아래 3구역(게임 중/대기 조합/대기 인원), 내 이름은 초록 강조
 
-import { IAttendance, ICourt, IGame } from '@letscok/shared-types';
+import { GAME_SIZE, IAttendance, ICourt, IGame } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
@@ -93,9 +93,16 @@ export default function MyStatusPage() {
   const playingByCourt = new Map(
     games.filter((g) => g.status === 'PLAYING' && g.courtId).map((g) => [g.courtId as string, g]),
   );
-  const queuedGames = games.filter((g) => g.status === 'QUEUED');
+  // 빈칸 있는 조합은 운영진이 아직 짜는 중 — 4명이 다 찬 조합만 보여 주고 순번도 그것만 센다
+  const queuedGames = games.filter((g) => g.status === 'QUEUED' && (g.players?.length ?? 0) >= GAME_SIZE);
   // 콕 미확인은 아직 배정 대상이 아니라 대기 인원에서 뺀다 (관제판과 같은 기준)
-  const waiting = attendances.filter((a) => a.status === 'CHECKED_IN' && a.shuttleConfirmedAt);
+  // 빈칸 조합에만 든 사람(MATCHED)도 모임원 눈에는 아직 대기 — 보이는 조합에 없으면 대기 인원에 둔다
+  const inVisibleGame = new Set(queuedGames.flatMap((g) => (g.players ?? []).map((p) => p.attendanceId)));
+  const waiting = attendances.filter(
+    (a) =>
+      a.shuttleConfirmedAt &&
+      (a.status === 'CHECKED_IN' || (a.status === 'MATCHED' && !inVisibleGame.has(a.id))),
+  );
   const resting = attendances.filter((a) => a.status === 'RESTING'); // 대기 인원 뒤에 흐리게 표시
   // 여러 대기 조합에 겹쳐 들어간 인원 표시 (관제판과 동일 기준)
   const overlapCounts = new Map<string, number>();
@@ -297,8 +304,10 @@ function MyBanner({
       title = `다음 게임 ${order}번째`;
       sub = `앞에 ${order - 1}조합`;
     } else {
-      title = '게임 예정';
-      sub = '곧 불러요';
+      // 운영진이 짜는 중인 빈칸 조합에만 들어 있다 — 아직 정해진 게 아니라 대기로 보여 준다
+      title = `대기 ${waiting.findIndex((a) => a.id === me.id) + 1}번째`;
+      right = formatWaitingMinutes(me.waitingSince, now);
+      sub = '조합을 기다리는 중';
     }
   } else if (me.status === 'PLAYING') {
     tone = 'border-court bg-court/10 text-court';

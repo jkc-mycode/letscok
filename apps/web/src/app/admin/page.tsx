@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  GAME_SIZE,
   Gender,
   Grade,
   IAttendance,
@@ -288,6 +289,9 @@ function BoardBody({
   const [assignGameId, setAssignGameId] = useState<string | null>(null); // 코트 고르기 시트 대상 조합
   const [actionId, setActionId] = useState<string | null>(null); // 폰 대기 줄 [⋯] 시트 대상 출석
   const [commandOpen, setCommandOpen] = useState(false); // AI 명령(글·음성)
+  // 빈칸 채우기 시트 — gameId=null이면 새 조합(첫 사람을 고르면 그 조합으로 이어서 채운다)
+  // pending = 방금 만든 조합(실시간 화면이 도착하기 전까지 대신 보여 줘서 시트가 깜빡 닫히지 않게)
+  const [slotTarget, setSlotTarget] = useState<{ gameId: string | null; pending?: IGame } | null>(null);
 
   const { session, courts, attendances, games } = snapshot;
 
@@ -313,6 +317,7 @@ function BoardBody({
     let count = 0;
     for (const game of queuedGames) {
       if (free === 0) break;
+      if (!isFullGame(game)) continue; // 빈칸 있는 조합은 서버도 건너뛴다
       const ids = (game.players ?? []).map((p) => p.attendanceId);
       if (ids.some((id) => busyIds.has(id))) continue;
       ids.forEach((id) => busyIds.add(id));
@@ -348,20 +353,13 @@ function BoardBody({
     () => attendances.filter((a) => a.status !== 'LEFT' && !a.shuttleConfirmedAt),
     [attendances],
   );
-  const waiting = useMemo(
-    () => attendances.filter((a) => a.status === 'CHECKED_IN' && a.shuttleConfirmedAt),
-    [attendances],
-  );
-  // 휴식 인원 — 보이되 선택 불가 (인원 파악은 되고 실수 투입은 차단)
-  const restingList = useMemo(
-    () => attendances.filter((a) => a.status === 'RESTING' && a.shuttleConfirmedAt),
-    [attendances],
-  );
-  // 게임 중 포함 토글 — 잔여 인원을 게임 중/조합에 든 사람과 미리 조합할 때 켠다
-  const [includeBusy, setIncludeBusy] = useState(false);
-  const busyList = useMemo(
-    () => attendances.filter((a) => a.status === 'PLAYING' || a.status === 'MATCHED'),
-    [attendances],
+  // 명단 — 콕 확인된 출석자 전원(조합에 넣어도 사라지지 않는 자석판 명단). 비어 있는 사람(오래 기다린 순)이 위
+  const roster = useMemo(() => sortRoster(attendances), [attendances]);
+  const waitingCount = roster.filter((a) => a.status === 'CHECKED_IN').length;
+  // 이름 옆 위치 표시 — "조합 2, 3"·"1번 코트" (사람 → 들어 있는 대기 조합 순번들 / 코트 번호)
+  const placeLabels = useMemo(
+    () => buildPlaceLabels(queuedGames, playingByCourt, courts),
+    [queuedGames, playingByCourt, courts],
   );
   // 중복 대기 허용 — 두 개 이상의 대기 조합에 들어간 인원 (카드에 "겹침" 표시)
   const overlapIds = useMemo(() => {
@@ -391,6 +389,18 @@ function BoardBody({
       ) ?? null,
     [games, replaceGameId],
   );
+  // 빈칸 채우기 대상 — 실시간 스냅샷 기준, 다 차거나 배정·해체되면 시트가 저절로 닫힌다
+  const slotLive = slotTarget?.gameId ? games.find((g) => g.id === slotTarget.gameId) : undefined;
+  const slotGame = slotLive
+    ? slotLive.status === 'QUEUED' && !isFullGame(slotLive)
+      ? slotLive
+      : null
+    : (slotTarget?.pending ?? null);
+  const slotOpen = slotTarget !== null && (slotTarget.gameId === null || slotGame !== null);
+  // 실시간 화면에 나타나면 대신 보여 주던 것은 버린다(이후 해체되면 시트가 닫히게)
+  useEffect(() => {
+    if (slotLive && slotTarget?.pending) setSlotTarget({ gameId: slotLive.id });
+  }, [slotLive, slotTarget]);
   const leftCount = attendances.filter((a) => a.status === 'LEFT').length;
   const presentCount = attendances.length - leftCount;
 
@@ -403,13 +413,26 @@ function BoardBody({
     });
   };
 
+  // 4명이면 바로 조합, 1~3명이면 빈칸 있는 조합(나머지는 빈칸을 눌러 채우거나 끌어다 놓는다)
   const createGame = () =>
     run(async () => {
-      await api(`/sessions/${session.id}/games`, {
-        method: 'POST',
-        admin: true,
-        body: { attendanceIds: [...selected] },
-      });
+      const ids = [...selected];
+      if (ids.length === GAME_SIZE) {
+        await api(`/sessions/${session.id}/games`, {
+          method: 'POST',
+          admin: true,
+          body: { attendanceIds: ids },
+        });
+      } else {
+        const draft = await api<IGame>(`/sessions/${session.id}/games/draft`, {
+          method: 'POST',
+          admin: true,
+          body: { attendanceId: ids[0] },
+        });
+        for (const attendanceId of ids.slice(1)) {
+          await api(`/games/${draft.id}/players`, { method: 'POST', admin: true, body: { attendanceId } });
+        }
+      }
       setSelected(new Set());
     });
 
@@ -505,7 +528,7 @@ function BoardBody({
   const MOBILE_TABS: { value: MobileTab; label: string; count?: number }[] = [
     { value: 'courts', label: '게임 중', count: playingByCourt.size },
     { value: 'queue', label: '조합', count: queuedGames.length },
-    { value: 'waiting', label: '대기', count: waiting.length },
+    { value: 'waiting', label: '명단', count: waitingCount },
     { value: 'memo', label: '메모' },
   ];
 
@@ -682,7 +705,7 @@ function BoardBody({
               {fillNotice}
             </p>
           )}
-          {queuedGames.length === 0 && <Empty>대기 인원에서 4명을 골라 조합을 만들어주세요</Empty>}
+          {queuedGames.length === 0 && <Empty>명단에서 사람을 골라 조합을 만들어주세요</Empty>}
           <AnimatePresence initial={false}>
             {queuedGames.map((game, index) => (
               <QueueCard
@@ -696,9 +719,17 @@ function BoardBody({
                 run={run}
                 onReplace={(g) => setReplaceGameId(g.id)}
                 onPickCourt={(g) => setAssignGameId(g.id)}
+                onFillSlot={(g) => setSlotTarget({ gameId: g.id })}
               />
             ))}
           </AnimatePresence>
+          {/* 새 조합 자리 — 늘 맨 아래에 비어 있다. 첫 사람을 넣으면 빈칸 3개짜리 조합이 생긴다 */}
+          <button
+            onClick={() => setSlotTarget({ gameId: null })}
+            className="flex h-14 shrink-0 items-center justify-center rounded-xl border border-dashed border-amber/40 text-sm font-medium text-amber/80"
+          >
+            + 새 조합
+          </button>
         </Zone>
         </div>
 
@@ -706,31 +737,12 @@ function BoardBody({
         <div className="flex min-h-0 flex-col gap-3 max-md:contents">
         <div className={`${pane} flex-1`}>
         <Zone
-          title="대기 인원"
+          title="명단"
           accent="text-ink"
-          count={waiting.length}
+          count={roster.length}
           className="flex-1"
           headerExtra={
             <div className="ml-auto flex items-center gap-2">
-              {busyList.length > 0 && (
-                <button
-                  onClick={() => {
-                    setIncludeBusy((on) => {
-                      // 끌 때 게임 중/조합 인원이 선택에 남아 보이지 않게 되는 것 방지
-                      if (on) {
-                        const waitingIds = new Set(waiting.map((a) => a.id));
-                        setSelected((prev) => new Set([...prev].filter((id) => waitingIds.has(id))));
-                      }
-                      return !on;
-                    });
-                  }}
-                  className={`tap h-7 rounded-lg border px-2.5 text-xs font-medium ${
-                    includeBusy ? 'border-court text-court' : 'border-line text-dim'
-                  }`}
-                >
-                  게임 중 포함
-                </button>
-              )}
               {/* 이스터에그 히든 존 — [수동 체크인]과 같은 크기의 보이지 않는 영역, 13연타로 발동 */}
               <span
                 onClick={handleCheerTap}
@@ -764,10 +776,10 @@ function BoardBody({
               </button>
               <button
                 onClick={() => void createGame()}
-                disabled={selected.size !== 4 || busy}
+                disabled={selected.size === 0 || busy}
                 className="h-14 flex-1 rounded-xl bg-amber text-base font-bold text-bg disabled:bg-panel2 disabled:text-faint"
               >
-                조합 만들기 ({selected.size}/4)
+                {selected.size > 0 && selected.size < GAME_SIZE ? '빈칸 조합' : '조합 만들기'} ({selected.size}/4)
               </button>
             </>
           }
@@ -775,7 +787,7 @@ function BoardBody({
           {pendingShuttle.length > 0 && (
             <>
               <p className="pb-1 text-center text-[11px] font-medium text-amber">
-                콕 확인 대기 {pendingShuttle.length}명 — [콕 확인]을 누르면 대기 인원으로 내려가요
+                콕 확인 대기 {pendingShuttle.length}명 — [콕 확인]을 누르면 명단으로 내려가요
               </p>
               <AnimatePresence initial={false}>
                 {pendingShuttle.map((attendance) => (
@@ -785,11 +797,12 @@ function BoardBody({
               <div className="mb-1 border-b border-line" />
             </>
           )}
-          {waiting.length === 0 && pendingShuttle.length === 0 && (
-            <Empty>체크인한 대기 인원이 없어요</Empty>
+          {roster.length === 0 && pendingShuttle.length === 0 && (
+            <Empty>체크인한 사람이 없어요</Empty>
           )}
+          {/* 비어 있는 사람 → 조합에 든 사람 → 게임 중 → 휴식. 조합·게임에 든 사람도 겹쳐 넣을 수 있어 선택은 된다 */}
           <AnimatePresence initial={false}>
-            {waiting.map((attendance) => (
+            {roster.map((attendance) => (
               <WaitingRow
                 key={attendance.id}
                 onMore={(a) => setActionId(a.id)}
@@ -798,44 +811,14 @@ function BoardBody({
                 selected={selected.has(attendance.id)}
                 onToggle={() => toggleSelect(attendance.id)}
                 run={run}
+                busyStatus={
+                  attendance.status === 'PLAYING' || attendance.status === 'MATCHED' ? attendance.status : undefined
+                }
+                placeLabel={placeLabels.get(attendance.id)}
+                resting={attendance.status === 'RESTING'}
               />
             ))}
           </AnimatePresence>
-          <AnimatePresence initial={false}>
-            {restingList.map((attendance) => (
-              <WaitingRow
-                key={attendance.id}
-                onMore={(a) => setActionId(a.id)}
-                attendance={attendance}
-                now={now}
-                selected={false}
-                onToggle={() => undefined}
-                run={run}
-                resting
-              />
-            ))}
-          </AnimatePresence>
-          {includeBusy && busyList.length > 0 && (
-            <>
-              <p className="pt-2 pb-1 text-center text-[11px] text-faint">
-                게임 중 · 조합에 든 인원 — 미리 조합에 넣을 수 있어요
-              </p>
-              <AnimatePresence initial={false}>
-                {busyList.map((attendance) => (
-                  <WaitingRow
-                    key={attendance.id}
-                    onMore={(a) => setActionId(a.id)}
-                    attendance={attendance}
-                    now={now}
-                    selected={selected.has(attendance.id)}
-                    onToggle={() => toggleSelect(attendance.id)}
-                    run={run}
-                    busyStatus={attendance.status === 'PLAYING' ? 'PLAYING' : 'MATCHED'}
-                  />
-                ))}
-              </AnimatePresence>
-            </>
-          )}
           {leftCount > 0 && (
             <p className="pt-2 text-center text-xs text-faint">퇴장 {leftCount}명</p>
           )}
@@ -991,6 +974,18 @@ function BoardBody({
       )}
       {actionTarget && (
         <WaitingActionSheet attendance={actionTarget} run={run} onClose={() => setActionId(null)} />
+      )}
+      {slotOpen && (
+        <SlotFillSheet
+          sessionId={session.id}
+          game={slotGame}
+          roster={roster}
+          placeLabels={placeLabels}
+          run={run}
+          busy={busy}
+          onCreated={(g) => setSlotTarget({ gameId: g.id, pending: g })}
+          onClose={() => setSlotTarget(null)}
+        />
       )}
       {replaceTarget && (
         <ReplacePlayerModal
@@ -2634,14 +2629,14 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
   {
     title: '기본 흐름',
     items: [
-      '체크인만으로는 게임에 못 들어가요 — 대기 인원 맨 위 [콕 확인 대기]에서 콕 낸 사람의 [콕 확인]을 눌러야 대기 인원으로 내려와요. 그 섹션이 비어 있으면 다 처리된 거예요.',
+      '체크인만으로는 게임에 못 들어가요 — 대기 인원 맨 위 [콕 확인 대기]에서 콕 낸 사람의 [콕 확인]을 눌러야 명단으로 내려와요. 그 섹션이 비어 있으면 다 처리된 거예요.',
       '콕 확인 시각이 곧 참여 시작이에요 — 일찍 와서 콕을 늦게 낸 사람이 대기 순번을 앞지르지 않아요. 잘못 눌렀으면 행의 [콕취소]로 되돌려요 (조합·게임에 든 뒤엔 불가).',
-      '대기 인원에서 4명 선택 → [조합 만들기] → 대기 조합에서 [코트 배정] → 끝나면 [게임 종료].',
+      '명단에서 4명 선택 → [조합 만들기] → 대기 조합에서 [코트 배정] → 끝나면 [게임 종료].',
       '[게임 종료]만 게임 수 +1 · 대기시간 리셋. [대기로]는 조합을 유지한 채 뒤로, [취소]·[해체]는 없던 일로 (둘 다 미집계).',
-      '부상·급한 일로 한 명만 바꿀 땐 [교체] — 게임을 갈아엎지 않아 타이머·순서가 유지돼요. 빠진 사람은 대기 인원으로 돌아와요.',
+      '부상·급한 일로 한 명만 바꿀 땐 [교체] — 게임을 갈아엎지 않아 타이머·순서가 유지돼요. 빠진 사람은 대기로 돌아와요.',
       '구두 요청("○○랑 파트너 연습", "무릎 조심")은 메모에 적어두세요. 모임이 끝나도 남아 다음 모임에 이어지고, 처리했으면 ✕로 지워요.',
       '오늘 끝난 게임은 상단 [게임 기록]에서 확인해요 — 이름으로 검색하면 그 사람이 뛴 게임만 모아 볼 수 있어요.',
-      '모임원이 폰에서 [잠깐 쉴래요]를 누르면 휴식으로 빠져요 — 조합 선택·게임 추천에서 제외되고, 복귀하면 대기시간이 새로 시작돼요. 대기 인원 행의 [휴식]/[복귀]로 운영진이 대신 처리할 수도 있어요.',
+      '모임원이 폰에서 [잠깐 쉴래요]를 누르면 휴식으로 빠져요 — 조합 선택·게임 추천에서 제외되고, 복귀하면 대기시간이 새로 시작돼요. 명단 줄의 [휴식]/[복귀]로 운영진이 대신 처리할 수도 있어요.',
     ],
   },
   {
@@ -2701,7 +2696,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
     title: '알림 (호출 · 다시 알림)',
     items: [
       '모임원이 내 상태 화면에서 [게임 알림 받기]를 켜 두면, 조합 등록·코트 배정·교체 투입·콕 확인 때 폰으로 알림이 가요. 화면이 꺼져 있어도 와요.',
-      '대기 인원 행의 [호출] = 그 사람에게 "운영진이 찾고 있어요". 코트 카드의 [다시 알림] = 그 게임 4명에게 코트 알림을 다시 보내요.',
+      '명단 줄의 [호출] = 그 사람에게 "운영진이 찾고 있어요". 코트 카드의 [다시 알림] = 그 게임 4명에게 코트 알림을 다시 보내요.',
       '결과가 버튼에 잠깐 떠요 — "N대 전송"이면 보낸 것, "알림 미등록"이면 알림을 안 켠 분이라 직접 불러야 해요. 같은 대상은 30초에 한 번만.',
       '아이폰은 홈 화면에 추가한 앱에서만 알림을 받을 수 있어요. 알림은 보조 수단이라 늦거나 빠질 수 있어요 — 현장 호명을 대신하진 않아요.',
     ],
@@ -2710,7 +2705,8 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
     title: '겹침 · 게임 중 배지',
     items: [
       '한 사람이 여러 대기 조합에 들어갈 수 있어요 (잔여 인원을 미리 조합할 때 유용) — 두 곳 이상이면 "겹침" 배지.',
-      '대기 인원의 [게임 중 포함] 토글을 켜면 게임 중·조합에 든 사람도 직접 골라 조합을 만들 수 있어요.',
+      '명단에는 조합·게임에 든 사람도 늘 보여요(이름 옆에 "조합 2"·"1번 코트"). 그 사람도 골라서 다음 조합에 미리 넣을 수 있어요.',
+      '1~3명만 골라 [빈칸 조합]을 누르거나 대기 조합 맨 아래 [+ 새 조합]을 누르면 빈칸이 있는 조합이 생겨요. 빈칸을 눌러 한 명씩 채우고, 이름 옆 ✕로 빼요. 4명이 다 차야 코트에 배정되고 모임원 앱에도 보여요.',
       '조합에 게임 중인 사람이 있으면 그 게임이 끝날 때까지 코트 배정이 잠겨요.',
     ],
   },
@@ -3065,6 +3061,187 @@ function CourtCard({
 
 // ===== 대기 조합 구역 =====
 
+// 4명이 다 찬 조합 — 코트 배정·모임원 앱 노출·빈 코트 채우기는 이것만(서버와 같은 기준)
+function isFullGame(game: IGame): boolean {
+  return (game.players?.length ?? 0) >= GAME_SIZE;
+}
+
+// 명단 순서 — 비어 있는 사람 → 조합에 든 사람 → 게임 중 → 휴식 (각 묶음 안은 스냅샷 순서 = 오래 기다린 순)
+const ROSTER_RANK: Partial<Record<IAttendance['status'], number>> = {
+  CHECKED_IN: 0,
+  MATCHED: 1,
+  PLAYING: 2,
+  RESTING: 3,
+};
+function sortRoster(attendances: IAttendance[]): IAttendance[] {
+  return attendances
+    .filter((a) => a.shuttleConfirmedAt && ROSTER_RANK[a.status] !== undefined)
+    .sort((a, b) => ROSTER_RANK[a.status]! - ROSTER_RANK[b.status]!);
+}
+
+// 사람마다 지금 있는 곳 — 대기 조합 순번들("조합 2, 3") 또는 코트("1번 코트")
+function buildPlaceLabels(
+  queuedGames: IGame[],
+  playingByCourt: Map<string, IGame>,
+  courts: ICourt[],
+): Map<string, string> {
+  const labels = new Map<string, string>();
+  for (const court of courts) {
+    for (const player of playingByCourt.get(court.id)?.players ?? []) {
+      labels.set(player.attendanceId, `${court.courtNo}번 코트`);
+    }
+  }
+  const orders = new Map<string, number[]>();
+  queuedGames.forEach((game, index) => {
+    for (const player of game.players ?? []) {
+      orders.set(player.attendanceId, [...(orders.get(player.attendanceId) ?? []), index + 1]);
+    }
+  });
+  for (const [id, list] of orders) {
+    if (!labels.has(id)) labels.set(id, `조합 ${list.join(', ')}`);
+  }
+  return labels;
+}
+
+// 빈칸 있는 조합의 4칸 — 찬 칸은 이름 + ✕(빼기), 빈칸은 눌러서 사람 고르기
+function DraftSlots({
+  game,
+  run,
+  onFillSlot,
+}: {
+  game: IGame;
+  run: (a: () => Promise<unknown>) => Promise<void>;
+  onFillSlot: () => void;
+}) {
+  const players = game.players ?? [];
+  return (
+    <div className="mt-3 grid grid-cols-2 gap-1.5">
+      {players.map((player) => {
+        const member = player.attendance?.member;
+        if (!member) return null;
+        return (
+          <div key={player.id} className="flex h-10 items-center gap-1.5 rounded-lg bg-panel px-2 text-sm">
+            <GradeBadge grade={member.grade} />
+            <span className="min-w-0 truncate font-medium">{member.name}</span>
+            <GenderMarker gender={member.gender} />
+            <button
+              onClick={() =>
+                void run(() =>
+                  api(`/games/${game.id}/players/${player.attendanceId}`, { method: 'DELETE', admin: true }),
+                )
+              }
+              aria-label={`${member.name} 빼기`}
+              className="tap ml-auto h-7 w-7 shrink-0 rounded text-xs text-dim hover:text-coral"
+            >
+              ✕
+            </button>
+          </div>
+        );
+      })}
+      {Array.from({ length: GAME_SIZE - players.length }, (_, i) => (
+        <button
+          key={`empty-${i}`}
+          onClick={onFillSlot}
+          className="h-10 rounded-lg border border-dashed border-line text-xs text-faint"
+        >
+          + 넣기
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// 빈칸 채우기 시트 — 명단에서 한 명씩 눌러 넣는다. game=null이면 첫 사람으로 새 조합을 만들고 그 조합을 이어서 채운다
+// 4명이 차면 부모가 저절로 닫는다(실시간 스냅샷 기준)
+function SlotFillSheet({
+  sessionId,
+  game,
+  roster,
+  placeLabels,
+  run,
+  busy,
+  onCreated,
+  onClose,
+}: {
+  sessionId: string;
+  game: IGame | null;
+  roster: IAttendance[];
+  placeLabels: Map<string, string>;
+  run: (a: () => Promise<unknown>) => Promise<void>;
+  busy: boolean;
+  onCreated: (game: IGame) => void;
+  onClose: () => void;
+}) {
+  const inGame = new Set((game?.players ?? []).map((p) => p.attendanceId));
+  const candidates = roster.filter((a) => a.status !== 'RESTING' && !inGame.has(a.id));
+  const empty = GAME_SIZE - inGame.size;
+
+  const pick = (attendanceId: string) =>
+    void run(async () => {
+      if (game) {
+        await api(`/games/${game.id}/players`, { method: 'POST', admin: true, body: { attendanceId } });
+      } else {
+        onCreated(
+          await api<IGame>(`/sessions/${sessionId}/games/draft`, {
+            method: 'POST',
+            admin: true,
+            body: { attendanceId },
+          }),
+        );
+      }
+    });
+
+  return (
+    <Sheet
+      ariaLabel="조합에 넣기"
+      onClose={onClose}
+      header={
+        <>
+          <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-amber">조합에 넣기</h2>
+          <p className="min-w-0 text-xs text-faint">빈칸 {empty}개 · 누르면 바로 들어가요</p>
+        </>
+      }
+    >
+      {game && (
+        <p className="truncate text-sm text-dim">
+          지금: {(game.players ?? []).map((p) => p.attendance?.member?.name).filter(Boolean).join(', ')}
+        </p>
+      )}
+      {candidates.length === 0 && <p className="py-6 text-center text-sm text-faint">넣을 수 있는 사람이 없어요</p>}
+      {candidates.map((attendance) => {
+        const member = attendance.member;
+        if (!member) return null;
+        const place = placeLabels.get(attendance.id);
+        return (
+          <button
+            key={attendance.id}
+            onClick={() => pick(attendance.id)}
+            disabled={busy}
+            className="flex shrink-0 items-center gap-1.5 rounded-xl border border-line bg-panel2 p-3 text-left text-sm disabled:opacity-50"
+          >
+            <GradeBadge grade={member.grade} />
+            <span className="min-w-0 truncate font-medium">{member.name}</span>
+            <GenderMarker gender={member.gender} />
+            {member.isGuest && <span className="text-[10px] text-sky">G</span>}
+            {place && (
+              <span
+                className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                  attendance.status === 'PLAYING' ? 'bg-court/15 text-court' : 'bg-amber/15 text-amber'
+                }`}
+              >
+                {place}
+              </span>
+            )}
+            <span className="tabular ml-auto shrink-0 font-mono text-[11px] text-dim">
+              {attendance.gamesPlayed}게임
+            </span>
+          </button>
+        );
+      })}
+    </Sheet>
+  );
+}
+
 function QueueCard({
   game,
   order,
@@ -3075,6 +3252,7 @@ function QueueCard({
   run,
   onReplace,
   onPickCourt,
+  onFillSlot,
 }: {
   game: IGame;
   order: number;
@@ -3085,7 +3263,9 @@ function QueueCard({
   run: (a: () => Promise<unknown>) => Promise<void>;
   onReplace: (game: IGame) => void;
   onPickCourt: (game: IGame) => void; // 빈 코트가 여럿이면 코트 고르기 시트
+  onFillSlot: (game: IGame) => void; // 빈칸 → 사람 고르기 시트
 }) {
+  const full = isFullGame(game);
   // 바로 배정할 수 있는 코트(상대 차례인 공유 코트 제외) — 하나뿐이면 시트 없이 한 번에 넣는다
   const available = idleCourts.filter((court) => !court.isShared || court.ourTurn);
 
@@ -3113,9 +3293,14 @@ function QueueCard({
   };
 
   return (
-    <MotionCard className="rounded-xl border border-amber/30 bg-panel2 p-4">
+    <MotionCard
+      className={`rounded-xl border bg-panel2 p-4 ${full ? 'border-amber/30' : 'border-dashed border-amber/50'}`}
+    >
       <div className="flex items-center justify-between">
-        <span className="font-bold text-amber">다음 게임 {order}</span>
+        <span className="font-bold text-amber">
+          다음 게임 {order}
+          {!full && <span className="ml-1.5 text-xs font-medium text-faint">짜는 중</span>}
+        </span>
         <div className="flex gap-1">
           <button
             onClick={() => swapWith(neighborUp)}
@@ -3133,9 +3318,17 @@ function QueueCard({
           </button>
         </div>
       </div>
-      <PlayerGrid game={game} overlapIds={overlapIds} />
+      {full ? (
+        <PlayerGrid game={game} overlapIds={overlapIds} />
+      ) : (
+        <DraftSlots game={game} run={run} onFillSlot={() => onFillSlot(game)} />
+      )}
       <div className="mt-3 flex flex-wrap gap-2">
-        {busyNames.length > 0 ? (
+        {!full ? (
+          <span className="flex h-11 flex-1 items-center justify-center rounded-lg border border-dashed border-line px-2 text-center text-xs text-faint">
+            {GAME_SIZE - (game.players?.length ?? 0)}명 더 필요
+          </span>
+        ) : busyNames.length > 0 ? (
           <span className="flex h-11 flex-1 items-center justify-center rounded-lg border border-dashed border-line px-2 text-center text-xs text-faint">
             {busyNames.join(', ')} 게임 종료 후 배정 가능
           </span>
@@ -3166,17 +3359,19 @@ function QueueCard({
             코트 배정
           </button>
         )}
-        <button
-          onClick={() => onReplace(game)}
-          title="조합에서 한 명만 바꾸기 (순서 유지)"
-          className="h-11 rounded-lg border border-line px-3 text-sm text-dim"
-        >
-          교체
-        </button>
+        {full && (
+          <button
+            onClick={() => onReplace(game)}
+            title="조합에서 한 명만 바꾸기 (순서 유지)"
+            className="h-11 rounded-lg border border-line px-3 text-sm text-dim"
+          >
+            교체
+          </button>
+        )}
         <ConfirmButton
           label="해체"
           confirmLabel="정말 해체"
-          title="이 조합을 없애고 4명을 대기로 돌려보내요"
+          title="이 조합을 없애고 든 사람을 대기로 돌려보내요"
           onConfirm={() => void run(() => api(`/games/${game.id}/cancel`, { method: 'PATCH', admin: true }))}
           className="h-11 rounded-lg px-3 text-sm"
           idleCls="border border-coral/40 text-coral"
@@ -3334,6 +3529,7 @@ function WaitingRow({
   onToggle,
   run,
   busyStatus,
+  placeLabel,
   resting,
   onMore,
 }: {
@@ -3343,7 +3539,8 @@ function WaitingRow({
   onToggle: () => void;
   run: (a: () => Promise<unknown>) => Promise<void>;
   onMore: (attendance: IAttendance) => void; // 폰: 줄 버튼 대신 [⋯] → 동작 시트
-  busyStatus?: 'PLAYING' | 'MATCHED'; // 게임 중 포함 토글로 노출된 행 — 흐리게 + 상태 칩, 퇴장 버튼 없음
+  busyStatus?: 'PLAYING' | 'MATCHED'; // 조합·게임에 든 사람 — 흐리게 + 위치 칩, 휴식·퇴장 버튼 없음
+  placeLabel?: string; // 위치 칩 문구("조합 2, 3"·"1번 코트")
   resting?: boolean; // 휴식 행 — 선택 불가, 복귀·퇴장 버튼만
 }) {
   const member = attendance.member;
@@ -3367,7 +3564,7 @@ function WaitingRow({
             busyStatus === 'PLAYING' ? 'bg-court/15 text-court' : 'bg-amber/15 text-amber'
           }`}
         >
-          {busyStatus === 'PLAYING' ? '게임 중' : '대기 조합'}
+          {placeLabel ?? (busyStatus === 'PLAYING' ? '게임 중' : '대기 조합')}
         </span>
       )}
       {resting && (
