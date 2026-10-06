@@ -221,7 +221,7 @@ export function CommandSheet({
             autoComplete="off"
             enterKeyHint="send"
             maxLength={200}
-            placeholder="예: 민수랑 준호 넣어서 남복 짜줘"
+            placeholder="말하듯 적어 주세요"
             className="h-12 min-w-0 flex-1 rounded-xl border border-line bg-panel2 px-4 text-sm outline-none placeholder:text-faint focus:border-court"
           />
           <button
