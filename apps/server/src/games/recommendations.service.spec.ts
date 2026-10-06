@@ -256,3 +256,45 @@ describe('recommend — 지정 인원(fixedIds)', () => {
     await expect(service.recommend(session.id, 'ALL', [a.id])).rejects.toThrow('4명을 채울 수 없어요');
   });
 });
+
+describe('recommend — 온 시간 대비 게임 수', () => {
+  const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000);
+
+  it('늦게 온 사람(0게임)이 일찍 와서 제 속도로 친 사람보다 앞서지 않는다 — 대기 시간 순서가 우선', async () => {
+    const session = await seedSession();
+    // 일찍 온 4명: 60분 전 콕 확인, 3게임, 20분째 대기
+    const early = await Promise.all(Array.from({ length: 4 }, () => seedAttendance(session.id, 'MALE')));
+    for (const a of early) {
+      await prisma.attendance.update({
+        where: { id: a.id },
+        data: { shuttleConfirmedAt: minutesAgo(60), waitingSince: minutesAgo(20), gamesPlayed: 3 },
+      });
+    }
+    // 방금 온 1명: 0게임, 방금 콕 확인
+    const late = await seedAttendance(session.id, 'MALE');
+    await prisma.attendance.update({
+      where: { id: late.id },
+      data: { shuttleConfirmedAt: minutesAgo(1), waitingSince: minutesAgo(1), gamesPlayed: 0 },
+    });
+
+    const [first] = await service.recommend(session.id);
+
+    expect(first.players.map((p) => p.attendanceId).sort()).toEqual(early.map((a) => a.id).sort());
+  });
+
+  it('같은 시각에 온 사람끼리는 덜 친 사람이 우선', async () => {
+    const session = await seedSession();
+    const people = await Promise.all(Array.from({ length: 5 }, () => seedAttendance(session.id, 'MALE')));
+    for (const [i, a] of people.entries()) {
+      await prisma.attendance.update({
+        where: { id: a.id },
+        // 모두 60분 전에 왔고 10분째 대기, 마지막 1명만 다른 사람보다 2게임 더 침
+        data: { shuttleConfirmedAt: minutesAgo(60), waitingSince: minutesAgo(10), gamesPlayed: i === 4 ? 5 : 3 },
+      });
+    }
+
+    const [first] = await service.recommend(session.id);
+
+    expect(first.players.map((p) => p.attendanceId)).not.toContain(people[4].id);
+  });
+});

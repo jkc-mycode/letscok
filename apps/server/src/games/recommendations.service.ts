@@ -15,7 +15,7 @@ type Pooled = Attendance & { member: Member };
 
 // 점수 가중치 — 초기값, 파일럿에서 체감 튜닝 예정
 const W_WAIT = 1; // 대기 1분당 가점 (공정성 기본 축)
-const W_GAMES = 15; // 오늘 게임 1회당 감점 (적게 뛴 사람 우선)
+const W_GAMES = 15; // "온 시간에 비해 더 친" 게임 1회당 감점 (덜 친 사람 우선) — 단순 게임 수가 아니라 기대치 대비
 const W_REPEAT = 20; // 오늘 함께 뛴 쌍 1회당 감점 (다양성)
 const W_GRADE = 30; // 급수 간격이 3을 초과하는 만큼 감점 (극단 조합만 회피)
 const W_BORROW = 25; // 차용 인원 1명당 감점 (미배정 대기 인원이 항상 우선)
@@ -137,14 +137,24 @@ export class RecommendationsService {
     }
 
     const now = Date.now();
+    // 온 시간 대비 게임 수 — 늦게 온 사람이 총 게임 수를 따라잡으려 연속 추천되지 않게.
+    // 오늘 평균 속도(전체 게임 ÷ 전체 참여 분)로 "참여한 만큼 쳤어야 할 게임 수"를 구하고, 그보다 더 친 만큼만 감점한다.
+    // 참여 시작 = 콕 확인 시각(체크인 시각 아님). 휴식 시간도 참여에 들어가는 근사다
+    const participation = (a: Pooled) =>
+      a.shuttleConfirmedAt ? Math.max(0, (now - a.shuttleConfirmedAt.getTime()) / 60_000) : 0;
+    const totalMinutes = allAttendances.reduce((sum, a) => sum + participation(a), 0);
+    const totalGames = allAttendances.reduce((sum, a) => sum + a.gamesPlayed, 0);
+    const gamesPerMinute = totalMinutes > 0 ? totalGames / totalMinutes : 0;
+    const excessGames = (a: Pooled) => a.gamesPlayed - participation(a) * gamesPerMinute;
+
     const scored = combos.map((players) => {
       let waitSum = 0;
-      let gamesSum = 0;
+      let excessSum = 0;
       let borrowed = 0;
       const grades = players.map((p) => GRADE_ORDER.indexOf(p.member.grade));
       for (const p of players) {
         waitSum += waitingMinutes(p.waitingSince, now);
-        gamesSum += p.gamesPlayed;
+        excessSum += excessGames(p);
         if (p.status !== 'CHECKED_IN') borrowed++;
       }
       let repeatOccur = 0; // 등장 횟수 합 (감점용)
@@ -162,7 +172,7 @@ export class RecommendationsService {
         category === 'ALL' && !isCleanGenderComposition(players) ? W_GENDER : 0;
       const base =
         waitSum * W_WAIT -
-        gamesSum * W_GAMES -
+        excessSum * W_GAMES -
         gradeExcess * W_GRADE -
         borrowed * W_BORROW -
         genderPenalty;
