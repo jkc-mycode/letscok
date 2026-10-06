@@ -3,6 +3,8 @@
 import {
   AiCommandAction,
   IAiCommandResult,
+  IAttendance,
+  IGame,
   IAiCommandTarget,
   IGameRecommendation,
   IPushCallResult,
@@ -36,12 +38,50 @@ const ACTION_LABEL: Record<Exclude<AiCommandAction, 'make_game'>, string> = {
 type ChooseResult = Extract<IAiCommandResult, { kind: 'choose' }>;
 type ActionPreview = Extract<IAiCommandResult, { kind: 'action_preview' }>;
 
+// 미리보기를 보는 사이 다른 운영진이 바꾼 것 — 실시간 스냅샷으로 다시 확인해 표시한다(서버 규칙이 최종 판단)
+interface Live {
+  attendances: IAttendance[];
+  games: IGame[];
+}
+
+// 추천 받을 때 상태와 지금 상태를 비교 — 바뀌었으면 이유 한 줄
+function playerChange(live: Live, attendanceId: string, borrowedFrom: 'QUEUED' | 'PLAYING' | null): string | null {
+  const a = live.attendances.find((x) => x.id === attendanceId);
+  if (!a || a.status === 'LEFT') return '퇴장했어요';
+  if (!a.shuttleConfirmedAt) return '콕 확인이 취소됐어요';
+  if (a.status === 'RESTING') return '휴식 중이에요';
+  if (borrowedFrom === null && a.status === 'MATCHED') return '그 사이 다른 조합에 들어갔어요';
+  if (borrowedFrom !== 'PLAYING' && a.status === 'PLAYING') return '그 사이 게임을 시작했어요';
+  return null;
+}
+
+function sameQueued(live: Live, ids: string[]): boolean {
+  const key = [...ids].sort().join('|');
+  return live.games.some(
+    (g) => g.status === 'QUEUED' && (g.players ?? []).map((p) => p.attendanceId).sort().join('|') === key,
+  );
+}
+
+// 게임 종료·휴식·복귀를 그 사이 다른 운영진이 이미 처리했는지
+function actionStale(live: Live, preview: ActionPreview): string | null {
+  if (preview.action === 'finish_game') {
+    return live.games.some((g) => g.id === preview.gameId && g.status === 'PLAYING') ? null : '이미 끝난 게임이에요';
+  }
+  const statuses = preview.targets.map((t) => live.attendances.find((a) => a.id === t.attendanceId)?.status);
+  if (statuses.some((s) => s === undefined || s === 'LEFT')) return '퇴장한 사람이 있어요';
+  if (preview.action === 'rest' && statuses.every((s) => s === 'RESTING')) return '이미 휴식 중이에요';
+  if (preview.action === 'resume' && statuses.every((s) => s !== 'RESTING')) return '이미 복귀했어요';
+  return null;
+}
+
 export function CommandSheet({
   sessionId,
+  live,
   run,
   onClose,
 }: {
   sessionId: string;
+  live: Live; // 관제판 실시간 스냅샷(출석·게임)
   run: (a: () => Promise<unknown>) => Promise<void>; // 실행은 보드 공용 실행기(실패 알림·새로고침)
   onClose: () => void;
 }) {
@@ -247,7 +287,7 @@ export function CommandSheet({
       {error && <p className="rounded-xl border border-coral/40 bg-coral/10 p-3 text-sm text-coral">{error}</p>}
       {notice && <p className="rounded-xl border border-court/40 bg-court/10 p-3 text-sm text-court">✓ {notice}</p>}
       {result && !sending && (
-        <ResultView result={result} onAddGame={addGame} onExecute={execute} onChosen={afterChoose} />
+        <ResultView result={result} live={live} onAddGame={addGame} onExecute={execute} onChosen={afterChoose} />
       )}
     </Sheet>
   );
@@ -255,11 +295,13 @@ export function CommandSheet({
 
 function ResultView({
   result,
+  live,
   onAddGame,
   onExecute,
   onChosen,
 }: {
   result: IAiCommandResult;
+  live: Live;
   onAddGame: (r: IGameRecommendation) => void;
   onExecute: (p: ActionPreview) => void;
   onChosen: (c: ChooseResult, picked: IAiCommandTarget[]) => void;
@@ -272,14 +314,19 @@ function ResultView({
         <p className="rounded-xl border border-court/40 bg-court/10 p-3 text-sm leading-relaxed">{result.result.message}</p>
       );
     case 'game_preview':
-      return <GamePreview category={result.category} recommendations={result.recommendations} onAdd={onAddGame} />;
-    case 'action_preview':
+      return (
+        <GamePreview category={result.category} recommendations={result.recommendations} live={live} onAdd={onAddGame} />
+      );
+    case 'action_preview': {
+      const stale = actionStale(live, result);
       return (
         <div className="flex flex-col gap-3 rounded-xl border border-amber/40 bg-amber/5 p-4">
           <p className="text-base font-bold">{result.label}</p>
+          {stale && <p className="text-sm font-medium text-coral">⚠ {stale} — 다른 운영진이 먼저 처리했을 수 있어요</p>}
           <button
             onClick={() => onExecute(result)}
-            className={`h-12 rounded-xl text-sm font-bold ${
+            disabled={!!stale}
+            className={`h-12 rounded-xl text-sm font-bold disabled:bg-panel2 disabled:text-faint ${
               result.action === 'finish_game' ? 'bg-court text-bg' : 'bg-amber text-bg'
             }`}
           >
@@ -287,6 +334,7 @@ function ResultView({
           </button>
         </div>
       );
+    }
     case 'choose':
       return <ChooseView choose={result} onDone={(picked) => onChosen(result, picked)} />;
   }
@@ -296,33 +344,52 @@ function ResultView({
 function GamePreview({
   category,
   recommendations,
+  live,
   onAdd,
 }: {
   category: RecommendationCategory;
   recommendations: IGameRecommendation[];
+  live: Live;
   onAdd: (r: IGameRecommendation) => void;
 }) {
   const [index, setIndex] = useState(0);
   const current = recommendations[index];
+  const changes = current.players.map((p) => playerChange(live, p.attendanceId, p.borrowedFrom));
+  const duplicate = sameQueued(live, current.players.map((p) => p.attendanceId));
+  // 퇴장·콕 취소·휴식은 서버가 어차피 거절 — 미리 막는다. 다른 조합·게임에 들어간 건 겹침 허용이라 경고만
+  const blocked = duplicate || changes.some((c) => c === '퇴장했어요' || c === '콕 확인이 취소됐어요' || c === '휴식 중이에요');
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-amber/40 bg-amber/5 p-4">
       <p className="text-xs font-bold text-amber">
         {CATEGORY_LABEL[category]} · {current.genderLabel} · 추천 {index + 1}/{recommendations.length}
       </p>
       <div className="grid grid-cols-2 gap-2">
-        {current.players.map((p) => (
-          <div key={p.attendanceId} className="flex items-center gap-1.5 rounded-lg border border-line bg-panel2 p-2 text-sm">
-            <GradeBadge grade={p.grade} />
-            <span className="min-w-0 truncate font-medium">{p.name}</span>
-            {p.pinned && <span className="shrink-0 text-[11px] text-court">지정</span>}
+        {current.players.map((p, i) => (
+          <div
+            key={p.attendanceId}
+            className={`flex flex-col gap-0.5 rounded-lg border bg-panel2 p-2 text-sm ${
+              changes[i] ? 'border-coral/50' : 'border-line'
+            }`}
+          >
+            <span className="flex items-center gap-1.5">
+              <GradeBadge grade={p.grade} />
+              <span className="min-w-0 truncate font-medium">{p.name}</span>
+              {p.pinned && <span className="shrink-0 text-[11px] text-court">지정</span>}
+            </span>
+            {changes[i] && <span className="text-[11px] text-coral">{changes[i]}</span>}
           </div>
         ))}
       </div>
+      {duplicate && <p className="text-sm font-medium text-coral">⚠ 같은 4명 조합이 이미 대기 중이에요 — 다른 운영진이 먼저 넣었어요</p>}
       {current.repeatPairCount > 0 && (
         <p className="text-xs text-dim">오늘 같이 친 짝 {current.repeatPairCount}쌍</p>
       )}
       <div className="flex gap-2">
-        <button onClick={() => onAdd(current)} className="h-12 flex-1 rounded-xl bg-amber text-sm font-bold text-bg">
+        <button
+          onClick={() => onAdd(current)}
+          disabled={blocked}
+          className="h-12 flex-1 rounded-xl bg-amber text-sm font-bold text-bg disabled:bg-panel2 disabled:text-faint"
+        >
           대기 조합에 넣기
         </button>
         {recommendations.length > 1 && (

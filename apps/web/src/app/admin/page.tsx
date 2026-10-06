@@ -900,7 +900,12 @@ function BoardBody({
         />
       )}
       {commandOpen && (
-        <CommandSheet sessionId={session.id} run={run} onClose={() => setCommandOpen(false)} />
+        <CommandSheet
+          sessionId={session.id}
+          live={{ attendances, games }}
+          run={run}
+          onClose={() => setCommandOpen(false)}
+        />
       )}
       {actionTarget && (
         <WaitingActionSheet attendance={actionTarget} run={run} onClose={() => setActionId(null)} />
