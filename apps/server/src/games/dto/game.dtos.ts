@@ -1,6 +1,9 @@
 import {
+  IAddGamePlayerDto,
   IAssignGameDto,
+  ICreateDraftGameDto,
   ICreateGameDto,
+  IReorderGamesDto,
   IReplaceGamePlayerDto,
   IUpdateGameOrderDto,
   RecommendationCategory,
@@ -8,6 +11,7 @@ import {
 import {
   ArrayMaxSize,
   ArrayMinSize,
+  ArrayUnique,
   IsArray,
   IsEnum,
   IsInt,
@@ -48,6 +52,27 @@ export class UpdateGameOrderDto implements IUpdateGameOrderDto {
   @IsInt({ message: '순서 값이 올바르지 않습니다.' })
   @Min(1, { message: '순서는 1 이상이어야 합니다.' })
   queueOrder: number;
+}
+
+// 빈칸 있는 조합 시작 — 첫 사람의 출석 id
+export class CreateDraftGameDto implements ICreateDraftGameDto {
+  @IsString({ message: '모임원을 선택해주세요.' })
+  attendanceId: string;
+}
+
+// 대기 조합 빈칸에 넣을 사람의 출석 id
+export class AddGamePlayerDto implements IAddGamePlayerDto {
+  @IsString({ message: '모임원을 선택해주세요.' })
+  attendanceId: string;
+}
+
+// 대기 조합 전체 순서 — 지금 대기 중인 조합 id 전부를 새 순서대로(빠지거나 남는 게 있으면 서비스가 409)
+export class ReorderGamesDto implements IReorderGamesDto {
+  @IsArray()
+  @ArrayMinSize(1, { message: '바꿀 조합이 없습니다.' })
+  @ArrayUnique({ message: '같은 조합이 중복되었습니다.' })
+  @IsString({ each: true })
+  gameIds: string[];
 }
 
 // 선수 교체 요청 — 나가는 사람/들어오는 사람 출석 id 한 쌍

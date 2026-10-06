@@ -660,3 +660,121 @@ describe('renotify (코트 다시 알림)', () => {
   });
 });
 
+
+// ===== 빈칸 있는 조합 (관제판 끌어서 짜기) =====
+
+describe('빈칸 있는 조합', () => {
+  beforeEach(() => pushStub.notifyGame.mockClear());
+
+  it('첫 사람으로 시작 → 큐 맨 뒤, MATCHED, 알림 없음 / 4명째가 들어오면 그때 4명에게 알림', async () => {
+    const session = await seedSession();
+    const [a, b, c, d] = await seedFour(session.id);
+    const [e, f, g, h] = await seedFour(session.id);
+    await service.create(session.id, { attendanceIds: [e.id, f.id, g.id, h.id] });
+    pushStub.notifyGame.mockClear();
+
+    const draft = await service.createDraft(session.id, { attendanceId: a.id });
+    expect(draft.status).toBe('QUEUED');
+    expect(draft.queueOrder).toBe(2);
+    expect(draft.players).toHaveLength(1);
+    expect(await statusOf(a.id)).toBe('MATCHED');
+
+    await service.addPlayer(draft.id, { attendanceId: b.id });
+    await service.addPlayer(draft.id, { attendanceId: c.id });
+    expect(pushStub.notifyGame).not.toHaveBeenCalled();
+    const full = await service.addPlayer(draft.id, { attendanceId: d.id });
+    expect(full.players).toHaveLength(4);
+    expect(pushStub.notifyGame).toHaveBeenCalledTimes(1);
+    expect(pushStub.notifyGame).toHaveBeenCalledWith(draft.id);
+  });
+
+  it('가드 — 이미 든 사람(409), 4명 다 찬 조합(409), 휴식·콕 미확인(409), 같은 4명 대기 중(409)', async () => {
+    const session = await seedSession();
+    const [a, b, c, d] = await seedFour(session.id);
+    const resting = await seedAttendance(session.id, { status: 'RESTING' });
+    const unpaid = await seedAttendance(session.id, { shuttleConfirmed: false });
+
+    const draft = await service.createDraft(session.id, { attendanceId: a.id });
+    await expect(service.addPlayer(draft.id, { attendanceId: a.id })).rejects.toThrow(ConflictException);
+    await expect(service.addPlayer(draft.id, { attendanceId: resting.id })).rejects.toThrow(ConflictException);
+    await expect(service.createDraft(session.id, { attendanceId: unpaid.id })).rejects.toThrow(ConflictException);
+
+    // 같은 4명 조합이 이미 있으면 4명째에서 막힌다
+    await service.create(session.id, { attendanceIds: [a.id, b.id, c.id, d.id] });
+    await service.addPlayer(draft.id, { attendanceId: b.id });
+    await service.addPlayer(draft.id, { attendanceId: c.id });
+    await expect(service.addPlayer(draft.id, { attendanceId: d.id })).rejects.toThrow(ConflictException);
+
+    const e = await seedAttendance(session.id);
+    await service.addPlayer(draft.id, { attendanceId: e.id });
+    const f = await seedAttendance(session.id);
+    await expect(service.addPlayer(draft.id, { attendanceId: f.id })).rejects.toThrow(ConflictException);
+  });
+
+  it('두 기기가 마지막 빈칸을 동시에 채워도 4명을 넘지 않는다', async () => {
+    const session = await seedSession();
+    const [a, b, c, d] = await seedFour(session.id);
+    const e = await seedAttendance(session.id);
+    const draft = await service.createDraft(session.id, { attendanceId: a.id });
+    await service.addPlayer(draft.id, { attendanceId: b.id });
+    await service.addPlayer(draft.id, { attendanceId: c.id });
+
+    const results = await Promise.allSettled([
+      service.addPlayer(draft.id, { attendanceId: d.id }),
+      service.addPlayer(draft.id, { attendanceId: e.id }),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(await prisma.gamePlayer.count({ where: { gameId: draft.id } })).toBe(4);
+  });
+
+  it('빼기 — 4명 조합도 빈칸으로 돌아가고, 빠진 사람은 대기 복귀(다른 조합에 있으면 MATCHED), 0명이면 해체', async () => {
+    const session = await seedSession();
+    const [a, b, c, d] = await seedFour(session.id);
+    const game = await service.create(session.id, { attendanceIds: [a.id, b.id, c.id, d.id] });
+    const other = await service.createDraft(session.id, { attendanceId: b.id });
+
+    const three = await service.removePlayer(game.id, a.id);
+    expect(three.status).toBe('QUEUED');
+    expect(three.players).toHaveLength(3);
+    expect(await statusOf(a.id)).toBe('CHECKED_IN');
+
+    await service.removePlayer(game.id, b.id);
+    expect(await statusOf(b.id)).toBe('MATCHED'); // other 조합에 남아 있다
+
+    await expect(service.removePlayer(game.id, a.id)).rejects.toThrow(ConflictException);
+
+    const empty = await service.removePlayer(other.id, b.id);
+    expect(empty.status).toBe('CANCELED');
+    expect(empty.queueOrder).toBeNull();
+    expect(await statusOf(b.id)).toBe('CHECKED_IN');
+  });
+
+  it('빈칸 조합은 코트 배정 불가(409), 빈 코트 채우기는 건너뜀 안내 없이 다음 조합을 넣는다', async () => {
+    const session = await seedSession();
+    const court = await seedCourt(session.id);
+    const [a, b, c, d] = await seedFour(session.id);
+    const draft = await service.createDraft(session.id, { attendanceId: a.id });
+    const full = await service.create(session.id, { attendanceIds: [a.id, b.id, c.id, d.id] });
+
+    await expect(service.assign(draft.id, { courtId: court.id })).rejects.toThrow(ConflictException);
+    const result = await service.fillCourts(session.id);
+    expect(result.assigned.map((x) => x.gameId)).toEqual([full.id]);
+    expect(result.skipped).toEqual([]);
+  });
+
+  it('한 번에 순서 바꾸기 — 대기 조합 전부를 새 순서로, 빠지거나 남는 게 있으면 409', async () => {
+    const session = await seedSession();
+    const [a, b, c] = await seedFour(session.id);
+    const g1 = await service.createDraft(session.id, { attendanceId: a.id });
+    const g2 = await service.createDraft(session.id, { attendanceId: b.id });
+    const g3 = await service.createDraft(session.id, { attendanceId: c.id });
+
+    const reordered = await service.reorder(session.id, { gameIds: [g3.id, g1.id, g2.id] });
+    expect(reordered.map((g) => [g.id, g.queueOrder])).toEqual([
+      [g3.id, 1],
+      [g1.id, 2],
+      [g2.id, 3],
+    ]);
+    await expect(service.reorder(session.id, { gameIds: [g1.id, g2.id] })).rejects.toThrow(ConflictException);
+  });
+});

@@ -206,6 +206,25 @@ export interface IUpdateGameOrderDto {
   queueOrder: number;
 }
 
+// 빈칸 있는 조합(1~3명) — 관제판에서 사람을 한 명씩 끌어다 놓아 짠다. 4명이 차면 일반 조합
+// 모임원 앱·코트 배정·빈 코트 채우기는 4명 다 찬 조합만 다룬다
+export const GAME_SIZE = 4;
+
+// 새 조합 자리에 첫 사람을 놓기
+export interface ICreateDraftGameDto {
+  attendanceId: string;
+}
+
+// 대기 조합의 빈칸에 한 명 넣기
+export interface IAddGamePlayerDto {
+  attendanceId: string;
+}
+
+// 대기 조합 전체 순서를 한 번에 — 끌어서 놓은 최종 순서(지금 대기 중인 조합 전부)
+export interface IReorderGamesDto {
+  gameIds: string[];
+}
+
 // 선수 교체 (게임 중·대기 조합 공용) — 부상·급한 일로 한 명만 바꿀 때
 export interface IReplaceGamePlayerDto {
   outAttendanceId: string; // 빠지는 사람 (이 게임의 플레이어)

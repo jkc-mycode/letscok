@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
+  GAME_SIZE,
   IPushPayload,
   IPushPublicKey,
   ISubscribePushDto,
@@ -134,10 +135,12 @@ export class PushService {
     if (game.status === 'PLAYING') {
       title = `🏸 ${game.court?.courtNo ?? ''}번 코트로 오세요`;
     } else {
-      // 대기 순번 = 이 조합보다 앞서거나 같은 순서의 대기 조합 수
-      const position = await this.prisma.game.count({
+      // 대기 순번 = 이 조합보다 앞서거나 같은 순서의 대기 조합 수 — 빈칸 있는 조합(짜는 중)은 모임원에게 안 보이므로 세지 않는다
+      const ahead = await this.prisma.game.findMany({
         where: { sessionId: game.sessionId, status: 'QUEUED', queueOrder: { lte: game.queueOrder ?? 0 } },
+        select: { _count: { select: { players: true } } },
       });
+      const position = ahead.filter((g) => g._count.players === GAME_SIZE).length;
       title = '다음 게임 조합에 들어갔어요';
       lead = `대기 ${position}번째`;
     }

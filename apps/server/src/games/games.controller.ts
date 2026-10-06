@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -17,8 +18,11 @@ import {
 } from '@letscok/shared-types';
 import { AdminGuard } from '../common/guards/admin.guard';
 import {
+  AddGamePlayerDto,
   AssignGameDto,
+  CreateDraftGameDto,
   CreateGameDto,
+  ReorderGamesDto,
   RecommendGamesQueryDto,
   ReplaceGamePlayerDto,
   UpdateGameOrderDto,
@@ -57,6 +61,24 @@ export class GamesController {
     @Body() dto: CreateGameDto,
   ): Promise<IApiResponse<IGame>> {
     return { success: true, data: await this.gamesService.create(sessionId, dto) };
+  }
+
+  // 빈칸 있는 조합 시작 — 관제판에서 첫 사람을 새 조합 자리에 끌어다 놓을 때
+  @Post('sessions/:sessionId/games/draft')
+  async createDraft(
+    @Param('sessionId') sessionId: string,
+    @Body() dto: CreateDraftGameDto,
+  ): Promise<IApiResponse<IGame>> {
+    return { success: true, data: await this.gamesService.createDraft(sessionId, dto) };
+  }
+
+  // 대기 조합 전체 순서를 한 번에 (끌어서 순서 바꾸기)
+  @Patch('sessions/:sessionId/games/order')
+  async reorder(
+    @Param('sessionId') sessionId: string,
+    @Body() dto: ReorderGamesDto,
+  ): Promise<IApiResponse<IGame[]>> {
+    return { success: true, data: await this.gamesService.reorder(sessionId, dto) };
   }
 
   @Patch('games/:id/assign')
@@ -104,6 +126,24 @@ export class GamesController {
     @Body() dto: ReplaceGamePlayerDto,
   ): Promise<IApiResponse<IGame>> {
     return { success: true, data: await this.gamesService.replacePlayer(id, dto) };
+  }
+
+  // 대기 조합 빈칸에 한 명 넣기 — 4명이 차면 일반 조합(4명에게 알림)
+  @Post('games/:id/players')
+  async addPlayer(
+    @Param('id') id: string,
+    @Body() dto: AddGamePlayerDto,
+  ): Promise<IApiResponse<IGame>> {
+    return { success: true, data: await this.gamesService.addPlayer(id, dto) };
+  }
+
+  // 대기 조합에서 한 명 빼기(빈칸으로) — 아무도 안 남으면 조합 해체
+  @Delete('games/:id/players/:attendanceId')
+  async removePlayer(
+    @Param('id') id: string,
+    @Param('attendanceId') attendanceId: string,
+  ): Promise<IApiResponse<IGame>> {
+    return { success: true, data: await this.gamesService.removePlayer(id, attendanceId) };
   }
 
   @Patch('games/:id/order')
