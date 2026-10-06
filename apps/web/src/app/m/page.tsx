@@ -22,6 +22,7 @@ import {
   useNow,
   useSnapshot,
 } from '@/lib/use-snapshot';
+import { useToast } from '@/lib/use-toast';
 
 export default function MyStatusPage() {
   const { snapshot, noSession, failed, loading, refetch } = useSnapshot();
@@ -42,7 +43,7 @@ export default function MyStatusPage() {
 
   // 타임(잠깐 쉴래요) — 유일한 셀프 액션. 조합에 묶여 있으면 서버 409 안내를 토스트로
   const [busy, setBusy] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const { toast, showToast } = useToast();
   const toggleRest = async () => {
     if (busy || !me) return;
     setBusy(true);
@@ -50,8 +51,7 @@ export default function MyStatusPage() {
       const action = me.status === 'RESTING' ? 'resume' : 'rest';
       await api(`/attendances/${me.id}/${action}`, { method: 'PATCH' });
     } catch (e) {
-      setToast(e instanceof ApiError ? e.message : '요청에 실패했습니다.');
-      setTimeout(() => setToast(null), 4000);
+      showToast(e instanceof ApiError ? e.message : '요청에 실패했습니다.', 'error', 4000);
     } finally {
       setBusy(false);
     }
@@ -246,7 +246,7 @@ export default function MyStatusPage() {
           );
         })}
       </AnimatePresence>
-      {toast && <Toast message={toast} />}
+      {toast && <Toast toast={toast} />}
     </Shell>
   );
 }

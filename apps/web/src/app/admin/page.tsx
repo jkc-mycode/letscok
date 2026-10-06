@@ -50,6 +50,7 @@ import {
   useNow,
   useSnapshot,
 } from '@/lib/use-snapshot';
+import { ToastState, useToast } from '@/lib/use-toast';
 
 // ===== 페이지 루트: 패스코드 게이트 → 보드 =====
 
@@ -71,7 +72,7 @@ export default function AdminPage() {
 
 function Board({ onLogout }: { onLogout: () => void }) {
   const { snapshot, noSession, failed, loading, refetch } = useSnapshot();
-  const [toast, setToast] = useState<string | null>(null);
+  const { toast, showToast } = useToast();
   const [busy, setBusy] = useState(false);
   // 방금 종료한 모임의 마무리 문구 — 종료하면 보드(BoardBody)가 사라지므로 상태는 여기서 들고 있다.
   // 문구 팝업을 닫아야 패스코드를 지우고 로그인 화면으로 간다(종료 = 그날 운영 끝)
@@ -95,8 +96,7 @@ function Board({ onLogout }: { onLogout: () => void }) {
       await action();
       await refetch();
     } catch (e) {
-      setToast(e instanceof ApiError ? e.message : '요청에 실패했습니다.');
-      setTimeout(() => setToast(null), 3000);
+      showToast(e instanceof ApiError ? e.message : '요청에 실패했습니다.');
     } finally {
       setBusy(false);
     }
@@ -150,7 +150,7 @@ function StartScreen({
 }: {
   run: (a: () => Promise<unknown>) => Promise<void>;
   busy: boolean;
-  toast: string | null;
+  toast: ToastState | null;
   onLogout: () => void;
 }) {
   // 명단 정리는 모임 전이 한가하다 — 세션 없이도 모임원 관리에 들어갈 수 있게
@@ -212,7 +212,7 @@ function StartScreen({
       {membersOpen && <MembersManagerModal onClose={() => setMembersOpen(false)} />}
       {birthdayOpen && <BirthdayCalendarModal onClose={() => setBirthdayOpen(false)} />}
       {settlementOpen && <SettlementModal onClose={() => setSettlementOpen(false)} />}
-      {toast && <Toast message={toast} />}
+      {toast && <Toast toast={toast} />}
     </main>
   );
 }
@@ -235,7 +235,7 @@ function BoardBody({
   snapshot: ISessionSnapshot;
   run: (a: () => Promise<unknown>) => Promise<void>;
   busy: boolean;
-  toast: string | null;
+  toast: ToastState | null;
   onLogout: () => void;
   onSessionClosed: (sessionId: string) => void; // 모임 종료 성공 → 마무리 문구 띄우기
 }) {
@@ -867,7 +867,7 @@ function BoardBody({
           onClose={() => setReplaceGameId(null)}
         />
       )}
-      {toast && <Toast message={toast} />}
+      {toast && <Toast toast={toast} />}
     </main>
   );
 }
@@ -1873,15 +1873,15 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
   const [editTarget, setEditTarget] = useState<IMemberSummary | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const { toast, showToast } = useToast();
   const [busy, setBusy] = useState(false);
 
   const refetch = useCallback(
     () =>
       api<IMemberSummary[]>('/members', { admin: true })
         .then(setMembers)
-        .catch(() => setToast('명단을 불러오지 못했습니다.')),
-    [],
+        .catch(() => showToast('명단을 불러오지 못했습니다.')),
+    [showToast],
   );
   useEffect(() => {
     void refetch();
@@ -1895,8 +1895,7 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
       await action();
       await refetch();
     } catch (e) {
-      setToast(e instanceof ApiError ? e.message : '요청에 실패했습니다.');
-      setTimeout(() => setToast(null), 3000);
+      showToast(e instanceof ApiError ? e.message : '요청에 실패했습니다.');
     } finally {
       setBusy(false);
     }
@@ -2034,7 +2033,7 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
             onClose={() => setCleanupOpen(false)}
           />
         )}
-        {toast && <Toast message={toast} />}
+        {toast && <Toast toast={toast} />}
       </div>
     </div>
   );

@@ -16,6 +16,7 @@ import { InstallPrompt } from '@/components/install-prompt';
 import { api, ApiError } from '@/lib/api';
 import { saveMemberId } from '@/lib/member';
 import { useSnapshot } from '@/lib/use-snapshot';
+import { useToast } from '@/lib/use-toast';
 
 export default function CheckinPage() {
   const router = useRouter();
@@ -23,7 +24,7 @@ export default function CheckinPage() {
   const [inputCode, setInputCode] = useState('');
   const code = inputCode.length === 4 ? inputCode : null;
   const { snapshot, noSession, failed, loading, refetch } = useSnapshot();
-  const [toast, setToast] = useState<string | null>(null);
+  const { toast, showToast } = useToast();
   const [busy, setBusy] = useState(false);
 
   const checkIn = async (member: IMember, consent: boolean) => {
@@ -44,8 +45,7 @@ export default function CheckinPage() {
         router.replace('/m');
         return;
       }
-      setToast(e instanceof ApiError ? e.message : '체크인에 실패했습니다.');
-      setTimeout(() => setToast(null), 3000);
+      showToast(e instanceof ApiError ? e.message : '체크인에 실패했습니다.');
     } finally {
       setBusy(false);
     }
@@ -100,7 +100,7 @@ export default function CheckinPage() {
 
       <SearchPanel busy={busy} hasCode={code !== null} onSelect={checkIn} />
 
-      {toast && <Toast message={toast} />}
+      {toast && <Toast toast={toast} />}
     </Shell>
   );
 }
