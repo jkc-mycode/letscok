@@ -183,7 +183,8 @@ function StartScreen({
 // 폰 전용 구역 탭 — md 이상에서는 전부 동시에 보이므로 무시된다
 type MobileTab = 'courts' | 'queue' | 'waiting' | 'memo';
 
-const SWIPE_MIN_PX = 50; // 이 이상 가로로 움직여야 탭 전환 (짧은 흔들림은 무시)
+const SWIPE_LOCK_PX = 8; // 이만큼 움직인 뒤 가로·세로 중 큰 쪽으로 방향을 정한다
+const SWIPE_COMMIT_PX = 70; // 손을 뗐을 때 이 이상(또는 화면 폭 25% 이상) 밀었으면 옆 탭으로
 const SWIPE_EDGE_GUARD = 20; // 화면 가장자리 시작 스와이프는 시스템 제스처에 양보
 
 function BoardBody({
@@ -231,7 +232,9 @@ function BoardBody({
   const [gamesLogOpen, setGamesLogOpen] = useState(false); // 오늘 완료 게임 조회·이름 검색
   // 폰(<md)에서는 3구역을 한 번에 못 보여주므로 탭 전환 — 조작 시작점인 대기 인원이 기본
   const [mobileTab, setMobileTab] = useState<MobileTab>('waiting');
-  const swipeStart = useRef<{ x: number; y: number } | null>(null);
+  // 탭 스와이프 — 미는 동안은 React 렌더 없이 CSS 변수(--drag)만 바꿔 화면이 손가락을 따라오게 한다
+  const boardRef = useRef<HTMLElement>(null);
+  const swipe = useRef<{ x: number; y: number; dir: 'h' | 'v' | null; dx: number } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false); // 폰 헤더 햄버거
   const [replaceGameId, setReplaceGameId] = useState<string | null>(null); // 선수 교체 대상 게임
 
@@ -363,9 +366,8 @@ function BoardBody({
     });
   };
 
-  // 폰에서는 활성 탭만, md 이상에서는 항상 표시 (display 충돌을 피하려고 래퍼 div에만 건다)
-  const pane = (...tabs: MobileTab[]) =>
-    `${tabs.includes(mobileTab) ? 'flex' : 'hidden'} min-h-0 flex-col gap-3 md:flex`;
+  // 폰에서는 구역 4개를 가로로 늘어놓고(.board-track) 현재 탭 위치로 민다, md 이상은 그리드로 동시 표시
+  const pane = 'flex min-h-0 flex-col gap-3 max-md:w-full max-md:shrink-0';
 
   // 헤더 액션 — 데스크톱은 가로 버튼 줄, 폰은 햄버거 메뉴로 같은 목록을 재사용한다
   const headerActions: {
@@ -443,34 +445,68 @@ function BoardBody({
     { value: 'memo', label: '메모' },
   ];
 
-  // 폰에서 구역 간 가로 스와이프 이동 — 매번 탭을 누르지 않아도 되게
-  // (md 이상은 구역이 동시에 보여 mobileTab 자체가 무시되므로 영향 없음)
-  const onTouchStart = (e: ReactTouchEvent<HTMLDivElement>) => {
-    const touch = e.touches[0];
-    // 화면 가장자리에서 시작한 스와이프는 iOS 시스템 뒤로가기 몫이라 건드리지 않는다
-    if (touch.clientX < SWIPE_EDGE_GUARD || touch.clientX > window.innerWidth - SWIPE_EDGE_GUARD) {
-      swipeStart.current = null;
-      return;
-    }
-    swipeStart.current = { x: touch.clientX, y: touch.clientY };
+  // 폰에서 구역 간 가로 스와이프 이동 — 미는 동안 화면과 탭 표시가 손가락을 따라오고, 놓으면 옆 탭으로 넘어간다
+  // (md 이상은 구역이 동시에 보이므로 무시)
+  const tabIndex = MOBILE_TABS.findIndex((tab) => tab.value === mobileTab);
+  const setDrag = (dx: number) => {
+    const el = boardRef.current;
+    if (!el) return;
+    el.style.setProperty('--drag', `${dx}px`);
+    el.style.setProperty('--drag-ratio', String(dx / el.clientWidth));
   };
 
-  const onTouchEnd = (e: ReactTouchEvent<HTMLDivElement>) => {
-    const start = swipeStart.current;
-    swipeStart.current = null;
-    if (!start) return;
-    const touch = e.changedTouches[0];
-    const dx = touch.clientX - start.x;
-    const dy = touch.clientY - start.y;
-    // 세로 스크롤과 구분 — 가로 이동이 세로보다 크고 충분히 움직였을 때만 전환
-    if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) <= Math.abs(dy)) return;
-    const index = MOBILE_TABS.findIndex((tab) => tab.value === mobileTab);
-    const next = MOBILE_TABS[index + (dx < 0 ? 1 : -1)]; // 양 끝에서는 undefined라 그대로 멈춘다
+  const onTouchStart = (e: ReactTouchEvent<HTMLDivElement>) => {
+    const touch = e.touches[0];
+    // 화면 가장자리에서 시작한 스와이프는 시스템 뒤로가기 몫이라 건드리지 않는다
+    if (
+      window.innerWidth >= 768 ||
+      touch.clientX < SWIPE_EDGE_GUARD ||
+      touch.clientX > window.innerWidth - SWIPE_EDGE_GUARD
+    ) {
+      swipe.current = null;
+      return;
+    }
+    swipe.current = { x: touch.clientX, y: touch.clientY, dir: null, dx: 0 };
+  };
+
+  const onTouchMove = (e: ReactTouchEvent<HTMLDivElement>) => {
+    const s = swipe.current;
+    if (!s) return;
+    const touch = e.touches[0];
+    const dx = touch.clientX - s.x;
+    const dy = touch.clientY - s.y;
+    if (!s.dir) {
+      if (Math.abs(dx) < SWIPE_LOCK_PX && Math.abs(dy) < SWIPE_LOCK_PX) return;
+      s.dir = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'; // 세로로 시작했으면 끝까지 스크롤로 둔다
+      if (s.dir === 'h') boardRef.current?.setAttribute('data-dragging', '');
+    }
+    if (s.dir !== 'h') return;
+    // 첫 탭에서 오른쪽, 마지막 탭에서 왼쪽으로는 고무줄처럼 조금만 끌려온다
+    const atEnd = (dx > 0 && tabIndex === 0) || (dx < 0 && tabIndex === MOBILE_TABS.length - 1);
+    s.dx = atEnd ? dx * 0.3 : dx;
+    setDrag(s.dx);
+  };
+
+  const onTouchEnd = () => {
+    const s = swipe.current;
+    swipe.current = null;
+    if (!s || s.dir !== 'h') return;
+    boardRef.current?.removeAttribute('data-dragging'); // 전환 애니메이션 다시 켜기 → 놓은 자리에서 제자리/옆 탭으로 미끄러진다
+    const width = boardRef.current?.clientWidth ?? window.innerWidth;
+    const next =
+      Math.abs(s.dx) >= Math.min(SWIPE_COMMIT_PX, width * 0.25)
+        ? MOBILE_TABS[tabIndex + (s.dx < 0 ? 1 : -1)] // 양 끝에서는 undefined라 제자리로 돌아간다
+        : undefined;
+    setDrag(0);
     if (next) setMobileTab(next.value);
   };
 
   return (
-    <main className="fade-in flex h-dvh flex-col p-2 md:p-4">
+    <main
+      ref={boardRef}
+      style={{ '--tab-index': tabIndex } as React.CSSProperties}
+      className="fade-in flex h-dvh flex-col overflow-x-hidden p-2 md:p-4"
+    >
       {/* 헤더 */}
       <header className="flex items-center gap-2 pb-2 md:gap-4 md:pb-3">
         <HomeLink className="shrink-0 transition-opacity hover:opacity-70" title="홈으로">
@@ -527,16 +563,18 @@ function BoardBody({
 
       {courtsOpen && <CourtsManager sessionId={session.id} courts={courts} playingByCourt={playingByCourt} run={run} />}
 
-      {/* 구역 탭 — 폰에서만 (md 이상은 3열로 동시 표시) */}
-      <div className="flex gap-1 pb-2 md:hidden">
+      {/* 구역 탭 — 폰에서만 (md 이상은 3열로 동시 표시). 선택 표시(.board-tab-indicator)가 스와이프를 따라 미끄러진다 */}
+      <div className="relative mb-2 flex rounded-xl border border-line p-1 md:hidden">
+        <span
+          aria-hidden
+          className="board-tab-indicator absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/4)] rounded-lg border border-court bg-court/10"
+        />
         {MOBILE_TABS.map((tab) => (
           <button
             key={tab.value}
             onClick={() => setMobileTab(tab.value)}
-            className={`h-10 flex-1 rounded-lg border text-xs font-medium ${
-              mobileTab === tab.value
-                ? 'border-court bg-court/10 text-court'
-                : 'border-line text-dim'
+            className={`relative h-9 flex-1 rounded-lg text-xs font-medium transition-colors ${
+              mobileTab === tab.value ? 'text-court' : 'text-dim'
             }`}
           >
             {tab.label}
@@ -550,10 +588,12 @@ function BoardBody({
       {/* 3구역 — 폰: 탭 1구역 / 태블릿 세로: 2열(게임 중 | 조합+대기) / 데스크톱: 3열 */}
       <div
         onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
-        className="grid min-h-0 flex-1 grid-cols-1 grid-rows-1 gap-3 md:grid-cols-2 md:grid-rows-2 lg:grid-cols-[1.15fr_1fr_1fr] lg:grid-rows-1"
+        onTouchCancel={onTouchEnd}
+        className="board-track flex min-h-0 flex-1 md:grid md:grid-cols-2 md:grid-rows-2 md:gap-3 lg:grid-cols-[1.15fr_1fr_1fr] lg:grid-rows-1"
       >
-        <div className={`${pane('courts')} md:row-span-2 lg:row-span-1`}>
+        <div className={`${pane} md:row-span-2 lg:row-span-1`}>
         <Zone title="게임 중" accent="text-court" count={playingByCourt.size} className="flex-1">
           {courts.length === 0 && <Empty>코트 관리에서 사용할 코트를 등록해주세요</Empty>}
           <AnimatePresence initial={false}>
@@ -571,7 +611,7 @@ function BoardBody({
         </Zone>
         </div>
 
-        <div className={pane('queue')}>
+        <div className={pane}>
         <Zone
           title="대기 조합"
           accent="text-amber"
@@ -614,9 +654,9 @@ function BoardBody({
         </Zone>
         </div>
 
-        {/* 대기 인원 + 운영 메모 — md 이상은 한 컬럼 세로 분할, 폰은 각각 별도 탭 */}
-        <div className={pane('waiting', 'memo')}>
-        <div className={`${pane('waiting')} flex-1`}>
+        {/* 대기 인원 + 운영 메모 — md 이상은 한 컬럼 세로 분할, 폰은 각각 별도 탭(래퍼가 사라져 두 구역이 트랙에 바로 놓인다) */}
+        <div className="flex min-h-0 flex-col gap-3 max-md:contents">
+        <div className={`${pane} flex-1`}>
         <Zone
           title="대기 인원"
           accent="text-ink"
@@ -742,7 +782,7 @@ function BoardBody({
           )}
         </Zone>
         </div>
-        <div className={`${pane('memo')} flex-1 md:max-h-[35%] md:flex-none`}>
+        <div className={`${pane} flex-1 md:max-h-[35%] md:flex-none`}>
           <MemoPanel snapshot={snapshot} run={run} busy={busy} />
         </div>
         </div>
