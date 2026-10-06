@@ -617,8 +617,32 @@ function BoardBody({
         className="board-track flex min-h-0 flex-1 md:grid md:grid-cols-2 md:grid-rows-2 md:gap-3 lg:grid-cols-[1.15fr_1fr_1fr] lg:grid-rows-1"
       >
         <div className={`${pane} md:row-span-2 lg:row-span-1`}>
-        <Zone title="게임 중" accent="text-court" count={playingByCourt.size} className="flex-1">
-          {courts.length === 0 && <Empty>코트 관리에서 사용할 코트를 등록해주세요</Empty>}
+        <Zone
+          title="게임 중"
+          accent="text-court"
+          count={playingByCourt.size}
+          className="flex-1"
+          // 코트는 이 구역에 보이니 여기서 바로 고친다 — 메뉴 깊이 있어 찾기 어렵다는 피드백(더보기·헤더 입구도 그대로 둠)
+          headerExtra={
+            <button
+              onClick={() => setCourtsOpen(true)}
+              className="tap ml-auto h-7 rounded-lg border border-line px-2.5 text-xs font-medium text-dim"
+            >
+              코트 관리
+            </button>
+          }
+        >
+          {courts.length === 0 && (
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+              <p className="text-sm text-faint">오늘 쓰는 코트를 먼저 등록해주세요</p>
+              <button
+                onClick={() => setCourtsOpen(true)}
+                className="h-11 rounded-xl bg-court px-5 text-sm font-bold text-bg"
+              >
+                + 코트 추가하기
+              </button>
+            </div>
+          )}
           <AnimatePresence initial={false}>
             {courts.map((court) => (
               <CourtCard
@@ -2648,7 +2672,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
   {
     title: '공유 코트 (다른 모임과 번갈아)',
     items: [
-      '콕을 걸어 다른 모임과 순서를 나눠 쓰는 코트는 [코트 관리]에서 [공유]를 켜주세요.',
+      '콕을 걸어 다른 모임과 순서를 나눠 쓰는 코트는 [코트 관리]에서 [공유]를 켜주세요. [코트 관리]는 [게임 중] 구역 제목 옆에 있어요(더보기 메뉴에도 있어요).',
       '공유 코트는 우리 게임이 끝나면 자동으로 [다른 모임 차례]가 돼요 — 상대 게임이 끝나면 코트 카드의 [우리 차례로]를 눌러주세요(앱이 상대 게임을 알 수 없어 이 탭 하나는 필요해요).',
       '다른 모임 차례인 코트엔 배정이 막혀요 — 실수로 코트를 뺏는 걸 방지해요.',
       '연속으로 두 번 치기로 했으면(퐁퐁당) 게임 종료 후 [우리 차례로]를 눌러 이어가면 돼요. 우리 차례를 양보할 땐 [다른 모임 차례로 넘기기].',
