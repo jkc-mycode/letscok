@@ -1,3 +1,4 @@
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { SessionsService } from '../sessions/sessions.service';
@@ -185,5 +186,73 @@ describe('recommend — category 필터', () => {
       expect(rec.players.some((p) => p.attendanceId === freeFemale.id)).toBe(true);
       expect(rec.players.filter((p) => p.borrowedFrom !== null)).toHaveLength(3);
     }
+  });
+});
+
+describe('recommend — 지정 인원(fixedIds)', () => {
+  it('지정한 사람은 모든 후보에 들어가고 pinned로 표시, 나머지 자리만 채운다', async () => {
+    const session = await seedSession();
+    const [a, b] = await Promise.all([seedAttendance(session.id, 'MALE'), seedAttendance(session.id, 'MALE')]);
+    await Promise.all(Array.from({ length: 5 }, () => seedAttendance(session.id, 'MALE')));
+
+    const results = await service.recommend(session.id, 'MENS', [a.id, b.id]);
+
+    expect(results.length).toBeGreaterThan(0);
+    for (const r of results) {
+      const ids = r.players.map((p) => p.attendanceId);
+      expect(ids).toEqual(expect.arrayContaining([a.id, b.id]));
+      expect(r.players.filter((p) => p.pinned).map((p) => p.attendanceId).sort()).toEqual([a.id, b.id].sort());
+    }
+  });
+
+  it('4명을 다 지정하면 그대로 한 후보', async () => {
+    const session = await seedSession();
+    const four = await Promise.all(Array.from({ length: 4 }, () => seedAttendance(session.id, 'MALE')));
+    await seedAttendance(session.id, 'MALE');
+
+    const results = await service.recommend(session.id, 'ALL', four.map((x) => x.id));
+
+    expect(results).toHaveLength(1);
+    expect(results[0].players.map((p) => p.attendanceId).sort()).toEqual(four.map((x) => x.id).sort());
+  });
+
+  it('혼복에서 남성 1명 지정 — 남녀 2:2를 맞춘다', async () => {
+    const session = await seedSession();
+    const man = await seedAttendance(session.id, 'MALE');
+    await Promise.all([
+      seedAttendance(session.id, 'MALE'),
+      seedAttendance(session.id, 'MALE'),
+      seedAttendance(session.id, 'FEMALE'),
+      seedAttendance(session.id, 'FEMALE'),
+    ]);
+
+    const results = await service.recommend(session.id, 'MIXED', [man.id]);
+
+    expect(results.length).toBeGreaterThan(0);
+    for (const r of results) expect(composition(r.players)).toEqual({ m: 2, f: 2, u: 0 });
+  });
+
+  it('종목과 성별이 맞지 않으면 409(이름 포함), 혼복에 같은 성별 3명이면 409', async () => {
+    const session = await seedSession();
+    const woman = await seedAttendance(session.id, 'FEMALE');
+    const men = await Promise.all(Array.from({ length: 3 }, () => seedAttendance(session.id, 'MALE')));
+    await Promise.all(Array.from({ length: 3 }, () => seedAttendance(session.id, 'FEMALE')));
+
+    await expect(service.recommend(session.id, 'MENS', [woman.id])).rejects.toThrow(woman.member.name);
+    await expect(service.recommend(session.id, 'MIXED', men.map((m) => m.id))).rejects.toThrow(ConflictException);
+  });
+
+  it('휴식 중·이 모임에 없는 사람은 409, 같은 사람 중복은 400, 남은 인원 부족은 409', async () => {
+    const session = await seedSession();
+    const resting = await seedAttendance(session.id, 'MALE');
+    await prisma.attendance.update({ where: { id: resting.id }, data: { status: 'RESTING' } });
+    const a = await seedAttendance(session.id, 'MALE');
+    await seedAttendance(session.id, 'MALE');
+
+    await expect(service.recommend(session.id, 'ALL', [resting.id])).rejects.toThrow('휴식 중');
+    await expect(service.recommend(session.id, 'ALL', ['없는-id'])).rejects.toThrow(ConflictException);
+    await expect(service.recommend(session.id, 'ALL', [a.id, a.id])).rejects.toThrow(BadRequestException);
+    // 출석자가 a와 1명(+휴식 1명)뿐 — 4명을 채울 수 없다
+    await expect(service.recommend(session.id, 'ALL', [a.id])).rejects.toThrow('4명을 채울 수 없어요');
   });
 });

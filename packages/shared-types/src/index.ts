@@ -248,6 +248,7 @@ export interface IRecommendedPlayer {
   gamesPlayed: number;
   waitingMinutes: number; // 요청 시점 기준 대기 분
   borrowedFrom: 'QUEUED' | 'PLAYING' | null; // null = 미배정 대기에서 선발, 그 외 = 차용 인원
+  pinned: boolean; // 운영진이 "이 사람은 꼭 넣어"로 지정한 인원 (AI 명령·고정 추천)
 }
 
 export interface IGameRecommendation {

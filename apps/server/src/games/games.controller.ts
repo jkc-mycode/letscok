@@ -43,7 +43,11 @@ export class GamesController {
   ): Promise<IApiResponse<IGameRecommendation[]>> {
     return {
       success: true,
-      data: await this.recommendationsService.recommend(sessionId, query.category),
+      data: await this.recommendationsService.recommend(
+        sessionId,
+        query.category,
+        query.fixed ? query.fixed.split(',').filter(Boolean) : [],
+      ),
     };
   }
 

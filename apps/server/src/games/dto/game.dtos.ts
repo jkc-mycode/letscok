@@ -30,6 +30,11 @@ export class RecommendGamesQueryDto {
   @IsOptional()
   @IsEnum(RecommendationCategory, { message: '올바르지 않은 종목입니다.' })
   category?: RecommendationCategory;
+
+  // 꼭 넣을 출석 id들, 쉼표로 구분 — AI 명령에서 이름을 고른 뒤 다시 추천받을 때(최대 4명은 서비스가 검사)
+  @IsOptional()
+  @IsString({ message: '올바르지 않은 지정 인원입니다.' })
+  fixed?: string;
 }
 
 // 코트 배정 요청 — 대기 조합을 올릴 코트 id

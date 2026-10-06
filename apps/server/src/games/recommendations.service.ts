@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import {
   IGameRecommendation,
   IRecommendedPlayer,
@@ -25,6 +25,22 @@ const GRADE_ORDER = ['A', 'B', 'C', 'D', 'E', 'F'];
 const POOL_CAP = 30; // 전수 탐색 상한 — C(30,4)=27,405 조합
 const BORROW_CAP = 12; // 잔여 모드 차용 풀 상한
 
+const CATEGORY_LABEL: Record<RecommendationCategory, string> = {
+  ALL: '전체',
+  MENS: '남복',
+  WOMENS: '여복',
+  MIXED: '혼복',
+  OTHER: '기타 3:1',
+};
+
+// 종목 탭 풀 필터: 남복/여복은 해당 성별만, 혼복/기타는 성별 확정자만 (미지정은 ALL 전용)
+function inCategory(a: Pooled, category: RecommendationCategory): boolean {
+  if (category === 'ALL') return true;
+  if (category === 'MENS') return a.member.gender === 'MALE';
+  if (category === 'WOMENS') return a.member.gender === 'FEMALE';
+  return a.member.gender !== null;
+}
+
 @Injectable()
 export class RecommendationsService {
   constructor(
@@ -34,9 +50,12 @@ export class RecommendationsService {
 
   // 다음 1게임에 대한 후보 조합 최대 3개 (공정성/새 조합/믹스) — 저장 없이 계산만
   // category = 종목 탭 필터. ALL이면 기존 동작, 종목이면 성별 확정자 풀 + 구성 강제
+  // fixedIds = "이 사람은 꼭 넣어"(AI 명령 등) — 모든 후보에 포함하고 나머지 자리만 점수로 채운다.
+  //   지정이 있으면 못 만드는 이유를 409로 알려 준다(지정 없는 기존 추천은 빈 배열 그대로)
   async recommend(
     sessionId: string,
     category: RecommendationCategory = 'ALL',
+    fixedIds: string[] = [],
   ): Promise<IGameRecommendation[]> {
     await this.sessionsService.findOpenSessionOrThrow(sessionId);
 
@@ -57,13 +76,9 @@ export class RecommendationsService {
       }),
     ]);
 
-    // 종목 탭 풀 필터: 남복/여복은 해당 성별만, 혼복/기타는 성별 확정자만 (미지정은 ALL 전용)
-    const attendances = allAttendances.filter((a) => {
-      if (category === 'ALL') return true;
-      if (category === 'MENS') return a.member.gender === 'MALE';
-      if (category === 'WOMENS') return a.member.gender === 'FEMALE';
-      return a.member.gender !== null;
-    });
+    const attendances = allAttendances.filter((a) => inCategory(a, category));
+    const fixed = this.resolveFixed(allAttendances, fixedIds, category);
+    const fixedSet = new Set(fixed.map((a) => a.id));
 
     // 같은 게임을 뛴 쌍의 등장 횟수 — 반복 회피 감점의 재료
     const pairCounts = new Map<string, number>();
@@ -77,19 +92,23 @@ export class RecommendationsService {
       }
     }
 
-    // 선발 풀: 미배정 대기(오래 기다린 순) / 차용 풀: 조합·게임에 묶인 인원(적게 뛴 순)
-    const free = attendances
+    // 선발 풀: 미배정 대기(오래 기다린 순) / 차용 풀: 조합·게임에 묶인 인원(적게 뛴 순) — 지정 인원은 빼고
+    const rest = attendances.filter((a) => !fixedSet.has(a.id));
+    const free = rest
       .filter((a) => a.status === 'CHECKED_IN')
       .sort((a, b) => a.waitingSince.getTime() - b.waitingSince.getTime())
       .slice(0, POOL_CAP);
-    if (free.length === 0) return []; // 미배정 대기가 아예 없으면 추천할 것이 없다
+    const need = 4 - fixed.length;
+    if (fixed.length === 0 && free.length === 0) return []; // 미배정 대기가 아예 없으면 추천할 것이 없다
 
     let combos: Pooled[][];
-    if (free.length >= 4) {
-      combos = choose(free, 4);
+    if (need === 0) {
+      combos = [fixed]; // 4명을 다 지정 — 추천 없이 그대로
+    } else if (free.length >= need) {
+      combos = choose(free, need).map((chosen) => [...fixed, ...chosen]);
     } else {
       // 잔여 모드: 미배정 전원 고정 + 부족분은 조합·게임 중 인원에서 차용
-      const borrowPool = attendances
+      const borrowPool = rest
         .filter((a) => a.status === 'MATCHED' || a.status === 'PLAYING')
         .sort(
           (a, b) =>
@@ -97,16 +116,25 @@ export class RecommendationsService {
             a.waitingSince.getTime() - b.waitingSince.getTime(),
         )
         .slice(0, BORROW_CAP);
-      const need = 4 - free.length;
-      if (borrowPool.length < need) return []; // 체크인 인원 자체가 4명 미만
-      combos = choose(borrowPool, need).map((borrowed) => [...free, ...borrowed]);
+      const lack = need - free.length;
+      if (borrowPool.length < lack) {
+        // 체크인 인원 자체가 4명 미만
+        if (fixed.length > 0) throw new ConflictException('남은 인원으로 4명을 채울 수 없어요.');
+        return [];
+      }
+      combos = choose(borrowPool, lack).map((borrowed) => [...fixed, ...free, ...borrowed]);
     }
 
     // 혼복/기타는 남녀 혼합 풀에서 나온 조합 중 구성이 맞는 것만 (남복/여복은 풀 필터로 이미 보장)
     if (category === 'MIXED' || category === 'OTHER') {
       combos = combos.filter((players) => matchesComposition(players, category));
     }
-    if (combos.length === 0) return [];
+    if (combos.length === 0) {
+      if (fixed.length > 0) {
+        throw new ConflictException(`지정한 사람으로는 ${CATEGORY_LABEL[category]} 구성을 만들 수 없어요.`);
+      }
+      return [];
+    }
 
     const now = Date.now();
     const scored = combos.map((players) => {
@@ -164,7 +192,7 @@ export class RecommendationsService {
         kind,
         repeatPairCount: candidate.repeatPairs,
         genderLabel: genderLabel(candidate.players),
-        players: candidate.players.map((p) => toRecommendedPlayer(p, now)),
+        players: candidate.players.map((p) => toRecommendedPlayer(p, now, fixedSet.has(p.id))),
       });
     };
 
@@ -188,6 +216,34 @@ export class RecommendationsService {
     );
 
     return results;
+  }
+
+  // 지정 인원 검증 — 이 모임의 출석자(퇴장·콕 미확인 제외)여야 하고, 휴식 중이 아니며, 종목 성별에 맞아야 한다
+  private resolveFixed(
+    pool: Pooled[],
+    fixedIds: string[],
+    category: RecommendationCategory,
+  ): Pooled[] {
+    if (fixedIds.length === 0) return [];
+    if (fixedIds.length > 4) throw new BadRequestException('최대 4명까지 지정할 수 있어요.');
+    if (new Set(fixedIds).size !== fixedIds.length) {
+      throw new BadRequestException('같은 모임원이 중복 지정되었어요.');
+    }
+    const fixed = fixedIds.map((id) => pool.find((a) => a.id === id));
+    if (fixed.some((a) => !a)) {
+      throw new ConflictException('콕 미확인·퇴장했거나 이 모임에 없는 모임원이 있어요.');
+    }
+    const list = fixed as Pooled[];
+    const names = (rows: Pooled[]) => rows.map((a) => a.member.name).join(', ');
+    const resting = list.filter((a) => a.status === 'RESTING');
+    if (resting.length > 0) throw new ConflictException(`휴식 중인 모임원이 있어요: ${names(resting)}`);
+    const misfit = list.filter((a) => !inCategory(a, category));
+    if (misfit.length > 0) {
+      throw new ConflictException(
+        `${CATEGORY_LABEL[category]}에 넣을 수 없는 모임원이 있어요(성별): ${names(misfit)}`,
+      );
+    }
+    return list;
   }
 }
 
@@ -239,7 +295,7 @@ function genderLabel(players: Pooled[]): string {
 
 // 출석 → 추천 카드에 뿌릴 인원 정보. borrowedFrom으로 미배정 선발/차용을 구분해
 // 프론트가 "게임 중"·"대기 조합" 배지를 붙인다 (CHECKED_IN이면 순수 대기 = null)
-function toRecommendedPlayer(attendance: Pooled, now: number): IRecommendedPlayer {
+function toRecommendedPlayer(attendance: Pooled, now: number, pinned: boolean): IRecommendedPlayer {
   return {
     attendanceId: attendance.id,
     memberId: attendance.memberId,
@@ -255,6 +311,7 @@ function toRecommendedPlayer(attendance: Pooled, now: number): IRecommendedPlaye
         : attendance.status === 'MATCHED'
           ? 'QUEUED'
           : null,
+    pinned,
   };
 }
 
