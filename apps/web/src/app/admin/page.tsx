@@ -603,28 +603,6 @@ function BoardBody({
       </header>
 
 
-      {/* 구역 탭 — 폰에서만 (md 이상은 3열로 동시 표시). 선택 표시(.board-tab-indicator)가 스와이프를 따라 미끄러진다 */}
-      <div className="relative mb-2 flex rounded-xl border border-line p-1 md:hidden">
-        <span
-          aria-hidden
-          className="board-tab-indicator absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/4)] rounded-lg border border-court bg-court/10"
-        />
-        {MOBILE_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => setMobileTab(tab.value)}
-            className={`relative h-9 flex-1 rounded-lg text-xs font-medium transition-colors ${
-              mobileTab === tab.value ? 'text-court' : 'text-dim'
-            }`}
-          >
-            {tab.label}
-            {tab.count !== undefined && (
-              <span className="tabular ml-1 font-mono text-[11px] opacity-70">{tab.count}</span>
-            )}
-          </button>
-        ))}
-      </div>
-
       {/* 3구역 — 폰: 탭 1구역 / 태블릿 세로: 2열(게임 중 | 조합+대기) / 데스크톱: 3열 */}
       <div
         onTouchStart={onTouchStart}
@@ -839,6 +817,36 @@ function BoardBody({
         </div>
         </div>
       </div>
+
+      {/* 구역 탭 — 폰에서만, 화면 맨 아래(엄지 자리). md 이상은 3열로 동시 표시.
+          선택 표시(.board-tab-indicator)가 스와이프를 따라 미끄러진다 */}
+      <nav aria-label="구역" className="relative mt-2 flex shrink-0 rounded-2xl border border-line bg-panel p-1 md:hidden">
+        <span
+          aria-hidden
+          className="board-tab-indicator absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/4)] rounded-xl border border-court bg-court/10"
+        />
+        {MOBILE_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => setMobileTab(tab.value)}
+            aria-current={mobileTab === tab.value ? 'page' : undefined}
+            className={`relative flex h-12 flex-1 items-center justify-center gap-1 rounded-xl text-sm font-bold transition-colors ${
+              mobileTab === tab.value ? 'text-court' : 'text-dim'
+            }`}
+          >
+            {tab.label}
+            {tab.count !== undefined && tab.count > 0 && (
+              <span
+                className={`tabular min-w-5 rounded-full px-1.5 font-mono text-[11px] leading-5 ${
+                  mobileTab === tab.value ? 'bg-court text-bg' : 'bg-line text-ink'
+                }`}
+              >
+                {tab.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </nav>
 
       {recommendOpen && (
         <RecommendModal
