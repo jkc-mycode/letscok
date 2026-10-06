@@ -12,6 +12,7 @@ import { useState } from 'react';
 import { GradeBadge } from '@/components/badges';
 import { Sheet } from '@/components/sheet';
 import { api, ApiError } from '@/lib/api';
+import { useSpeech } from '@/lib/use-speech';
 
 // AI 운영 명령 — 문장을 보내면 서버가 미리보기만 돌려주고, 운영진이 [확인]해야 기존 API로 실행한다
 // (체크인만 예외: 기존 AI 체크인 규칙대로 확실한 사람은 바로 체크인된다)
@@ -49,6 +50,11 @@ export function CommandSheet({
   const [result, setResult] = useState<IAiCommandResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null); // 실행 결과 한 줄(호출 "2대 전송" 등)
+  // 음성 — 다 들으면 입력칸에 채우고 바로 보낸다(틀렸으면 고쳐서 다시 보내면 된다)
+  const speech = useSpeech((heard) => {
+    setText(heard);
+    void send(heard);
+  });
 
   const send = async (value = text) => {
     const trimmed = value.trim();
@@ -154,6 +160,18 @@ export function CommandSheet({
       }
       footer={
         <div className="flex gap-2">
+          {speech.supported && (
+            <button
+              onClick={speech.listening ? speech.stop : speech.start}
+              disabled={sending}
+              aria-label={speech.listening ? '말 끝' : '눌러서 말하기'}
+              className={`h-12 w-12 shrink-0 rounded-xl border text-xl disabled:opacity-50 ${
+                speech.listening ? 'border-coral bg-coral/15' : 'border-court/40'
+              }`}
+            >
+              {speech.listening ? '■' : '🎙'}
+            </button>
+          )}
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -176,8 +194,37 @@ export function CommandSheet({
         </div>
       }
     >
-      {!result && !sending && !error && !notice && (
+      {speech.listening && (
+        <div className="flex flex-col items-center gap-4 py-4 text-center">
+          <span className="relative flex h-16 w-16 items-center justify-center">
+            <span className="absolute inset-0 animate-ping rounded-full bg-court/30" />
+            <span className="relative flex h-16 w-16 items-center justify-center rounded-full bg-court/20 text-3xl">🎙</span>
+          </span>
+          <p className="text-sm font-medium text-court">듣고 있어요… 말이 끝나면 저절로 멈춰요</p>
+          <p className="min-h-6 text-lg font-bold">{speech.interim}</p>
+          <div className="flex gap-2">
+            <button onClick={speech.stop} className="h-12 rounded-xl bg-court px-6 text-sm font-bold text-bg">
+              말 끝
+            </button>
+            <button onClick={speech.cancel} className="h-12 rounded-xl border border-line px-5 text-sm text-dim">
+              취소
+            </button>
+          </div>
+        </div>
+      )}
+      {speech.error && !speech.listening && (
+        <p className="rounded-xl border border-coral/40 bg-coral/10 p-3 text-sm text-coral">{speech.error}</p>
+      )}
+      {!speech.listening && !result && !sending && !error && !notice && (
         <>
+          {speech.supported && (
+            <button
+              onClick={speech.start}
+              className="flex h-20 items-center justify-center gap-3 rounded-2xl border border-court/40 bg-court/10 text-base font-bold text-court"
+            >
+              <span className="text-2xl">🎙</span> 눌러서 말하기
+            </button>
+          )}
           <p className="text-xs text-dim">이렇게 말해 보세요</p>
           <div className="flex flex-wrap gap-2">
             {EXAMPLES.map((example) => (
@@ -196,7 +243,7 @@ export function CommandSheet({
           </p>
         </>
       )}
-      {sending && <p className="py-6 text-center text-sm text-court">알아듣는 중이에요…</p>}
+      {!speech.listening && sending && <p className="py-6 text-center text-sm text-court">알아듣는 중이에요…</p>}
       {error && <p className="rounded-xl border border-coral/40 bg-coral/10 p-3 text-sm text-coral">{error}</p>}
       {notice && <p className="rounded-xl border border-court/40 bg-court/10 p-3 text-sm text-court">✓ {notice}</p>}
       {result && !sending && (
