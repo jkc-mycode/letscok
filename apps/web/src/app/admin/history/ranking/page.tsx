@@ -71,7 +71,7 @@ function Ranking() {
           <button
             key={period.label}
             onClick={() => setMonths(period.months)}
-            className={`h-8 rounded-lg border px-3 text-xs font-medium ${
+            className={`tap h-8 rounded-lg border px-3 text-xs font-medium ${
               months === period.months ? 'border-court text-court' : 'border-line text-dim'
             }`}
           >
@@ -80,7 +80,7 @@ function Ranking() {
         ))}
         <button
           onClick={() => setSortKey((k) => (k === 'sessions' ? 'games' : 'sessions'))}
-          className="ml-auto h-8 rounded-lg border border-amber/40 px-3 text-xs font-medium text-amber"
+          className="tap ml-auto h-8 rounded-lg border border-amber/40 px-3 text-xs font-medium text-amber"
         >
           {sortKey === 'sessions' ? '출석순 ↓' : '게임순 ↓'}
         </button>

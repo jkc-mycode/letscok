@@ -153,7 +153,7 @@ export function InstallPrompt({ app = 'member' }: { app?: keyof typeof COPY }) {
         <button
           onClick={dismiss}
           aria-label="닫기"
-          className="-mt-1 -mr-1 h-7 w-7 shrink-0 rounded-lg text-dim"
+          className="tap -mt-1 -mr-1 h-7 w-7 shrink-0 rounded-lg text-dim"
         >
           ✕
         </button>

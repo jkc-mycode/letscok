@@ -82,7 +82,7 @@ export function PushToggle({ memberId }: { memberId: string }) {
           <button
             onClick={() => void toggle(false)}
             disabled={busy}
-            className="text-xs text-dim disabled:opacity-50"
+            className="tap text-xs text-dim disabled:opacity-50"
           >
             끄기
           </button>

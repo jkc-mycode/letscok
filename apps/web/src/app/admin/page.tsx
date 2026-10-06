@@ -715,7 +715,7 @@ function BoardBody({
                       return !on;
                     });
                   }}
-                  className={`h-7 rounded-lg border px-2.5 text-xs font-medium ${
+                  className={`tap h-7 rounded-lg border px-2.5 text-xs font-medium ${
                     includeBusy ? 'border-court text-court' : 'border-line text-dim'
                   }`}
                 >
@@ -730,7 +730,7 @@ function BoardBody({
               />
               <button
                 onClick={() => setManualOpen(true)}
-                className="h-7 rounded-lg border border-line px-2.5 text-xs font-medium text-dim"
+                className="tap h-7 rounded-lg border border-line px-2.5 text-xs font-medium text-dim"
               >
                 수동 체크인
               </button>
@@ -1145,7 +1145,7 @@ function CodeEditor({
           setError(null);
           setOpen(true);
         }}
-        className="text-xs text-dim underline underline-offset-4"
+        className="tap text-xs text-dim underline underline-offset-4"
       >
         코드 변경
       </button>
@@ -1409,7 +1409,7 @@ function MemoPanel({
         {memos.length > 0 && (
           <button
             onClick={clearAll}
-            className={`ml-auto h-7 rounded-lg border px-2.5 text-xs font-medium ${
+            className={`tap ml-auto h-7 rounded-lg border px-2.5 text-xs font-medium ${
               confirmClear ? 'border-coral bg-coral/15 text-coral' : 'border-line text-dim'
             }`}
           >
@@ -1429,7 +1429,7 @@ function MemoPanel({
                 onClick={() => void remove(memo.id)}
                 disabled={busy}
                 title="완료 (삭제)"
-                className="h-7 w-7 shrink-0 rounded-lg text-xs text-dim hover:text-coral"
+                className="tap h-7 w-7 shrink-0 rounded-lg text-xs text-dim hover:text-coral"
               >
                 ✕
               </button>
@@ -1795,7 +1795,7 @@ function ManualCheckInModal({
               <div className="flex flex-col gap-2">
                 <div className="flex items-center">
                   <p className="text-xs font-bold text-sky">신규 등록 + 체크인</p>
-                  <button onClick={() => setRegOpen(false)} className="ml-auto text-xs text-dim">
+                  <button onClick={() => setRegOpen(false)} className="tap ml-auto text-xs text-dim">
                     접기
                   </button>
                 </div>
@@ -1959,7 +1959,7 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
             <button
               key={tab.value}
               onClick={() => setFilter(tab.value)}
-              className={`h-8 rounded-lg border px-3 text-xs font-medium ${
+              className={`tap h-8 rounded-lg border px-3 text-xs font-medium ${
                 filter === tab.value
                   ? 'border-court bg-court/15 text-court'
                   : 'border-line bg-panel2 text-dim'
@@ -1971,7 +1971,7 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
           {staleGuests.length > 0 && (
             <button
               onClick={() => setCleanupOpen(true)}
-              className="ml-auto h-8 rounded-lg border border-amber/40 px-3 text-xs font-medium text-amber"
+              className="tap ml-auto h-8 rounded-lg border border-amber/40 px-3 text-xs font-medium text-amber"
             >
               오래 안 온 게스트 정리 ({staleGuests.length})
             </button>
@@ -2800,7 +2800,7 @@ function CourtsManager({
                 )
               }
               title="다른 모임과 번갈아 쓰는 코트 지정/해제"
-              className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+              className={`tap ml-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${
                 court.isShared ? 'bg-sky/15 text-sky' : 'border border-line text-dim'
               }`}
             >
@@ -2810,7 +2810,7 @@ function CourtsManager({
               onClick={() => void run(() => api(`/courts/${court.id}`, { method: 'DELETE', admin: true }))}
               disabled={inGame}
               title={inGame ? '게임 진행 중' : '코트 해제'}
-              className="ml-1 text-dim disabled:opacity-30"
+              className="tap ml-1 text-dim disabled:opacity-30"
             >
               ✕
             </button>
@@ -3010,14 +3010,14 @@ function QueueCard({
           <button
             onClick={() => swapWith(neighborUp)}
             disabled={!neighborUp}
-            className="h-8 w-8 rounded-lg border border-line text-dim disabled:opacity-30"
+            className="tap h-8 w-8 rounded-lg border border-line text-dim disabled:opacity-30"
           >
             ▲
           </button>
           <button
             onClick={() => swapWith(neighborDown)}
             disabled={!neighborDown}
-            className="h-8 w-8 rounded-lg border border-line text-dim disabled:opacity-30"
+            className="tap h-8 w-8 rounded-lg border border-line text-dim disabled:opacity-30"
           >
             ▼
           </button>
@@ -3112,7 +3112,7 @@ function ShuttleRow({
         label="취소"
         title="체크인 취소 — 못 오게 된 사람을 출석 기록 없이 제거"
         onConfirm={() => void run(() => api(`/attendances/${attendance.id}`, { method: 'DELETE', admin: true }))}
-        className="ml-auto h-8 shrink-0 rounded-lg px-2 text-xs font-medium"
+        className="tap ml-auto h-8 shrink-0 rounded-lg px-2 text-xs font-medium"
         idleCls="border border-line text-dim"
       />
       <button
@@ -3281,7 +3281,7 @@ function WaitingRow({
         path={`/attendances/${attendance.id}/call`}
         label="호출"
         title="이 분 폰으로 '운영진이 찾고 있어요' 알림을 보내요"
-        className="h-8 shrink-0 rounded-lg px-1.5 text-xs"
+        className="tap h-8 shrink-0 rounded-lg px-1.5 text-xs"
         idleCls="text-dim hover:text-court"
       />
       {resting && (
@@ -3293,7 +3293,7 @@ function WaitingRow({
             );
           }}
           title="휴식 해제 — 대기로 복귀 (대기시간 리셋)"
-          className="h-8 shrink-0 rounded-lg border border-sky/40 px-2 text-xs font-medium text-sky"
+          className="tap h-8 shrink-0 rounded-lg border border-sky/40 px-2 text-xs font-medium text-sky"
         >
           복귀
         </button>
@@ -3307,7 +3307,7 @@ function WaitingRow({
             );
           }}
           title="휴식 처리 — 게임 조합 대상에서 제외"
-          className="h-8 shrink-0 rounded-lg px-1.5 text-xs text-dim hover:text-sky"
+          className="tap h-8 shrink-0 rounded-lg px-1.5 text-xs text-dim hover:text-sky"
         >
           휴식
         </button>
@@ -3322,7 +3322,7 @@ function WaitingRow({
               api(`/attendances/${attendance.id}/shuttle/cancel`, { method: 'PATCH', admin: true }),
             )
           }
-          className="h-8 shrink-0 rounded-lg px-1.5 text-xs"
+          className="tap h-8 shrink-0 rounded-lg px-1.5 text-xs"
           idleCls="text-dim hover:text-amber"
         />
       )}
@@ -3336,7 +3336,7 @@ function WaitingRow({
               api(`/attendances/${attendance.id}/leave`, { method: 'PATCH', admin: true }),
             )
           }
-          className="h-8 min-w-8 shrink-0 rounded-lg px-1.5 text-xs"
+          className="tap h-8 min-w-8 shrink-0 rounded-lg px-1.5 text-xs"
           idleCls="text-dim hover:text-coral"
         />
       )}

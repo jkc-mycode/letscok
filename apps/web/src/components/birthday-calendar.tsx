@@ -214,7 +214,7 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
                       <p className="text-xs font-bold text-court">
                         {view.month}월 {selectedDay}일 생일 {selected.length}명
                       </p>
-                      <button onClick={() => setSelectedDay(null)} className="ml-auto text-xs text-dim">
+                      <button onClick={() => setSelectedDay(null)} className="tap ml-auto text-xs text-dim">
                         ← 다가오는 생일
                       </button>
                     </div>

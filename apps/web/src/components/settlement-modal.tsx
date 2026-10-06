@@ -347,7 +347,7 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
                 <div className="flex flex-col gap-1 rounded-xl border border-line bg-panel2 p-3">
                   <div className="flex items-center pb-1">
                     <p className="text-xs text-dim">분류를 누르면 공통 → 술 → 음료로 바뀌고, 이름·금액은 눌러서 고쳐요</p>
-                    <button onClick={() => setReceipt(null)} className="ml-auto text-xs text-dim">
+                    <button onClick={() => setReceipt(null)} className="tap ml-auto text-xs text-dim">
                       접기
                     </button>
                   </div>
@@ -355,7 +355,7 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
                     <div key={item.key} className="flex items-center gap-1.5 text-sm">
                       <button
                         onClick={() => editItem(item.key, { category: NEXT_CATEGORY[item.category] }, false)}
-                        className={`h-8 w-11 shrink-0 rounded-md border text-xs font-medium ${CATEGORY_CLS[item.category]}`}
+                        className={`tap h-8 w-11 shrink-0 rounded-md border text-xs font-medium ${CATEGORY_CLS[item.category]}`}
                       >
                         {CATEGORY_LABEL[item.category]}
                       </button>
@@ -380,7 +380,7 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
                       <button
                         onClick={() => removeItem(item.key)}
                         title="이 줄 지우기"
-                        className="h-8 w-7 shrink-0 text-dim hover:text-coral"
+                        className="tap h-8 w-7 shrink-0 text-dim hover:text-coral"
                       >
                         ✕
                       </button>

@@ -266,3 +266,18 @@ button:not(:disabled):active {
     transition: none;
   }
 }
+
+/* 작은 버튼의 누르는 영역만 44px로 넓힌다(애플·구글 권장 터치 크기) — 보이는 크기와 배치는 그대로.
+   버튼 둘레에 보이지 않는 덧칠(::after)을 깔아 손가락이 조금 빗나가도 눌리게 한다 */
+.tap {
+  position: relative;
+}
+.tap::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(100%, 44px);
+  height: max(100%, 44px);
+  transform: translate(-50%, -50%);
+}
