@@ -55,6 +55,7 @@ import { ThemeCycleButton, ThemeToggle } from '@/components/theme-toggle';
 import { ExitGuard } from '@/components/exit-guard';
 import { gamePartnerPeople, GenderMarker, GradeBadge, PartnerNote, Toast } from '@/components/badges';
 import { HomeLink } from '@/components/home-link';
+import { LogoLoader } from '@/components/logo-loader';
 import { MotionCard } from '@/components/motion-card';
 import { GRADES, MultiMemberForm, NewMemberBody } from '@/components/multi-member-form';
 import { api, ApiError } from '@/lib/api';
@@ -118,7 +119,11 @@ function Board({ onLogout }: { onLogout: () => void }) {
   };
 
   if (loading) {
-    return <Centered>불러오는 중...</Centered>;
+    return (
+      <main className="flex min-h-dvh items-center justify-center">
+        <LogoLoader />
+      </main>
+    );
   }
   // 서버에 닿지 못했는데 "모임 전"으로 보이면 [오늘 모임 시작]을 누르게 된다 — 오류 화면을 따로 둔다
   if (failed && !snapshot) {
@@ -148,12 +153,6 @@ function Board({ onLogout }: { onLogout: () => void }) {
       />
       {report}
     </>
-  );
-}
-
-function Centered({ children }: { children: React.ReactNode }) {
-  return (
-    <main className="flex min-h-dvh items-center justify-center text-dim">{children}</main>
   );
 }
 

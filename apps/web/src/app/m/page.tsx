@@ -12,6 +12,7 @@ import { ConnectionError } from '@/components/connection-error';
 import { HomeLink } from '@/components/home-link';
 import { ExitGuard } from '@/components/exit-guard';
 import { InstallPrompt } from '@/components/install-prompt';
+import { LogoLoader } from '@/components/logo-loader';
 import { MotionCard } from '@/components/motion-card';
 import { PushToggle } from '@/components/push-toggle';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -59,7 +60,7 @@ export default function MyStatusPage() {
   };
 
   if (!mounted || loading) {
-    return <Shell><p className="py-20 text-center text-dim">불러오는 중...</p></Shell>;
+    return <Shell><LogoLoader className="py-20" /></Shell>;
   }
   if (failed && !snapshot) {
     return (

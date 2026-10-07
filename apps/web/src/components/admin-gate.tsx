@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { HomeLink } from '@/components/home-link';
 import { InstallPrompt } from '@/components/install-prompt';
+import { BouncingShuttle } from '@/components/logo-loader';
 import {
   ADMIN_UNAUTHORIZED_EVENT,
   api,
@@ -136,9 +137,10 @@ export function LoginGate({
           {busy ? '확인 중...' : '입장'}
         </button>
         {slow && (
-          <p className="text-center text-sm text-dim">
-            서버를 깨우는 중이에요. 최대 5분 정도 걸릴 수 있어요.
-          </p>
+          <div className="flex flex-col items-center gap-2 pt-2">
+            <BouncingShuttle size={40} />
+            <p className="text-center text-sm text-dim">서버를 깨우는 중이에요. 최대 5분 정도 걸릴 수 있어요.</p>
+          </div>
         )}
         {/* 새로 입력해 실패한 에러가 있으면 그쪽이 더 최신 정보라 안내는 숨긴다 */}
         {notice && !error && <p className="text-center text-sm text-amber">{notice}</p>}

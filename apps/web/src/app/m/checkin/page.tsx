@@ -13,6 +13,7 @@ import { GenderMarker, GradeBadge, Toast } from '@/components/badges';
 import { ConnectionError } from '@/components/connection-error';
 import { HomeLink } from '@/components/home-link';
 import { InstallPrompt } from '@/components/install-prompt';
+import { LogoLoader } from '@/components/logo-loader';
 import { api, ApiError } from '@/lib/api';
 import { saveMemberId } from '@/lib/member';
 import { useSnapshot } from '@/lib/use-snapshot';
@@ -52,7 +53,7 @@ export default function CheckinPage() {
   };
 
   if (loading) {
-    return <Shell><p className="text-center text-dim">불러오는 중...</p></Shell>;
+    return <Shell><LogoLoader /></Shell>;
   }
   // 서버에 닿지 못하면 체크인 폼을 보여 줘도 눌러지지 않는다 — 오류 화면으로
   if (failed && !snapshot) {
