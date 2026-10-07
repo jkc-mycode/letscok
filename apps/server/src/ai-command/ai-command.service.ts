@@ -4,6 +4,7 @@ import {
   GAME_SIZE,
   IAiCommandResult,
   IAiCommandTarget,
+  IAiGuestDraft,
   RecommendationCategory,
 } from '@letscok/shared-types';
 import { z } from 'zod';
@@ -27,6 +28,7 @@ const commandSchema = z.strictObject({
       'resume',
       'call',
       'ask',
+      'add_guest',
       'known_unsupported',
       'unsupported',
       'unclear',
@@ -44,6 +46,15 @@ const commandSchema = z.strictObject({
   question: z
     .enum(['longest_wait', 'person', 'no_games', 'fewest_games', 'free_courts', 'headcount', 'next_game', 'other'])
     .describe('ask일 때 질문 종류, 그 외 other'),
+  guests: z
+    .array(
+      z.strictObject({
+        name: z.string().describe('게스트 이름(조사·호칭 뗀 것)'),
+        gender: z.enum(['MALE', 'FEMALE']).nullable().describe('남자·남=MALE, 여자·여=FEMALE, 말 안 했으면 null'),
+        grade: z.enum(['A', 'B', 'C', 'D', 'E', 'F']).nullable().describe('"C급"=C, 말 안 했으면 null'),
+      }),
+    )
+    .describe('add_guest일 때 새로 온 게스트들, 그 외 []'),
 });
 type Command = z.infer<typeof commandSchema>;
 
@@ -60,6 +71,8 @@ const SYSTEM_PROMPT = `당신은 배드민턴 모임 관제판의 명령 해석�
   - longest_wait: 누가 제일 오래 기다렸는지 / person: 특정 사람의 게임 수·지금 상태(people=[그 사람]) / no_games: 아직 한 게임도 못 한 사람
   - fewest_games: 게임을 적게 한 사람 / free_courts: 빈 코트 / headcount: 몇 명 왔는지·인원 현황 / next_game: 다음 게임이 누구인지
   - 위에 없는 질문은 other
+- add_guest: 게스트를 새로 추가·등록해 달라는 요청. 예: "게스트 홍길동 남자 C급 추가해줘", "게스트 두 명 왔어 김철수 남자 D급 이영희 여자". guests에 사람마다 name, gender, grade(말 안 한 건 null)
+  - "게스트 홍길동 체크인"처럼 성별·급수 없이 체크인만 말하면 check_in(guest=true)으로 둡니다. 추가·등록·새로·데려왔다는 말이 있거나 성별·급수를 함께 말하면 add_guest
 - known_unsupported: 관제판에 있는 기능이지만 위 목록에 없는 요청. feature: 코트 추가·공유=court_manage, 모임 종료=close_session, 선수 교체=replace_player, 퇴장=leave, 그 밖=other
 - unsupported: 잡담·관제판과 무관한 요청
 - unclear: 문장이 깨져 무슨 뜻인지 모를 때(음성 인식 오류 등)
@@ -79,7 +92,7 @@ const FEATURE_GUIDE: Record<Command['feature'], string> = {
   other: '',
 };
 export const UNSUPPORTED_MESSAGE =
-  '게임 짜기, 게임 종료, 휴식·복귀, 호출, 체크인, 상황 질문만 할 수 있어요. 예: "남복 짜줘", "3번 코트 끝났어", "누가 제일 오래 기다렸어?"';
+  '게임 짜기, 게임 종료, 휴식·복귀, 호출, 체크인, 게스트 추가, 상황 질문만 할 수 있어요. 예: "남복 짜줘", "3번 코트 끝났어", "누가 제일 오래 기다렸어?"';
 export const ASK_UNSUPPORTED_MESSAGE =
   '그 질문엔 아직 답할 수 없어요. 오래 기다린 사람, 누구 게임 수, 0게임인 사람, 게임 적은 사람, 빈 코트, 인원, 다음 게임을 물어봐 주세요.';
 export const UNCLEAR_MESSAGE = '잘 못 알아들었어요. 다시 말해 주시거나 글로 입력해 주세요.';
@@ -139,6 +152,8 @@ export class AiCommandService {
         return this.personAction(sessionId, command.action, command.people);
       case 'ask':
         return this.answer(sessionId, command);
+      case 'add_guest':
+        return this.guestPreview(sessionId, command);
       case 'known_unsupported':
         return { kind: 'message', text: FEATURE_GUIDE[command.feature] || UNSUPPORTED_MESSAGE };
       case 'unclear':
@@ -232,6 +247,35 @@ export class AiCommandService {
       gameId: game.id,
       targets,
     };
+  }
+
+  // 게스트 추가 미리보기 — 만들기·체크인은 하지 않는다(운영진이 성별·급수를 확인·보충한 뒤 웹이 실행)
+  // 같은 이름 게스트가 있으면 그 사람으로(서버도 이름+생년월일 없음 중복을 막는다), 오늘 이미 왔으면 할 일 없음으로 표시
+  private async guestPreview(sessionId: string, command: Command): Promise<IAiCommandResult> {
+    const spoken = [...new Map(command.guests.map((g) => [normalizeName(g.name), g])).values()]
+      .filter((g) => normalizeName(g.name))
+      .slice(0, 6);
+    if (spoken.length === 0) return { kind: 'message', text: '게스트 이름을 함께 말해 주세요. 예: "게스트 홍길동 남자 C급 추가해줘"' };
+
+    const members = await this.prisma.member.findMany({
+      where: { deletedAt: null, name: { in: spoken.map((g) => g.name.trim()) } },
+      include: { attendances: { where: { sessionId, status: { not: 'LEFT' } }, select: { id: true } } },
+    });
+    const guests: IAiGuestDraft[] = spoken.map((g) => {
+      const same = members.filter((m) => normalizeName(m.name) === normalizeName(g.name));
+      const guest = same.find((m) => m.isGuest);
+      const regular = same.some((m) => !m.isGuest);
+      return {
+        name: g.name.trim(),
+        // 등록된 게스트면 저장된 성별·급수가 기준(체크인만 하므로 바꾸지 않는다)
+        gender: guest ? guest.gender : g.gender,
+        grade: guest ? guest.grade : g.grade,
+        existingMemberId: guest?.id ?? null,
+        alreadyCheckedIn: !!guest && guest.attendances.length > 0,
+        note: regular ? '같은 이름의 정회원이 있어요 — 정회원이면 "이름 체크인"으로 해 주세요' : null,
+      };
+    });
+    return { kind: 'guest_preview', guests };
   }
 
   // 상황 질문 — AI는 질문 종류만 골랐다. 사람·숫자·문장은 전부 여기서 지금 DB 상태로 만든다

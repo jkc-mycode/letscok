@@ -2,7 +2,11 @@
 
 import {
   AiCommandAction,
+  Gender,
+  Grade,
   IAiCommandResult,
+  IAiGuestDraft,
+  IMember,
   IAttendance,
   IGame,
   IAiCommandTarget,
@@ -12,6 +16,7 @@ import {
 } from '@letscok/shared-types';
 import { useMemo, useState } from 'react';
 import { GradeBadge } from '@/components/badges';
+import { GRADES } from '@/components/multi-member-form';
 import { Sheet } from '@/components/sheet';
 import { api, ApiError } from '@/lib/api';
 import { fixSpeech } from '@/lib/speech-fix';
@@ -20,7 +25,7 @@ import { useSpeech } from '@/lib/use-speech';
 // AI 운영 명령 — 문장을 보내면 서버가 미리보기만 돌려주고, 운영진이 [확인]해야 기존 API로 실행한다
 // (체크인만 예외: 기존 AI 체크인 규칙대로 확실한 사람은 바로 체크인된다)
 
-const EXAMPLES = ['남복 짜줘', '민수랑 준호 넣어서 혼복', '3번 코트 끝났어', '민수 휴식', '홍길동 체크인', '누가 제일 오래 기다렸어?'];
+const EXAMPLES = ['남복 짜줘', '민수랑 준호 넣어서 혼복', '3번 코트 끝났어', '민수 휴식', '홍길동 체크인', '게스트 홍길동 남자 C급 추가', '누가 제일 오래 기다렸어?'];
 
 const CATEGORY_LABEL: Record<RecommendationCategory, string> = {
   ALL: '전체',
@@ -186,6 +191,39 @@ export function CommandSheet({
       onClose();
     });
 
+  // 게스트 추가 — 새 게스트는 등록 후 체크인, 등록된 게스트는 체크인만(수동 체크인과 같은 API). 콕 확인은 명단에서 따로
+  // 한 명이 실패해도 나머지는 계속하고 결과를 한 줄로 — 시트는 닫지 않는다(실패한 사람을 확인할 수 있게)
+  const addGuests = (guests: GuestPick[]) =>
+    void run(async () => {
+      const failed: string[] = [];
+      for (const guest of guests) {
+        try {
+          const memberId =
+            guest.existingMemberId ??
+            (
+              await api<IMember>('/members', {
+                method: 'POST',
+                admin: true,
+                body: { name: guest.name, gender: guest.gender, grade: guest.grade, isGuest: true },
+              })
+            ).id;
+          await api(`/sessions/${sessionId}/attendances/manual`, { method: 'POST', admin: true, body: { memberId } });
+        } catch (e) {
+          failed.push(`${guest.name}(${e instanceof ApiError ? e.message : '실패'})`);
+        }
+      }
+      const ok = guests.length - failed.length;
+      setResult(null);
+      setNotice(
+        [
+          ok > 0 ? `게스트 ${ok}명 체크인했어요. 콕을 내면 명단 맨 위에서 [콕 확인]을 눌러 주세요` : '',
+          failed.length > 0 ? `못 한 사람: ${failed.join(', ')}` : '',
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      );
+    });
+
   const addGame = (recommendation: IGameRecommendation) =>
     void run(async () => {
       await api(`/sessions/${sessionId}/games`, {
@@ -293,7 +331,7 @@ export function CommandSheet({
             ))}
           </div>
           <p className="text-[11px] leading-relaxed text-faint">
-            게임 짜기·게임 종료·휴식·복귀·호출은 미리보기를 보고 [확인]해야 실행돼요. 체크인은 이름이 정확히
+            게임 짜기·게임 종료·휴식·복귀·호출·게스트 추가는 미리보기를 보고 [확인]해야 실행돼요. 체크인은 이름이 정확히
             맞는 사람만 바로 처리돼요.
           </p>
         </>
@@ -302,7 +340,14 @@ export function CommandSheet({
       {error && <p className="rounded-xl border border-coral/40 bg-coral/10 p-3 text-sm text-coral">{error}</p>}
       {notice && <p className="rounded-xl border border-court/40 bg-court/10 p-3 text-sm text-court">✓ {notice}</p>}
       {result && !sending && (
-        <ResultView result={result} live={live} onAddGame={addGame} onExecute={execute} onChosen={afterChoose} />
+        <ResultView
+          result={result}
+          live={live}
+          onAddGame={addGame}
+          onExecute={execute}
+          onChosen={afterChoose}
+          onAddGuests={addGuests}
+        />
       )}
     </Sheet>
   );
@@ -314,14 +359,18 @@ function ResultView({
   onAddGame,
   onExecute,
   onChosen,
+  onAddGuests,
 }: {
   result: IAiCommandResult;
   live: Live;
   onAddGame: (r: IGameRecommendation) => void;
   onExecute: (p: ActionPreview) => void;
   onChosen: (c: ChooseResult, picked: IAiCommandTarget[]) => void;
+  onAddGuests: (guests: GuestPick[]) => void;
 }) {
   switch (result.kind) {
+    case 'guest_preview':
+      return <GuestPreview guests={result.guests} onConfirm={onAddGuests} />;
     case 'message':
       return <p className="rounded-xl border border-line bg-panel2 p-3 text-sm text-dim">{result.text}</p>;
     // 상황 질문 답 — 숫자는 서버가 지금 현황으로 계산(실행할 것이 없어 버튼 없음)
@@ -464,6 +513,71 @@ function ChooseView({ choose, onDone }: { choose: ChooseResult; onDone: (picked:
         className="h-12 rounded-xl bg-court text-sm font-bold text-bg disabled:opacity-50"
       >
         계속
+      </button>
+    </div>
+  );
+}
+
+// 확인을 누를 때 넘기는 게스트 — 성별·급수가 다 채워진 것
+type GuestPick = { name: string; gender: Gender; grade: Grade; existingMemberId: string | null };
+
+// 게스트 추가 미리보기 — 말한 성별·급수는 미리 골라 두고, 빠진 것만 눌러 채운다. 등록된 게스트는 저장값 그대로(체크인만)
+function GuestPreview({ guests, onConfirm }: { guests: IAiGuestDraft[]; onConfirm: (picks: GuestPick[]) => void }) {
+  const [picks, setPicks] = useState(() => guests.map((g) => ({ gender: g.gender, grade: g.grade })));
+  const todo = guests.map((g, i) => ({ ...g, ...picks[i] })).filter((g) => !g.alreadyCheckedIn);
+  const ready = todo.length > 0 && todo.every((g) => g.gender && g.grade);
+  const set = (index: number, patch: Partial<{ gender: Gender; grade: Grade }>) =>
+    setPicks((prev) => prev.map((p, i) => (i === index ? { ...p, ...patch } : p)));
+  const chip = (on: boolean) =>
+    `h-9 min-w-9 rounded-lg border px-2 text-sm font-medium ${on ? 'border-court bg-court/15 text-court' : 'border-line text-dim'}`;
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-amber/40 bg-amber/5 p-4">
+      <p className="text-base font-bold">게스트 추가</p>
+      {guests.map((guest, i) => (
+        <div key={guest.name} className="flex flex-col gap-2 rounded-lg bg-panel2 p-3">
+          <div className="flex items-center gap-2">
+            <span className="font-bold">{guest.name}</span>
+            <span className="text-xs text-faint">
+              {guest.alreadyCheckedIn ? '오늘 이미 출석했어요' : guest.existingMemberId ? '등록된 게스트 — 체크인만' : '새 게스트'}
+            </span>
+          </div>
+          {guest.note && <p className="text-xs text-amber whitespace-normal">{guest.note}</p>}
+          {!guest.alreadyCheckedIn && !guest.existingMemberId && (
+            <>
+              <div className="flex gap-1.5">
+                {(['MALE', 'FEMALE'] as const).map((g) => (
+                  <button key={g} onClick={() => set(i, { gender: g })} className={chip(picks[i].gender === g)}>
+                    {g === 'MALE' ? '남' : '여'}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {GRADES.map((grade) => (
+                  <button key={grade} onClick={() => set(i, { grade })} className={chip(picks[i].grade === grade)}>
+                    {grade}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {guest.existingMemberId && !guest.alreadyCheckedIn && guest.grade && (
+            <p className="flex items-center gap-1.5 text-xs text-dim">
+              <GradeBadge grade={guest.grade} /> {guest.gender === 'FEMALE' ? '여' : '남'}
+            </p>
+          )}
+        </div>
+      ))}
+      <button
+        onClick={() =>
+          onConfirm(
+            todo.map((g) => ({ name: g.name, gender: g.gender!, grade: g.grade!, existingMemberId: g.existingMemberId })),
+          )
+        }
+        disabled={!ready}
+        className="h-12 rounded-xl bg-court text-base font-bold text-bg disabled:bg-panel2 disabled:text-faint"
+      >
+        {todo.length === 0 ? '체크인할 게스트가 없어요' : ready ? `게스트 ${todo.length}명 체크인` : '성별과 급수를 골라 주세요'}
       </button>
     </div>
   );

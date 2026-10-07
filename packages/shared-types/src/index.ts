@@ -460,6 +460,16 @@ export interface IAiCommandTarget {
   detail: string; // 동명이인 구분용 — "C급 · 97년생" / "B급 · 게스트"
 }
 
+// 음성 게스트 추가 미리보기 한 줄 — 말한 성별·급수는 미리 채우고, 빠진 것은 운영진이 미리보기에서 고른다
+export interface IAiGuestDraft {
+  name: string;
+  gender: Gender | null;
+  grade: Grade | null;
+  existingMemberId: string | null; // 같은 이름 게스트가 이미 있으면 새로 만들지 않고 그 사람으로 체크인
+  alreadyCheckedIn: boolean; // 오늘 이미 출석 — 할 일 없음
+  note: string | null; // "같은 이름의 정회원이 있어요" 등
+}
+
 export type IAiCommandResult =
   // 게임 짜기 — 추천 후보(지정 인원은 players[].pinned)
   | { kind: 'game_preview'; category: RecommendationCategory; recommendations: IGameRecommendation[] }
@@ -484,7 +494,9 @@ export type IAiCommandResult =
   // 안내만(못 찾음·지원 안 함·못 알아들음) — 문구는 서버 고정, AI가 쓴 문장이 아니다
   | { kind: 'message'; text: string }
   // 질문 답("누가 제일 오래 기다렸어?") — 숫자·문장 모두 서버가 실시간 현황에서 만든다(AI는 질문 종류만 고름)
-  | { kind: 'answer'; title: string; lines: string[] };
+  | { kind: 'answer'; title: string; lines: string[] }
+  // 게스트 추가 — 확인하면 웹이 기존 등록·수동 체크인 API로 실행(콕 확인은 따로)
+  | { kind: 'guest_preview'; guests: IAiGuestDraft[] };
 
 // ===== 공통 응답 래퍼 =====
 

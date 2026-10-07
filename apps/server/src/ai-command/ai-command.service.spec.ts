@@ -35,6 +35,7 @@ const command = (over: Record<string, unknown> = {}) => ({
   checkInTargets: [],
   feature: 'other',
   question: 'other',
+  guests: [],
   ...over,
 });
 
@@ -272,5 +273,52 @@ describe('AiCommandService.run — 상황 질문', () => {
     aiStub.extract.mockResolvedValueOnce(ask('other'));
     const other = await service.run(session.id, '오늘 누가 제일 잘 쳐?');
     expect(other.kind).toBe('message');
+  });
+});
+
+describe('AiCommandService.run — 게스트 추가', () => {
+  it('새 게스트는 말한 성별·급수로, 등록된 게스트는 저장값으로, 오늘 온 게스트는 이미 출석, 정회원 동명이인은 안내 — 만들지는 않는다', async () => {
+    const session = await seedSession();
+    const known = await prisma.member.create({ data: { name: '이영희', grade: 'D', gender: 'FEMALE', isGuest: true } });
+    const here = await prisma.member.create({ data: { name: '박손님', grade: 'E', gender: 'MALE', isGuest: true } });
+    await prisma.attendance.create({ data: { sessionId: session.id, memberId: here.id } });
+    await prisma.member.create({ data: { name: '홍길동', grade: 'B', gender: 'MALE', birthDate: new Date('1990-01-01') } });
+    aiStub.extract.mockResolvedValue(
+      command({
+        action: 'add_guest',
+        guests: [
+          { name: '홍길동', gender: 'MALE', grade: null },
+          { name: '이영희', gender: null, grade: 'A' },
+          { name: '박손님', gender: null, grade: null },
+        ],
+      }),
+    );
+    const before = await prisma.member.count();
+
+    const result = await service.run(session.id, '게스트 홍길동 남자 이영희 A급 박손님 추가해줘');
+
+    expect(result).toEqual({
+      kind: 'guest_preview',
+      guests: [
+        {
+          name: '홍길동',
+          gender: 'MALE',
+          grade: null,
+          existingMemberId: null,
+          alreadyCheckedIn: false,
+          note: '같은 이름의 정회원이 있어요 — 정회원이면 "이름 체크인"으로 해 주세요',
+        },
+        { name: '이영희', gender: 'FEMALE', grade: 'D', existingMemberId: known.id, alreadyCheckedIn: false, note: null },
+        { name: '박손님', gender: 'MALE', grade: 'E', existingMemberId: here.id, alreadyCheckedIn: true, note: null },
+      ],
+    });
+    expect(await prisma.member.count()).toBe(before); // 미리보기만
+  });
+
+  it('이름이 없으면 안내', async () => {
+    const session = await seedSession();
+    aiStub.extract.mockResolvedValue(command({ action: 'add_guest', guests: [] }));
+    const result = await service.run(session.id, '게스트 추가해줘');
+    expect(result.kind).toBe('message');
   });
 });
