@@ -13,9 +13,11 @@ import {
   IHistorySessionDetail,
   IGameRecommendation,
   IMember,
+  IMemberPage,
   IMemberSummary,
   IPushCallResult,
   ISessionSnapshot,
+  MemberListFilter,
   MemberRole,
   RecommendationCategory,
   RecommendationKind,
@@ -2102,7 +2104,7 @@ const ROLE_LABEL: Record<MemberRole, string> = {
   MANAGER: '운영진',
   MEMBER: '모임원',
 };
-const STALE_GUEST_DAYS = 90; // 이 기간 미출석 게스트를 "오래 안 온" 정리 대상으로 본다
+const STALE_GUEST_DAYS = 90; // 정리 안내 문구용 — 판정은 서버(members.service STALE_GUEST_DAYS)와 같은 값
 
 function RoleBadge({ role }: { role: MemberRole }) {
   if (role === 'MEMBER') return null; // 대다수가 모임원 — 배지는 예외(모임장·운영진)만
@@ -2125,35 +2127,48 @@ function formatLastAttended(date: string | null): string {
   return y === thisYear ? `${Number(m)}/${Number(d)}` : `${y.slice(2)}.${Number(m)}.${Number(d)}`;
 }
 
-function isStaleGuest(member: IMemberSummary): boolean {
-  if (!member.isGuest || member.deletedAt) return false;
-  if (!member.lastAttendedAt) return true; // 등록만 되고 한 번도 안 온 게스트
-  const last = new Date(member.lastAttendedAt).getTime();
-  return Date.now() - last > STALE_GUEST_DAYS * 24 * 60 * 60 * 1000;
-}
-
-type MemberFilter = 'ALL' | 'REGULAR' | 'GUEST' | 'DELETED';
-
 function MembersManagerModal({ onClose }: { onClose: () => void }) {
-  const [members, setMembers] = useState<IMemberSummary[] | null>(null); // null=로딩
+  // 서버가 탭·검색에 맞는 100명씩 + 탭별 전체 인원을 준다(모임원이 늘어도 가볍게)
+  const [data, setData] = useState<IMemberPage | null>(null); // null=첫 로딩
+  const [staleGuests, setStaleGuests] = useState<IMemberSummary[]>([]);
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<MemberFilter>('ALL');
+  const [keyword, setKeyword] = useState(''); // 입력이 300ms 멈춘 뒤의 검색어 — 타이핑마다 요청하지 않게
+  const [filter, setFilter] = useState<MemberListFilter>('ALL');
+  const [page, setPage] = useState(1);
+  const listRef = useRef<HTMLDivElement>(null);
   const [editTarget, setEditTarget] = useState<IMemberSummary | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const { toast, showToast } = useToast();
   const [busy, setBusy] = useState(false);
 
-  const refetch = useCallback(
-    () =>
-      api<IMemberSummary[]>('/members', { admin: true })
-        .then(setMembers)
-        .catch(() => showToast('명단을 불러오지 못했습니다.')),
-    [showToast],
-  );
+  useEffect(() => {
+    const timer = setTimeout(() => setKeyword(query.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+  // 탭·검색어가 바뀌면 첫 쪽부터
+  useEffect(() => setPage(1), [filter, keyword]);
+
+  const refetch = useCallback(async () => {
+    const params = new URLSearchParams({ filter, page: String(page), ...(keyword && { q: keyword }) });
+    try {
+      const [pageData, stale] = await Promise.all([
+        api<IMemberPage>(`/members/page?${params}`, { admin: true }),
+        api<IMemberSummary[]>('/members/stale-guests', { admin: true }),
+      ]);
+      setData(pageData);
+      setStaleGuests(stale);
+    } catch {
+      showToast('명단을 불러오지 못했습니다.');
+    }
+  }, [filter, page, keyword, showToast]);
   useEffect(() => {
     void refetch();
   }, [refetch]);
+  // 쪽을 넘기면 목록 맨 위로
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: 0 });
+  }, [page]);
 
   // 모달 전용 실행기 — Board의 run은 스냅샷 refetch까지 묶여 있어 세션 없는 화면에선 못 쓴다
   const run = async (action: () => Promise<unknown>) => {
@@ -2169,24 +2184,13 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const staleGuests = useMemo(() => (members ?? []).filter(isStaleGuest), [members]);
+  const visible = data?.items ?? [];
+  const pageCount = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
 
-  const visible = useMemo(() => {
-    const trimmed = query.trim();
-    return (members ?? []).filter((member) => {
-      if (trimmed && !member.name.includes(trimmed)) return false;
-      // 삭제 회원은 전용 탭에서만 — 평소 목록을 어지럽히지 않는다
-      if (filter === 'DELETED') return member.deletedAt !== null;
-      if (member.deletedAt) return false;
-      if (filter === 'REGULAR') return !member.isGuest;
-      if (filter === 'GUEST') return member.isGuest;
-      return true;
-    });
-  }, [members, query, filter]);
-
-  const FILTER_TABS: { value: MemberFilter; label: string }[] = [
+  // 탭 숫자는 검색과 상관없이 진짜 전체 인원(서버 counts)
+  const FILTER_TABS: { value: MemberListFilter; label: string }[] = [
     { value: 'ALL', label: '전체' },
-    { value: 'REGULAR', label: '정회원' },
+    { value: 'REGULAR', label: '모임원' },
     { value: 'GUEST', label: '게스트' },
     { value: 'DELETED', label: '삭제됨' },
   ];
@@ -2202,11 +2206,7 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
         header={
           <>
             <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">모임원 관리</h2>
-            {members && (
-              <span className="text-xs text-faint">
-                {members.filter((m) => !m.deletedAt).length}명
-              </span>
-            )}
+            {data && <span className="text-caption text-faint">{data.counts.ALL}명</span>}
           </>
         }
       >
@@ -2222,13 +2222,12 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
             <button
               key={tab.value}
               onClick={() => setFilter(tab.value)}
-              className={`tap h-8 rounded-lg border px-3 text-xs font-medium ${
-                filter === tab.value
-                  ? 'border-court bg-court/15 text-court'
-                  : 'border-line bg-panel2 text-dim'
+              className={`tap h-8 rounded-lg px-3 text-caption font-medium ${
+                filter === tab.value ? 'bg-court/15 font-bold text-court' : 'bg-panel2 text-dim'
               }`}
             >
               {tab.label}
+              {data && <span className="tabular ml-1 font-mono opacity-80">{data.counts[tab.value]}</span>}
             </button>
           ))}
           {staleGuests.length > 0 && (
@@ -2241,9 +2240,9 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
-        <div className="mt-3 flex min-h-0 flex-1 flex-col gap-1.5 scroll-area">
-          {members === null && <p className="py-8 text-center text-sm text-dim">불러오는 중...</p>}
-          {members !== null && visible.length === 0 && (
+        <div ref={listRef} className="mt-3 flex min-h-0 flex-1 flex-col gap-1.5 scroll-area">
+          {data === null && <p className="py-8 text-center text-sm text-dim">불러오는 중...</p>}
+          {data !== null && visible.length === 0 && (
             <p className="py-8 text-center text-sm text-faint">
               {filter === 'DELETED' ? '삭제된 모임원이 없어요' : '검색 결과가 없어요'}
             </p>
@@ -2267,6 +2266,28 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
               </span>
             </button>
           ))}
+          {/* 100명씩 — 넘으면 아래에서 쪽 넘기기 */}
+          {data && pageCount > 1 && (
+            <div className="flex shrink-0 items-center justify-center gap-2 py-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="h-9 rounded-lg bg-panel2 px-3 text-body-sm text-dim disabled:opacity-30"
+              >
+                ‹ 이전
+              </button>
+              <span className="tabular min-w-20 text-center font-mono text-body-sm text-dim">
+                {page} / {pageCount}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                disabled={page >= pageCount}
+                className="h-9 rounded-lg bg-panel2 px-3 text-body-sm text-dim disabled:opacity-30"
+              >
+                다음 ›
+              </button>
+            </div>
+          )}
         </div>
 
         {/* 등록 — 체크인 없이 명단에만 추가 (모임 전 사전 등록용). 모임 중 즉석 등록+체크인은 [수동 체크인]의 [신규 등록] */}

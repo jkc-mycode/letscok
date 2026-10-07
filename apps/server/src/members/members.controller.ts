@@ -11,9 +11,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { IApiResponse, IMember, IMemberSummary } from '@letscok/shared-types';
+import { IApiResponse, IMember, IMemberPage, IMemberSummary } from '@letscok/shared-types';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { CreateMemberDto } from './dto/create-member.dto';
+import { MemberPageQueryDto } from './dto/member-page-query.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 import { MembersService } from './members.service';
 
@@ -40,6 +41,20 @@ export class MembersController {
   }
 
   // 명단 목록 — [모임원 관리] 화면 전용, 삭제 회원·출석 집계 포함
+  // 모임원 관리 화면 — 탭·검색·100명씩 페이지 + 탭별 전체 인원
+  @Get('page')
+  @UseGuards(AdminGuard)
+  async page(@Query() query: MemberPageQueryDto): Promise<IApiResponse<IMemberPage>> {
+    return { success: true, data: await this.membersService.page(query) };
+  }
+
+  // 오래 안 온 게스트 전부 — 정리 시트용(페이지와 상관없이)
+  @Get('stale-guests')
+  @UseGuards(AdminGuard)
+  async staleGuests(): Promise<IApiResponse<IMemberSummary[]>> {
+    return { success: true, data: await this.membersService.staleGuests() };
+  }
+
   @Get()
   @UseGuards(AdminGuard)
   async list(): Promise<IApiResponse<IMemberSummary[]>> {

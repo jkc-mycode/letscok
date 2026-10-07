@@ -3,13 +3,22 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { IMember, IMemberSummary } from '@letscok/shared-types';
+import {
+  IMember,
+  IMemberPage,
+  IMemberSummary,
+  MEMBER_PAGE_SIZE,
+  MemberListFilter,
+} from '@letscok/shared-types';
 import { toMemberResponse } from '../common/mappers/entity.mappers';
 import { toDateString } from '../common/utils/date.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { CreateMemberDto } from './dto/create-member.dto';
+import { MemberPageQueryDto } from './dto/member-page-query.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
+
+const STALE_GUEST_DAYS = 90; // 이 기간 미출석 게스트를 "오래 안 온" 정리 대상으로 본다
 
 @Injectable()
 export class MembersService {
@@ -56,37 +65,76 @@ export class MembersService {
       .map(toMemberResponse);
   }
 
-  // 명단 목록 (운영진 전용) — 삭제된 회원 포함(복구 지원), 출석 집계 동봉
-  // 규모(수십 명 × 주 1~2회)상 DB groupBy 없이 병합으로 충분 — 랭킹과 같은 접근
+  // 명단 목록 (운영진 전용) — 삭제된 회원 포함(복구 지원), 출석 집계 동봉. 생일 캘린더가 전체를 쓴다
   async list(): Promise<IMemberSummary[]> {
-    const [members, attendances] = await Promise.all([
-      this.prisma.member.findMany(),
-      this.prisma.attendance.findMany({
-        include: { session: { select: { date: true } } },
-      }),
-    ]);
+    return this.summaries();
+  }
 
-    const stats = new Map<
-      string,
-      { totalSessions: number; totalGames: number; lastDate: Date | null }
-    >();
-    for (const attendance of attendances) {
-      const entry = stats.get(attendance.memberId) ?? {
-        totalSessions: 0,
-        totalGames: 0,
-        lastDate: null,
-      };
-      entry.totalSessions += 1;
-      entry.totalGames += attendance.gamesPlayed;
-      if (!entry.lastDate || attendance.session.date > entry.lastDate) {
-        entry.lastDate = attendance.session.date;
+  // 모임원 관리 목록 — 탭·검색에 맞는 100명 + 탭별 진짜 전체 인원(검색과 상관없이)
+  async page(query: MemberPageQueryDto): Promise<IMemberPage> {
+    const all = await this.summaries();
+    const filter = query.filter ?? 'ALL';
+    const keyword = query.q?.trim() ?? '';
+    const page = Number(query.page ?? 1);
+
+    const counts: Record<MemberListFilter, number> = { ALL: 0, REGULAR: 0, GUEST: 0, DELETED: 0 };
+    for (const member of all) {
+      if (member.deletedAt) {
+        counts.DELETED += 1;
+        continue;
       }
-      stats.set(attendance.memberId, entry);
+      counts.ALL += 1;
+      counts[member.isGuest ? 'GUEST' : 'REGULAR'] += 1;
     }
+
+    const matched = all.filter((member) => {
+      if (keyword && !member.name.includes(keyword)) return false;
+      // 삭제 회원은 전용 탭에서만 — 평소 목록을 어지럽히지 않는다
+      if (filter === 'DELETED') return member.deletedAt !== null;
+      if (member.deletedAt) return false;
+      if (filter === 'REGULAR') return !member.isGuest;
+      if (filter === 'GUEST') return member.isGuest;
+      return true;
+    });
+    const start = (page - 1) * MEMBER_PAGE_SIZE;
+    return {
+      items: matched.slice(start, start + MEMBER_PAGE_SIZE),
+      total: matched.length,
+      page,
+      pageSize: MEMBER_PAGE_SIZE,
+      counts,
+    };
+  }
+
+  // 오래 안 온 게스트(90일 넘게 미출석, 또는 등록만 하고 한 번도 안 옴) — 정리 시트는 페이지와 상관없이 전부 필요
+  async staleGuests(): Promise<IMemberSummary[]> {
+    const limit = Date.now() - STALE_GUEST_DAYS * 24 * 60 * 60 * 1000;
+    return (await this.summaries()).filter(
+      (member) =>
+        member.isGuest &&
+        !member.deletedAt &&
+        (!member.lastAttendedAt || new Date(member.lastAttendedAt).getTime() < limit),
+    );
+  }
+
+  // 회원 + 출석 집계, 최근 출석순 — 출석 기록을 다 불러오지 않고 DB에서 사람별로 한 번에 집계한다(기록이 쌓여도 가볍게)
+  private async summaries(): Promise<IMemberSummary[]> {
+    const [members, stats] = await Promise.all([
+      this.prisma.member.findMany(),
+      this.prisma.$queryRaw<{ memberId: string; totalSessions: number; totalGames: number; lastDate: Date }[]>`
+        SELECT a."memberId" AS "memberId",
+               COUNT(*)::int AS "totalSessions",
+               COALESCE(SUM(a."gamesPlayed"), 0)::int AS "totalGames",
+               MAX(s."date") AS "lastDate"
+        FROM attendances a
+        JOIN sessions s ON s.id = a."sessionId"
+        GROUP BY a."memberId"`,
+    ]);
+    const byMember = new Map(stats.map((row) => [row.memberId, row]));
 
     return members
       .map((member) => {
-        const stat = stats.get(member.id);
+        const stat = byMember.get(member.id);
         return {
           ...toMemberResponse(member),
           deletedAt: member.deletedAt?.toISOString() ?? null,

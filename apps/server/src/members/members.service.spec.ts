@@ -222,3 +222,58 @@ describe('list', () => {
     expect(removedRow?.deletedAt).not.toBeNull(); // 복구 지원용으로 목록에 남는다
   });
 });
+
+describe('page (모임원 관리 목록)', () => {
+  it('탭별 진짜 전체 인원(검색과 상관없이) + 탭·검색 거르기', async () => {
+    await service.create(memberDto({ name: '김모임' }));
+    await service.create(memberDto({ name: '이모임', birthDate: '1998-01-01' }));
+    await service.create(memberDto({ name: '박손님', isGuest: true }));
+    const removed = await service.create(memberDto({ name: '최삭제', birthDate: '1999-01-01' }));
+    await service.remove(removed.id);
+
+    const all = await service.page({});
+    expect(all.counts).toEqual({ ALL: 3, REGULAR: 2, GUEST: 1, DELETED: 1 });
+    expect(all.total).toBe(3);
+
+    const searched = await service.page({ filter: 'REGULAR', q: '김' });
+    expect(searched.items.map((m) => m.name)).toEqual(['김모임']);
+    expect(searched.total).toBe(1);
+    expect(searched.counts).toEqual(all.counts); // 검색해도 탭 숫자는 전체 그대로
+
+    const deleted = await service.page({ filter: 'DELETED' });
+    expect(deleted.items.map((m) => m.name)).toEqual(['최삭제']);
+  });
+
+  it('100명씩 나눠 준다 — 101명이면 2쪽에 1명', async () => {
+    await prisma.member.createMany({
+      data: Array.from({ length: 101 }, (_, i) => ({
+        name: `회원${String(i).padStart(3, '0')}`,
+        grade: 'C' as const,
+        gender: 'MALE' as const,
+        birthDate: new Date('2000-01-01'),
+      })),
+    });
+
+    const first = await service.page({ page: '1' });
+    const second = await service.page({ page: '2' });
+
+    expect(first.items).toHaveLength(100);
+    expect(second.items).toHaveLength(1);
+    expect(first.total).toBe(101);
+    expect(second.items[0].name).toBe('회원100'); // 미출석끼리는 이름순
+  });
+
+  it('오래 안 온 게스트 — 한 번도 안 왔거나 90일 넘게 미출석, 정회원·삭제는 제외', async () => {
+    const never = await service.create(memberDto({ name: '안온게스트', isGuest: true }));
+    await service.create(memberDto({ name: '정회원', birthDate: '1990-01-01' }));
+    const recent = await service.create(memberDto({ name: '최근게스트', isGuest: true }));
+    const session = await prisma.session.create({
+      data: { date: new Date(), checkInCode: '0101', status: 'CLOSED' },
+    });
+    await prisma.attendance.create({ data: { sessionId: session.id, memberId: recent.id } });
+
+    const stale = await service.staleGuests();
+
+    expect(stale.map((m) => m.id)).toEqual([never.id]);
+  });
+});

@@ -78,6 +78,18 @@ export interface IMemberSummary extends IMember {
   totalGames: number;
 }
 
+// 모임원 관리 목록 — 탭(전체·모임원·게스트·삭제됨) + 이름 검색 + 100명씩 페이지
+export type MemberListFilter = 'ALL' | 'REGULAR' | 'GUEST' | 'DELETED';
+export const MEMBER_PAGE_SIZE = 100;
+
+export interface IMemberPage {
+  items: IMemberSummary[]; // 이 페이지의 최대 100명 — 최근 출석순(미출석은 맨 아래), 동률은 이름순
+  total: number; // 지금 탭·검색에 맞는 전체 인원(페이지 수 계산용)
+  page: number; // 1부터
+  pageSize: number;
+  counts: Record<MemberListFilter, number>; // 탭별 진짜 전체 인원 — 검색과 상관없이
+}
+
 // 회원 정보 수정 — 모든 필드 선택적(보낸 것만 반영). isGuest는 false만 허용(게스트→정회원 승격 전용)
 export interface IUpdateMemberDto {
   name?: string;
