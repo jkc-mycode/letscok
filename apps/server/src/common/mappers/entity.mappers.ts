@@ -71,6 +71,7 @@ export function toAttendanceResponse(
     gamesPlayed: attendance.gamesPlayed,
     leftAt: attendance.leftAt?.toISOString() ?? null,
     shuttleConfirmedAt: attendance.shuttleConfirmedAt?.toISOString() ?? null,
+    partnerAttendanceId: attendance.partnerAttendanceId,
     ...(attendance.member && { member: toMemberResponse(attendance.member) }),
   };
 }

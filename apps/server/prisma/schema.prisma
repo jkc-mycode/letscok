@@ -154,6 +154,10 @@ model Attendance {
   // 확인 시점이 곧 참여 시작이라 waitingSince도 이때 맞춘다
   shuttleConfirmedAt DateTime?
 
+  // 대회 연습 파트너 — 같은 모임의 다른 출석 id, 두 사람이 서로를 가리킨다. 출석은 모임마다 새로 생기므로 그날 모임까지만 유지
+  // 게임 추천이 두 사람을 같은 게임에 넣는 쪽에 가점(한 명만 비어 있으면 평소대로). FK 없이 둔다 — 체크인 취소로 상대 행이 지워져도 읽을 때 무시
+  partnerAttendanceId String?
+
   session     Session      @relation(fields: [sessionId], references: [id])
   member      Member       @relation(fields: [memberId], references: [id])
   gamePlayers GamePlayer[]

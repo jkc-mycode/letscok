@@ -20,6 +20,7 @@ const W_REPEAT = 20; // 오늘 함께 뛴 쌍 1회당 감점 (다양성)
 const W_GRADE = 30; // 급수 간격이 3을 초과하는 만큼 감점 (극단 조합만 회피)
 const W_BORROW = 25; // 차용 인원 1명당 감점 (미배정 대기 인원이 항상 우선)
 const W_GENDER = 30; // 표준 복식(남복·여복·혼복)으로 안 떨어지는 성별 구성 감점 (금지 아닌 선호)
+const W_PARTNER = 40; // 대회 연습 파트너 두 사람이 같은 게임에 든 쌍당 가점 — 대기 40분어치. 한 명만 든 조합은 가점·감점 없음(강제 아님)
 
 const GRADE_ORDER = ['A', 'B', 'C', 'D', 'E', 'F'];
 const POOL_CAP = 30; // 전수 탐색 상한 — C(30,4)=27,405 조합
@@ -166,11 +167,21 @@ export class RecommendationsService {
           if (count > 0) repeatPairs++;
         }
       }
+      // 파트너가 서로를 가리키는 쌍만(한쪽만 남은 옛 값은 무시)
+      let partnerPairs = 0;
+      for (let i = 0; i < players.length; i++) {
+        for (let j = i + 1; j < players.length; j++) {
+          if (players[i].partnerAttendanceId === players[j].id && players[j].partnerAttendanceId === players[i].id) {
+            partnerPairs++;
+          }
+        }
+      }
       const gradeExcess = Math.max(0, Math.max(...grades) - Math.min(...grades) - 3);
       // 종목 탭은 구성이 강제라 성별 선호 감점이 무의미 — ALL에서만 적용
       const genderPenalty =
         category === 'ALL' && !isCleanGenderComposition(players) ? W_GENDER : 0;
       const base =
+        partnerPairs * W_PARTNER +
         waitSum * W_WAIT -
         excessSum * W_GAMES -
         gradeExcess * W_GRADE -

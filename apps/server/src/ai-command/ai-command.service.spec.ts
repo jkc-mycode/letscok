@@ -360,3 +360,22 @@ describe('AiCommandService.run — 한 문장에 여러 명령', () => {
     expect(many.kind === 'multi' && many.steps.length).toBe(3);
   });
 });
+
+describe('AiCommandService.run — 대회 연습 파트너', () => {
+  it('두 사람이면 파트너 미리보기(지정은 안 함), 한 사람만 말하면 안내', async () => {
+    const session = await seedSession();
+    const minsu = await seedAttendee(session.id, '김민수');
+    const junho = await seedAttendee(session.id, '이준호');
+
+    aiStub.extract.mockResolvedValueOnce(command({ action: 'partner', people: ['민수', '준호'] }));
+    const preview = await service.run(session.id, '민수랑 준호가 이번에 대회 연습한대');
+    expect(preview).toMatchObject({ kind: 'action_preview', action: 'partner' });
+    if (preview.kind === 'action_preview') {
+      expect(preview.targets.map((t) => t.attendanceId)).toEqual([minsu.id, junho.id]);
+    }
+    expect((await prisma.attendance.findUniqueOrThrow({ where: { id: minsu.id } })).partnerAttendanceId).toBeNull();
+
+    aiStub.extract.mockResolvedValueOnce(command({ action: 'partner', people: ['민수'] }));
+    expect((await service.run(session.id, '민수 대회 연습')).kind).toBe('message');
+  });
+});

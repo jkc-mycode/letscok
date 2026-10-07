@@ -53,7 +53,7 @@ import { SettlementModal } from '@/components/settlement-modal';
 import { Sheet } from '@/components/sheet';
 import { ThemeCycleButton, ThemeToggle } from '@/components/theme-toggle';
 import { ExitGuard } from '@/components/exit-guard';
-import { GenderMarker, GradeBadge, Toast } from '@/components/badges';
+import { gamePartnerPeople, GenderMarker, GradeBadge, PartnerNote, Toast } from '@/components/badges';
 import { HomeLink } from '@/components/home-link';
 import { MotionCard } from '@/components/motion-card';
 import { GRADES, MultiMemberForm, NewMemberBody } from '@/components/multi-member-form';
@@ -446,6 +446,16 @@ function BoardBody({
   );
   // 명단 — 콕 확인된 출석자 전원(조합에 넣어도 사라지지 않는 자석판 명단). 비어 있는 사람(오래 기다린 순)이 위
   const roster = useMemo(() => sortRoster(attendances), [attendances]);
+  // 대회 연습 파트너 — 서로를 가리키는 쌍만(퇴장·취소로 한쪽만 남은 값은 무시)
+  const partnerNames = useMemo(() => {
+    const byId = new Map(attendances.filter((a) => a.status !== 'LEFT').map((a) => [a.id, a]));
+    const names = new Map<string, string>();
+    for (const a of byId.values()) {
+      const partner = a.partnerAttendanceId ? byId.get(a.partnerAttendanceId) : undefined;
+      if (partner?.partnerAttendanceId === a.id && partner.member) names.set(a.id, partner.member.name);
+    }
+    return names;
+  }, [attendances]);
   const waitingCount = roster.filter((a) => a.status === 'CHECKED_IN').length;
   // 이름 옆 위치 표시 — "조합 2, 3"·"1번 코트" (사람 → 들어 있는 대기 조합 순번들 / 코트 번호)
   const placeLabels = useMemo(
@@ -914,6 +924,7 @@ function BoardBody({
                 placeLabel={placeLabels.get(attendance.id)}
                 resting={attendance.status === 'RESTING'}
                 dragEnabled={dragEnabled}
+                partnerName={partnerNames.get(attendance.id)}
               />
             ))}
           </AnimatePresence>
@@ -1267,6 +1278,13 @@ function RecommendModal({
                     </div>
                   ))}
                 </div>
+                <PartnerNote
+                  people={rec.players.map((p) => ({
+                    id: p.attendanceId,
+                    name: p.name,
+                    partnerId: attendances.find((a) => a.id === p.attendanceId)?.partnerAttendanceId ?? null,
+                  }))}
+                />
                 {rec.repeatPairCount > 0 && (
                   <p className="mt-2 text-[11px] text-faint">
                     오늘 같이 뛴 쌍 {rec.repeatPairCount}개 포함
@@ -2735,7 +2753,8 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
       '명단에서 4명 선택 → [조합 만들기] → 대기 조합에서 [코트 배정] → 끝나면 [게임 종료].',
       '[게임 종료]만 게임 수 +1 · 대기시간 리셋. [대기로]는 조합을 유지한 채 뒤로, [취소]·[해체]는 없던 일로 (둘 다 미집계).',
       '부상·급한 일로 한 명만 바꿀 땐 [교체] — 게임을 갈아엎지 않아 타이머·순서가 유지돼요. 빠진 사람은 대기로 돌아와요.',
-      '구두 요청("○○랑 파트너 연습", "무릎 조심")은 메모에 적어두세요. 모임이 끝나도 남아 다음 모임에 이어지고, 처리했으면 ✕로 지워요.',
+      '대회 연습 파트너는 [🎙]에 "민수랑 준호 대회 연습한대"라고 말하면 돼요. 그날 게임 추천이 두 사람을 같은 게임에 넣는 쪽으로 기울고(둘 다 비어 있을 때만, 강제 아님) 카드에 "🤝 한 팀"이 보여요. 명단 이름 옆 🤝를 두 번 누르면 해제. 운영 메모에도 한 줄 남아요.',
+      '구두 요청("무릎 조심" 등)은 메모에 적어두세요. 모임이 끝나도 남아 다음 모임에 이어지고, 처리했으면 ✕로 지워요.',
       '오늘 끝난 게임은 상단 [게임 기록]에서 확인해요 — 이름으로 검색하면 그 사람이 뛴 게임만 모아 볼 수 있어요.',
       '모임원이 폰에서 [잠깐 쉴래요]를 누르면 휴식으로 빠져요 — 조합 선택·게임 추천에서 제외되고, 복귀하면 대기시간이 새로 시작돼요. 명단 줄의 [휴식]/[복귀]로 운영진이 대신 처리할 수도 있어요.',
     ],
@@ -3279,6 +3298,7 @@ function BoardSlots({
         Array.from({ length: Math.max(0, GAME_SIZE - players.length) }, (_, i) => (
           <EmptySlot key={`empty-${i}`} id={`slot:${game.id}:${i}`} game={game} dragEnabled={dragEnabled} onClick={onFillSlot} />
         ))}
+      <PartnerNote people={gamePartnerPeople(game)} className="col-span-2 mt-0.5" />
     </div>
   );
 }
@@ -3827,6 +3847,7 @@ function WaitingRow({
   resting,
   onMore,
   dragEnabled,
+  partnerName,
 }: {
   attendance: IAttendance;
   now: number;
@@ -3838,6 +3859,7 @@ function WaitingRow({
   placeLabel?: string; // 위치 칩 문구("조합 2, 3"·"1번 코트")
   resting?: boolean; // 휴식 행 — 선택 불가, 복귀·퇴장 버튼만
   dragEnabled: boolean; // 태블릿: 살짝 길게 눌러(마우스는 끌어) 조합 칸으로 옮긴다
+  partnerName?: string; // 대회 연습 파트너 — 눌러서(두 번) 해제
 }) {
   const member = attendance.member;
   const drag = usePersonDrag(
@@ -3881,6 +3903,16 @@ function WaitingRow({
         <span className="shrink-0 rounded bg-sky/15 px-1.5 py-0.5 text-[10px] font-medium text-sky">
           휴식
         </span>
+      )}
+      {partnerName && (
+        <ConfirmButton
+          label={`🤝 ${partnerName}`}
+          confirmLabel="파트너 해제"
+          title={`대회 연습 파트너: ${partnerName} — 두 번 누르면 해제`}
+          onConfirm={() => void run(() => api(`/attendances/${attendance.id}/partner`, { method: 'DELETE', admin: true }))}
+          className="tap h-6 min-w-0 shrink truncate rounded px-1.5 text-[10px] font-medium"
+          idleCls="bg-sky/15 text-sky"
+        />
       )}
       <span className="tabular ml-auto shrink-0 font-mono text-xs text-dim">
         {attendance.gamesPlayed}게임 · {formatWaitingMinutes(attendance.waitingSince, now)}

@@ -16,7 +16,7 @@ import {
   RecommendationCategory,
 } from '@letscok/shared-types';
 import { useMemo, useRef, useState } from 'react';
-import { GradeBadge } from '@/components/badges';
+import { GradeBadge, PartnerNote } from '@/components/badges';
 import { GRADES } from '@/components/multi-member-form';
 import { Sheet } from '@/components/sheet';
 import { api, ApiError } from '@/lib/api';
@@ -40,6 +40,8 @@ const ACTION_LABEL: Record<Exclude<AiCommandAction, 'make_game'>, string> = {
   rest: '휴식',
   resume: '복귀',
   call: '호출',
+  partner: '대회 연습 파트너(같은 게임 한 팀으로 우선)',
+  unpartner: '파트너 해제',
 };
 
 type ChooseResult = Extract<IAiCommandResult, { kind: 'choose' }>;
@@ -218,6 +220,20 @@ export function CommandSheet({
         // 호출은 결과를 보여 주고 시트를 닫지 않는다(알림 미등록이면 직접 불러야 해서)
         setNotice(devices > 0 ? `${devices}대에 알림을 보냈어요` : '알림을 등록하지 않은 분이에요. 직접 불러주세요');
         next(true);
+        return;
+      }
+      if (preview.action === 'partner') {
+        await api(`/sessions/${sessionId}/partners`, {
+          method: 'POST',
+          admin: true,
+          body: { attendanceIds: preview.targets.map((t) => t.attendanceId) },
+        });
+        done(preview.label);
+        return;
+      }
+      if (preview.action === 'unpartner') {
+        for (const t of preview.targets) await api(`/attendances/${t.attendanceId}/partner`, { method: 'DELETE', admin: true });
+        done(preview.label);
         return;
       }
       for (const t of preview.targets) {
@@ -504,6 +520,14 @@ function GamePreview({
           </div>
         ))}
       </div>
+      <PartnerNote
+        className=""
+        people={current.players.map((p) => ({
+          id: p.attendanceId,
+          name: p.name,
+          partnerId: live.attendances.find((a) => a.id === p.attendanceId)?.partnerAttendanceId ?? null,
+        }))}
+      />
       {duplicate && <p className="text-sm font-medium text-coral">⚠ 같은 4명 조합이 이미 대기 중이에요 — 다른 운영진이 먼저 넣었어요</p>}
       {current.repeatPairCount > 0 && (
         <p className="text-xs text-dim">오늘 같이 친 짝 {current.repeatPairCount}쌍</p>

@@ -28,6 +28,8 @@ const commandSchema = z.strictObject({
       'rest',
       'resume',
       'call',
+      'partner',
+      'unpartner',
       'ask',
       'add_guest',
       'known_unsupported',
@@ -75,6 +77,8 @@ const SYSTEM_PROMPT = `당신은 배드민턴 모임 관제판의 명령 해석�
 - check_in: 출석(체크인) 처리 요청. checkInTargets에 사람마다 raw(말한 그대로), name(이름 부분), kind(full=성+이름, given=이름만, nickname=별명, unclear), birthYear("97년생"이면 97, 없으면 null), guest("게스트" 표기면 true)를 적습니다. 확신이 없으면 kind=unclear
 - finish_game: 게임이 끝났다는 말. 예: "3번 코트 끝났어"(courtNo=3), "민수 게임 끝"(people=[민수])
 - rest: 잠깐 쉬게(휴식) 해 달라는 요청 / resume: 휴식에서 복귀 / call: 사람을 불러 달라는 요청(알림 보내기)
+- partner: 두 사람이 대회 연습을 한다·파트너로 묶어 달라·같은 팀으로 짜 달라는 요청(오늘 하루). people=[두 사람]. 예: "민수랑 준호가 이번에 대회 연습한대"
+- unpartner: 파트너(대회 연습)를 풀어 달라는 요청. people=[그 사람(들)]
 - ask: 지금 모임 상황을 묻는 질문. question:
   - longest_wait: 누가 제일 오래 기다렸는지 / person: 특정 사람의 게임 수·지금 상태(people=[그 사람]) / no_games: 아직 한 게임도 못 한 사람
   - fewest_games: 게임을 적게 한 사람 / free_courts: 빈 코트 / headcount: 몇 명 왔는지·인원 현황 / next_game: 다음 게임이 누구인지
@@ -110,6 +114,8 @@ const ACTION_LABEL: Record<Exclude<AiCommandAction, 'make_game'>, string> = {
   rest: '휴식',
   resume: '복귀',
   call: '호출',
+  partner: '대회 연습 파트너(같은 게임 한 팀으로 우선)',
+  unpartner: '파트너 해제',
 };
 
 // 이름 비교 — 성+이름 완전 일치 우선, 없으면 이름만(성 1~2글자 뺀 부분) 일치. 오늘 출석자 안에서만 찾는다
@@ -165,7 +171,13 @@ export class AiCommandService {
       case 'rest':
       case 'resume':
       case 'call':
+      case 'unpartner':
         return this.personAction(sessionId, command.action, command.people);
+      case 'partner':
+        if (new Set(command.people.map((p) => p.trim())).size !== 2) {
+          return { kind: 'message', text: '파트너로 묶을 두 사람을 함께 말해 주세요. 예: "민수랑 준호 대회 연습한대"' };
+        }
+        return this.personAction(sessionId, 'partner', command.people);
       case 'ask':
         return this.answer(sessionId, command);
       case 'add_guest':
@@ -408,7 +420,7 @@ export class AiCommandService {
   // 휴식·복귀·호출 — 대상만 찾아 미리보기(실행 가능 여부는 실행 API가 기존 규칙대로 판단)
   private async personAction(
     sessionId: string,
-    action: 'rest' | 'resume' | 'call',
+    action: 'rest' | 'resume' | 'call' | 'partner' | 'unpartner',
     people: string[],
   ): Promise<IAiCommandStep> {
     if (people.length === 0) return { kind: 'message', text: '누구를 말씀하시는지 이름을 함께 말해 주세요.' };

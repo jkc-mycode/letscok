@@ -115,7 +115,13 @@ export interface IAttendance {
   gamesPlayed: number; // 오늘 완료한 게임 수
   leftAt: string | null;
   shuttleConfirmedAt: string | null; // 콕 제출 확인 시각 — null이면 게임 배정 불가
+  partnerAttendanceId: string | null; // 대회 연습 파트너(그날만) — 게임 추천이 같은 게임에 넣는 쪽으로 가점
   member?: IMember;
+}
+
+// 대회 연습 파트너 지정 — 두 사람의 출석 id
+export interface ISetPartnerDto {
+  attendanceIds: string[];
 }
 
 export interface IGame {
@@ -452,7 +458,7 @@ export interface IAiCommandDto {
 }
 
 // 미리보기 후 실행하는 동작 — 실행은 기존 API(게임 종료·휴식·복귀·호출)를 그대로 쓴다
-export type AiCommandAction = 'make_game' | 'finish_game' | 'rest' | 'resume' | 'call';
+export type AiCommandAction = 'make_game' | 'finish_game' | 'rest' | 'resume' | 'call' | 'partner' | 'unpartner';
 
 export interface IAiCommandTarget {
   attendanceId: string;

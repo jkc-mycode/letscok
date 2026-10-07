@@ -13,10 +13,31 @@ import { AdminGuard } from '../common/guards/admin.guard';
 import { AttendancesService } from './attendances.service';
 import { CheckInDto } from './dto/check-in.dto';
 import { ManualCheckInDto } from './dto/manual-check-in.dto';
+import { SetPartnerDto } from './dto/set-partner.dto';
+import { PartnersService } from './partners.service';
 
 @Controller()
 export class AttendancesController {
-  constructor(private readonly attendancesService: AttendancesService) {}
+  constructor(
+    private readonly attendancesService: AttendancesService,
+    private readonly partnersService: PartnersService,
+  ) {}
+
+  // 대회 연습 파트너 지정·해제 (운영진) — 그날 게임 추천이 두 사람을 같은 게임에 넣는 쪽으로 기운다
+  @Post('sessions/:sessionId/partners')
+  @UseGuards(AdminGuard)
+  async setPartner(
+    @Param('sessionId') sessionId: string,
+    @Body() dto: SetPartnerDto,
+  ): Promise<IApiResponse<IAttendance[]>> {
+    return { success: true, data: await this.partnersService.set(sessionId, dto.attendanceIds) };
+  }
+
+  @Delete('attendances/:id/partner')
+  @UseGuards(AdminGuard)
+  async clearPartner(@Param('id') id: string): Promise<IApiResponse<IAttendance>> {
+    return { success: true, data: await this.partnersService.clear(id) };
+  }
 
   // 체크인 — 모임원이 코드 입력 후 본인 선택으로 직접 호출 (가드 없음)
   // 코드 오입력 잠금은 서비스에서 IP 단위로 — 공용 와이파이를 고려해 실패만 센다

@@ -59,6 +59,7 @@ export function PlayerGrid({
   overlapIds?: Set<string>;
 }) {
   return (
+    <>
     <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5">
       {game.players?.map((player) => {
         const member = player.attendance?.member;
@@ -92,7 +93,33 @@ export function PlayerGrid({
         );
       })}
     </div>
+    <PartnerNote people={gamePartnerPeople(game)} />
+    </>
   );
+}
+
+// 대회 연습 파트너 — 같은 게임에 든 두 사람이 서로를 가리키면 "한 팀" 한 줄(편은 코트에서 선수들이 정한다)
+export type PartnerPerson = { id: string; name: string; partnerId: string | null };
+export function PartnerNote({ people, className = 'mt-2' }: { people: PartnerPerson[]; className?: string }) {
+  const pairs: string[] = [];
+  for (let i = 0; i < people.length; i++) {
+    for (let j = i + 1; j < people.length; j++) {
+      if (people[i].partnerId === people[j].id && people[j].partnerId === people[i].id) {
+        pairs.push(`${people[i].name}·${people[j].name}`);
+      }
+    }
+  }
+  if (pairs.length === 0) return null;
+  return <p className={`${className} text-xs font-medium text-sky`}>🤝 대회 연습: {pairs.join(', ')} 한 팀</p>;
+}
+
+// 게임 카드의 4명 → 파트너 표시용
+export function gamePartnerPeople(game: IGame): PartnerPerson[] {
+  return (game.players ?? []).map((p) => ({
+    id: p.attendanceId,
+    name: p.attendance?.member?.name ?? '',
+    partnerId: p.attendance?.partnerAttendanceId ?? null,
+  }));
 }
 
 // 화면 아래 알약 모양 알림 — 상태는 lib/use-toast의 useToast로 관리한다

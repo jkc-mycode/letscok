@@ -298,3 +298,31 @@ describe('recommend — 온 시간 대비 게임 수', () => {
     expect(first.players.map((p) => p.attendanceId)).not.toContain(people[4].id);
   });
 });
+
+describe('대회 연습 파트너', () => {
+  it('둘 다 비어 있으면 조금 덜 기다렸어도 같은 게임에 넣는 쪽이 공정성 1순위, 한 명이 게임 중이면 평소대로', async () => {
+    const session = await seedSession();
+    const others = [];
+    for (let i = 0; i < 4; i++) others.push(await seedAttendance(session.id, 'MALE'));
+    const a = await seedAttendance(session.id, 'MALE');
+    const b = await seedAttendance(session.id, 'MALE');
+    // 파트너 둘은 15분 덜 기다림 — 가점이 없으면 1순위는 오래 기다린 4명
+    for (const row of [a, b]) {
+      await prisma.attendance.update({
+        where: { id: row.id },
+        data: { waitingSince: new Date('2026-01-01T10:15:00Z') },
+      });
+    }
+    await prisma.attendance.update({ where: { id: a.id }, data: { partnerAttendanceId: b.id } });
+    await prisma.attendance.update({ where: { id: b.id }, data: { partnerAttendanceId: a.id } });
+
+    const [top] = await service.recommend(session.id);
+    const ids = top.players.map((p) => p.attendanceId);
+    expect(ids).toEqual(expect.arrayContaining([a.id, b.id]));
+
+    // 한 명이 게임 중이면 가점 없음 — 오래 기다린 4명 그대로
+    await prisma.attendance.update({ where: { id: b.id }, data: { status: 'PLAYING' } });
+    const [plain] = await service.recommend(session.id);
+    expect(plain.players.map((p) => p.attendanceId).sort()).toEqual(others.map((o) => o.id).sort());
+  });
+});
