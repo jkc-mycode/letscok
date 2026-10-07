@@ -156,22 +156,22 @@ export class MembersService {
       });
   }
 
-  // 정보 수정 — 이름·생년월일·급수·성별·역할 + 게스트→정회원 승격(isGuest:false + birthDate)
+  // 정보 수정 — 이름·생년월일·급수·성별·역할 + 게스트→모임원 승격(isGuest:false + birthDate)
   async update(id: string, dto: UpdateMemberDto): Promise<IMember> {
     const member = await this.findActiveMemberOrThrow(id);
 
     // 승격 검증 — 게스트는 생년월일이 null이라 승격 시 반드시 함께 받는다 (동명이인 구분 복원)
     const promoting = member.isGuest && dto.isGuest === false;
     if (promoting && !dto.birthDate) {
-      throw new ConflictException('정회원 승격에는 생년월일이 필요합니다.');
+      throw new ConflictException('게스트를 모임원으로 바꾸려면 생년월일이 필요합니다.');
     }
     // 게스트인 채로 생년월일만 넣는 건 게스트 정책(미수집) 위반이라 승격과 함께만 허용
     if (!promoting && member.isGuest && dto.birthDate) {
       throw new ConflictException(
-        '게스트는 생년월일을 저장하지 않습니다. 정회원 승격과 함께 입력해주세요.',
+        '게스트는 생년월일을 저장하지 않습니다. 모임원으로 바꿀 때 함께 입력해주세요.',
       );
     }
-    // 역할은 정회원 전용 — 게스트에게 모임장·운영진을 달 수 없다
+    // 역할은 모임원 전용 — 게스트에게 모임장·운영진을 달 수 없다
     if (dto.role && dto.role !== 'MEMBER' && member.isGuest && !promoting) {
       throw new ConflictException('게스트에게는 역할을 부여할 수 없습니다.');
     }

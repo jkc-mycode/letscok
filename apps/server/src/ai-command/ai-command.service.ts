@@ -135,7 +135,7 @@ function toTarget(a: Attendee): IAiCommandTarget {
   return {
     attendanceId: a.id,
     name: a.member.name,
-    detail: `${a.member.grade}급 · ${a.member.isGuest ? '게스트' : birthYear ? `${birthYear}년생` : '정회원'}`,
+    detail: `${a.member.grade}급 · ${a.member.isGuest ? '게스트' : birthYear ? `${birthYear}년생` : '모임원'}`,
   };
 }
 
@@ -300,7 +300,7 @@ export class AiCommandService {
         grade: guest ? guest.grade : g.grade,
         existingMemberId: guest?.id ?? null,
         alreadyCheckedIn: !!guest && guest.attendances.length > 0,
-        note: regular ? '같은 이름의 정회원이 있어요 — 정회원이면 "이름 체크인"으로 해 주세요' : null,
+        note: regular ? '같은 이름의 모임원이 있어요 — 모임원이면 "이름 체크인"으로 해 주세요' : null,
       };
     });
     return { kind: 'guest_preview', guests };

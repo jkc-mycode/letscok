@@ -1847,7 +1847,7 @@ function CheerEasterEgg({ onDone }: { onDone: () => void }) {
 
 // 모임 전 사전 등록·이미 게임 중인 인원 등을 운영진이 대신 체크인
 // 미등록 인원은 구두 동의 전제로 대리 등록+체크인까지 — 게스트는 이름·급수·성별만(생년월일 미수집 정책),
-// 정회원은 생년월일 포함(운영진이 알 수 있음). 본인 폰 연결은 걱정 없음:
+// 모임원은 생년월일 포함(운영진이 알 수 있음). 본인 폰 연결은 걱정 없음:
 // 나중에 본인이 코드로 들어오면 409를 /checkin이 "본인 확인 완료"로 받아 /m 진입
 
 function ManualCheckInModal({
@@ -2504,7 +2504,7 @@ function MemberEditSheet({
   const [grade, setGrade] = useState<Grade>(member.grade);
   const [gender, setGender] = useState<Gender | null>(member.gender);
   const [role, setRole] = useState<MemberRole>(member.role);
-  const [promote, setPromote] = useState(false); // 게스트→정회원 승격 의사
+  const [promote, setPromote] = useState(false); // 게스트→모임원 승격 의사
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmAnon, setConfirmAnon] = useState(false);
   const birthDate = parseBirthDate(birth);
@@ -2575,7 +2575,7 @@ function MemberEditSheet({
                 promote ? 'border-court bg-court/15 text-court' : 'border-line bg-panel2 text-dim'
               }`}
             >
-              {promote ? '정회원으로 승격 — 생년월일을 입력해주세요' : '정회원으로 승격하기'}
+              {promote ? '모임원으로 바꾸기 — 생년월일을 입력해주세요' : '모임원으로 바꾸기'}
             </button>
           )}
 
@@ -2971,7 +2971,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
       '바꾼 코드는 다음 모임에도 그대로 이어져요. 코드를 여러 번 틀리면 그 폰은 잠시 막혀요(무작위 대입 방지).',
       '한 번 들어온 모임원은 다음 모임에도 본인 화면 주소만 열면 돼요. 홈 화면에 추가해두라고 안내해주세요.',
       '모임 전에 참석자를 [수동 체크인]으로 미리 넣어두면 현장에서는 콕 확인만 하면 돼요. 미리 넣었는데 사정이 생겨 못 오게 되면 콕 확인 대기 줄의 [취소]로 지워요 — 출석 기록 없이 빠져요(퇴장과 달라요).',
-      '명단에 없는 사람은 [수동 체크인] 안의 [신규 등록]으로 등록해요 — 게스트는 이름·급수·성별만(생년월일 안 받아요), 정회원은 생년월일 포함. 모임원이 스스로 가입하는 경로는 없어요(외부인 가짜 등록 차단).',
+      '명단에 없는 사람은 [수동 체크인] 안의 [신규 등록]으로 등록해요 — 게스트는 이름·급수·성별만(생년월일 안 받아요), 모임원은 생년월일 포함(모르면 비워 두고 나중에 채워요). 모임원이 스스로 가입하는 경로는 없어요(외부인 가짜 등록 차단).',
       '개인정보 동의는 본인이 처음 코드로 들어올 때 받아요 — 운영진이 대신 체크하지 않아요.',
     ],
   },
@@ -2982,7 +2982,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
       '[신규 등록]은 명단에만 추가돼요(체크인 안 됨) — 모임 전에 미리 등록해두는 용도예요. 모임 중 지각자는 [수동 체크인]의 [신규 등록]으로 등록+체크인을 한 번에 하세요.',
       '이름·생년월일·급수·성별·역할(모임장/운영진/모임원)을 고칠 수 있어요. 급수는 게임 추천 품질에 바로 영향을 주니 실제 실력에 맞춰주세요.',
       '역할은 명단 표시용 구분이에요 — 운영 화면 접근 권한은 패스코드 하나로 같아요.',
-      '자주 오는 게스트는 수정 화면에서 [정회원으로 승격]할 수 있어요 (생년월일 입력 필요).',
+      '자주 오는 게스트는 수정 화면에서 [모임원으로 바꾸기]할 수 있어요 (생년월일 입력 필요).',
       '삭제는 명단에서만 감춰요 — 지난 기록은 남고 [삭제됨] 탭에서 복구돼요. 진행 중 모임에 체크인된 사람은 퇴장 처리가 먼저예요.',
       '[오래 안 온 게스트 정리]로 90일 이상 미출석 게스트를 골라서 한 번에 지울 수 있어요.',
       '본인이 개인정보 삭제를 요청하면 [개인정보 삭제]를 쓰세요 — 이름·생년월일·성별이 지워지고 복구할 수 없어요.',

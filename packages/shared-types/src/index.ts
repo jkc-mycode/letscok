@@ -93,7 +93,7 @@ export interface IMemberPage {
   counts: Record<MemberListFilter, number>; // 탭별 진짜 전체 인원 — 검색과 상관없이
 }
 
-// 회원 정보 수정 — 모든 필드 선택적(보낸 것만 반영). isGuest는 false만 허용(게스트→정회원 승격 전용)
+// 회원 정보 수정 — 모든 필드 선택적(보낸 것만 반영). isGuest는 false만 허용(게스트→모임원 승격 전용)
 export interface IUpdateMemberDto {
   name?: string;
   birthDate?: string; // YYYY-MM-DD
@@ -488,7 +488,7 @@ export interface IAiGuestDraft {
   grade: Grade | null;
   existingMemberId: string | null; // 같은 이름 게스트가 이미 있으면 새로 만들지 않고 그 사람으로 체크인
   alreadyCheckedIn: boolean; // 오늘 이미 출석 — 할 일 없음
-  note: string | null; // "같은 이름의 정회원이 있어요" 등
+  note: string | null; // "같은 이름의 모임원이 있어요" 등
 }
 
 export type IAiCommandResult =

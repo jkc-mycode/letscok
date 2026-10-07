@@ -5,7 +5,7 @@ import { CreateMemberDto } from './dto/create-member.dto';
 import { MembersService } from './members.service';
 
 // 회원 등록 통합 테스트 — 실제 Prisma+테스트 DB로 검증한다
-// (게스트 정책: 생년월일 없이 등록, 정회원은 기존대로 생년월일 포함)
+// (게스트 정책: 생년월일 없이 등록, 모임원은 기존대로 생년월일 포함)
 
 // 브로드캐스트는 원장 변경과 무관 — 소켓 없이 서비스만 조립하기 위한 스텁
 const realtimeStub = {
@@ -35,7 +35,7 @@ afterAll(async () => {
 });
 
 describe('create', () => {
-  it('정회원은 생년월일 포함으로 등록된다 (기존 동작 회귀)', async () => {
+  it('모임원은 생년월일 포함으로 등록된다 (기존 동작 회귀)', async () => {
     const member = await service.create(memberDto());
 
     expect(member.birthDate).toBe('1997-03-12');
@@ -64,7 +64,7 @@ describe('create', () => {
     ).rejects.toThrow(ConflictException);
   });
 
-  it('이름이 같아도 정회원(생년월일 있음)과 게스트는 서로 중복이 아니다', async () => {
+  it('이름이 같아도 모임원(생년월일 있음)과 게스트는 서로 중복이 아니다', async () => {
     await service.create(memberDto({ name: '박중복' }));
 
     const guest = await service.create(
@@ -73,7 +73,7 @@ describe('create', () => {
     expect(guest.isGuest).toBe(true);
   });
 
-  it('정회원 이름+생년월일 중복은 여전히 409 (기존 동작 회귀)', async () => {
+  it('모임원 이름+생년월일 중복은 여전히 409 (기존 동작 회귀)', async () => {
     await service.create(memberDto());
     await expect(service.create(memberDto())).rejects.toThrow(ConflictException);
   });
@@ -144,7 +144,7 @@ describe('update', () => {
     expect(promoted.birthDate).toBe('1999-05-05');
   });
 
-  it('게스트에게 역할 부여는 409 — 역할은 정회원 전용', async () => {
+  it('게스트에게 역할 부여는 409 — 역할은 모임원 전용', async () => {
     const guest = await service.create(
       memberDto({ name: '김게스트', birthDate: undefined, isGuest: true }),
     );
@@ -263,9 +263,9 @@ describe('page (모임원 관리 목록)', () => {
     expect(second.items[0].name).toBe('회원100'); // 미출석끼리는 이름순
   });
 
-  it('오래 안 온 게스트 — 한 번도 안 왔거나 90일 넘게 미출석, 정회원·삭제는 제외', async () => {
+  it('오래 안 온 게스트 — 한 번도 안 왔거나 90일 넘게 미출석, 모임원·삭제는 제외', async () => {
     const never = await service.create(memberDto({ name: '안온게스트', isGuest: true }));
-    await service.create(memberDto({ name: '정회원', birthDate: '1990-01-01' }));
+    await service.create(memberDto({ name: '모임원', birthDate: '1990-01-01' }));
     const recent = await service.create(memberDto({ name: '최근게스트', isGuest: true }));
     const session = await prisma.session.create({
       data: { date: new Date(), checkInCode: '0101', status: 'CLOSED' },

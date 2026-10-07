@@ -278,7 +278,7 @@ describe('AiCommandService.run — 상황 질문', () => {
 });
 
 describe('AiCommandService.run — 게스트 추가', () => {
-  it('새 게스트는 말한 성별·급수로, 등록된 게스트는 저장값으로, 오늘 온 게스트는 이미 출석, 정회원 동명이인은 안내 — 만들지는 않는다', async () => {
+  it('새 게스트는 말한 성별·급수로, 등록된 게스트는 저장값으로, 오늘 온 게스트는 이미 출석, 모임원 동명이인은 안내 — 만들지는 않는다', async () => {
     const session = await seedSession();
     const known = await prisma.member.create({ data: { name: '이영희', grade: 'D', gender: 'FEMALE', isGuest: true } });
     const here = await prisma.member.create({ data: { name: '박손님', grade: 'E', gender: 'MALE', isGuest: true } });
@@ -307,7 +307,7 @@ describe('AiCommandService.run — 게스트 추가', () => {
           grade: null,
           existingMemberId: null,
           alreadyCheckedIn: false,
-          note: '같은 이름의 정회원이 있어요 — 정회원이면 "이름 체크인"으로 해 주세요',
+          note: '같은 이름의 모임원이 있어요 — 모임원이면 "이름 체크인"으로 해 주세요',
         },
         { name: '이영희', gender: 'FEMALE', grade: 'D', existingMemberId: known.id, alreadyCheckedIn: false, note: null },
         { name: '박손님', gender: 'MALE', grade: 'E', existingMemberId: here.id, alreadyCheckedIn: true, note: null },

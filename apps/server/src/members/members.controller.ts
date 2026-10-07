@@ -23,7 +23,7 @@ import { MembersService } from './members.service';
 export class MembersController {
   constructor(private readonly membersService: MembersService) {}
 
-  // 자가 가입 차단 — 운영진이 정회원·게스트를 모두 사전 등록하므로 공개 등록 경로가 필요 없다
+  // 자가 가입 차단 — 운영진이 모임원·게스트를 모두 사전 등록하므로 공개 등록 경로가 필요 없다
   // 열어두면 코드를 아는 외부인이 없던 회원을 만들어 들어올 수 있다
   @Post()
   @UseGuards(AdminGuard)
@@ -61,7 +61,7 @@ export class MembersController {
     return { success: true, data: await this.membersService.list() };
   }
 
-  // 정보 수정 (이름·급수·성별·생년월일·역할) + 게스트→정회원 승격(isGuest:false)
+  // 정보 수정 (이름·급수·성별·생년월일·역할) + 게스트→모임원 승격(isGuest:false)
   @Patch(':id')
   @UseGuards(AdminGuard)
   async update(

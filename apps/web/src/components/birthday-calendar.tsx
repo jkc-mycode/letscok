@@ -7,7 +7,7 @@ import { Sheet } from '@/components/sheet';
 import { api } from '@/lib/api';
 
 // 모임원 생일 캘린더 — 운영진 전용 명단(GET /members)의 생년월일로 그린다 (서버 변경 없음)
-// 게스트는 생년월일을 받지 않는 정책이라 정회원만 나온다
+// 게스트는 생년월일을 받지 않는 정책이라 모임원만 나온다
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 const UPCOMING_DAYS = 30; // 아래 "다가오는 생일" 목록 범위
@@ -125,7 +125,7 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
       header={
         <>
           <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">🎂 생일 캘린더</h2>
-          <span className="text-xs text-faint">정회원 {birthdays.length}명</span>
+          <span className="text-xs text-faint">모임원 {birthdays.length}명</span>
         </>
       }
     >
@@ -217,7 +217,7 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
               ) : (
                 <>
                   <p className="text-xs font-bold text-dim">다가오는 생일 ({UPCOMING_DAYS}일 안)</p>
-                  {upcoming.length === 0 && <p className="text-xs text-faint">한 달 안에 생일인 정회원이 없어요</p>}
+                  {upcoming.length === 0 && <p className="text-xs text-faint">한 달 안에 생일인 모임원이 없어요</p>}
                   {upcoming.map((b) => (
                     <MemberLine
                       key={b.member.id}
