@@ -357,6 +357,7 @@ function BoardBody({
   const [replaceGameId, setReplaceGameId] = useState<string | null>(null); // 선수 교체 대상 게임
   const [assignGameId, setAssignGameId] = useState<string | null>(null); // 코트 고르기 시트 대상 조합
   const [actionId, setActionId] = useState<string | null>(null); // 폰 대기 줄 [⋯] 시트 대상 출석
+  const [cardMenuId, setCardMenuId] = useState<string | null>(null); // 코트·조합 카드 [⋯] 시트 대상 게임
   const [commandOpen, setCommandOpen] = useState(false); // AI 명령(글·음성)
   // 빈칸 채우기 시트 — gameId=null이면 새 조합(첫 사람을 고르면 그 조합으로 이어서 채운다)
   // pending = 방금 만든 조합(실시간 화면이 도착하기 전까지 대신 보여 줘서 시트가 깜빡 닫히지 않게)
@@ -534,6 +535,11 @@ function BoardBody({
   const assignTarget = useMemo(
     () => games.find((g) => g.id === assignGameId && g.status === 'QUEUED') ?? null,
     [games, assignGameId],
+  );
+  // 카드 [⋯] 대상 — 실시간 스냅샷 기준, 게임이 끝나거나 해체되면 저절로 닫힌다
+  const cardMenuTarget = useMemo(
+    () => games.find((g) => g.id === cardMenuId && (g.status === 'PLAYING' || g.status === 'QUEUED')) ?? null,
+    [games, cardMenuId],
   );
   // [⋯] 대상 — 실시간 스냅샷 기준, 퇴장·콕 취소되면 저절로 닫힌다
   const actionTarget = useMemo(
@@ -823,7 +829,7 @@ function BoardBody({
                 game={playingByCourt.get(court.id)}
                 now={now}
                 run={run}
-                onReplace={(g) => setReplaceGameId(g.id)}
+                onMore={(g) => setCardMenuId(g.id)}
                 dragEnabled={dragEnabled}
               />
             ))}
@@ -867,7 +873,7 @@ function BoardBody({
                 idleCourts={idleCourts}
                 overlapIds={overlapIds}
                 run={run}
-                onReplace={(g) => setReplaceGameId(g.id)}
+                onMore={(g) => setCardMenuId(g.id)}
                 onPickCourt={(g) => setAssignGameId(g.id)}
                 onFillSlot={(g) => setSlotTarget({ gameId: g.id })}
                 dragEnabled={dragEnabled}
@@ -1120,6 +1126,20 @@ function BoardBody({
           live={{ attendances, games }}
           run={run}
           onClose={() => setCommandOpen(false)}
+        />
+      )}
+      {/* 카드 [⋯] — 카드는 보드 트랙(transform) 안이라 시트를 여기(바깥)에서 띄운다 */}
+      {cardMenuTarget && (
+        <GameActionSheet
+          game={cardMenuTarget}
+          title={
+            cardMenuTarget.status === 'PLAYING'
+              ? `${courts.find((c) => c.id === cardMenuTarget.courtId)?.courtNo ?? ''}번 코트`
+              : `다음 게임 ${queuedGames.findIndex((g) => g.id === cardMenuTarget.id) + 1}`
+          }
+          run={run}
+          onReplace={(g) => setReplaceGameId(g.id)}
+          onClose={() => setCardMenuId(null)}
         />
       )}
       {actionTarget && (
@@ -2789,8 +2809,8 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
       '체크인만으로는 게임에 못 들어가요 — 대기 인원 맨 위 [콕 확인 대기]에서 콕 낸 사람의 [콕 확인]을 눌러야 명단으로 내려와요. 그 섹션이 비어 있으면 다 처리된 거예요.',
       '콕 확인 시각이 곧 참여 시작이에요 — 일찍 와서 콕을 늦게 낸 사람이 대기 순번을 앞지르지 않아요. 잘못 눌렀으면 행의 [콕취소]로 되돌려요 (조합·게임에 든 뒤엔 불가).',
       '명단에서 4명 선택 → [조합 만들기] → 대기 조합에서 [코트 배정] → 끝나면 [게임 종료].',
-      '[게임 종료]만 게임 수 +1 · 대기시간 리셋. [대기로]는 조합을 유지한 채 뒤로, [취소]·[해체]는 없던 일로 (둘 다 미집계).',
-      '부상·급한 일로 한 명만 바꿀 땐 [교체] — 게임을 갈아엎지 않아 타이머·순서가 유지돼요. 빠진 사람은 대기로 돌아와요.',
+      '[게임 종료]만 게임 수 +1 · 대기시간 리셋. [대기로]는 조합을 유지한 채 뒤로. 카드의 [⋯]에 있는 게임 취소·해체는 없던 일로 (둘 다 미집계).',
+      '부상·급한 일로 한 명만 바꿀 땐 카드 [⋯] → 교체 — 게임을 갈아엎지 않아 타이머·순서가 유지돼요. 빠진 사람은 대기로 돌아와요.',
       '대회 연습 파트너는 [🎙]에 "민수랑 준호 대회 연습한대"라고 말하면 돼요. 그날 게임 추천이 두 사람을 같은 게임에 넣는 쪽으로 기울고(둘 다 비어 있을 때만, 강제 아님) 카드에 "🤝 한 팀"이 보여요. 명단 이름 옆 🤝를 두 번 누르면 해제. 운영 메모에도 한 줄 남아요.',
       '구두 요청("무릎 조심" 등)은 메모에 적어두세요. 모임이 끝나도 남아 다음 모임에 이어지고, 처리했으면 ✕로 지워요.',
       '오늘 끝난 게임은 상단 [게임 기록]에서 확인해요 — 이름으로 검색하면 그 사람이 뛴 게임만 모아 볼 수 있어요.',
@@ -2857,7 +2877,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
     title: '알림 (호출 · 다시 알림)',
     items: [
       '모임원이 내 상태 화면에서 [게임 알림 받기]를 켜 두면, 조합 등록·코트 배정·교체 투입·콕 확인 때 폰으로 알림이 가요. 화면이 꺼져 있어도 와요.',
-      '명단 줄의 [호출] = 그 사람에게 "운영진이 찾고 있어요". 코트 카드의 [다시 알림] = 그 게임 4명에게 코트 알림을 다시 보내요.',
+      '명단 줄의 [호출] = 그 사람에게 "운영진이 찾고 있어요". 코트 카드 [⋯] → 다시 알림 = 그 게임 4명에게 코트 알림을 다시 보내요.',
       '결과가 버튼에 잠깐 떠요 — "N대 전송"이면 보낸 것, "알림 미등록"이면 알림을 안 켠 분이라 직접 불러야 해요. 같은 대상은 30초에 한 번만.',
       '아이폰은 홈 화면에 추가한 앱에서만 알림을 받을 수 있어요. 알림은 보조 수단이라 늦거나 빠질 수 있어요 — 현장 호명을 대신하진 않아요.',
     ],
@@ -3114,14 +3134,14 @@ function CourtCard({
   game,
   now,
   run,
-  onReplace,
+  onMore,
   dragEnabled,
 }: {
   court: ICourt;
   game?: IGame;
   now: number;
   run: (a: () => Promise<unknown>) => Promise<void>;
-  onReplace: (game: IGame) => void;
+  onMore: (game: IGame) => void; // [⋯] — 다시 알림·교체·취소 시트
   dragEnabled: boolean;
 }) {
   // 게임 중인 카드의 여백에 놓으면 아무 일 없게(사람 위에 놓아야 교체) — 떼어 내기로 오인되지 않게
@@ -3195,52 +3215,32 @@ function CourtCard({
     );
   }
   return (
-    <MotionCard ref={cardDrop.ref} className="rounded-xl border border-court/40 bg-panel2 p-4">
+    <MotionCard ref={cardDrop.ref} className="rounded-xl bg-panel2 p-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="font-bold text-court">
+        <span className="text-body font-bold text-court">
           {court.courtNo}번 코트 {court.isShared && <SharedBadge />}
         </span>
-        <span className="tabular font-mono text-2xl font-semibold text-court">
+        <span className="tabular font-mono text-[1.375rem] leading-none font-semibold text-court">
           {game.startedAt ? formatElapsed(game.startedAt, now) : '--:--'}
         </span>
       </div>
       <BoardSlots game={game} run={run} dragEnabled={dragEnabled} />
-      <div className="mt-3 flex flex-wrap gap-2">
+      {/* 자주 쓰는 둘만 펼치고(게임 종료·대기로) 나머지(다시 알림·교체·취소)는 [⋯] 시트 */}
+      <div className="mt-3 flex gap-1.5">
         <button
           onClick={() => void run(() => api(`/games/${game.id}/finish`, { method: 'PATCH', admin: true }))}
-          className="h-11 flex-1 rounded-lg bg-court text-sm font-bold text-bg"
+          className="h-10 flex-1 rounded-[10px] bg-court text-body-sm font-bold text-bg"
         >
           게임 종료
         </button>
         <button
           onClick={() => void run(() => api(`/games/${game.id}/unassign`, { method: 'PATCH', admin: true }))}
           title="조합 유지한 채 대기 조합 맨 뒤로 (게임 수 미집계)"
-          className="h-11 rounded-lg border border-amber/40 px-3 text-sm text-amber"
+          className="h-10 rounded-[10px] bg-panel px-3 text-body-sm font-medium text-amber"
         >
           대기로
         </button>
-        <CallButton
-          path={`/games/${game.id}/renotify`}
-          label="다시 알림"
-          title="배정됐는데 안 오는 사람이 있을 때 — 4명에게 코트 알림을 다시 보내요"
-          className="h-11 rounded-lg border border-line px-3 text-sm"
-          idleCls="text-dim"
-        />
-        <button
-          onClick={() => onReplace(game)}
-          title="부상·급한 일로 한 명만 바꾸기 (타이머 유지)"
-          className="h-11 rounded-lg border border-line px-3 text-sm text-dim"
-        >
-          교체
-        </button>
-        <ConfirmButton
-          label="취소"
-          confirmLabel="정말 취소"
-          title="잘못 시작한 게임 취소 — 조합까지 해체 (게임 수 미집계)"
-          onConfirm={() => void run(() => api(`/games/${game.id}/cancel`, { method: 'PATCH', admin: true }))}
-          className="h-11 rounded-lg px-3 text-sm"
-          idleCls="border border-coral/40 text-coral"
-        />
+        <MoreButton label={`${court.courtNo}번 코트 더보기 — 다시 알림·교체·취소`} onClick={() => onMore(game)} />
       </div>
     </MotionCard>
   );
@@ -3572,7 +3572,7 @@ function QueueCard({
   idleCourts,
   overlapIds,
   run,
-  onReplace,
+  onMore,
   onPickCourt,
   onFillSlot,
   dragEnabled,
@@ -3584,7 +3584,7 @@ function QueueCard({
   idleCourts: ICourt[];
   overlapIds: Set<string>;
   run: (a: () => Promise<unknown>) => Promise<void>;
-  onReplace: (game: IGame) => void;
+  onMore: (game: IGame) => void; // [⋯] — 교체·해체 시트(4명 조합)
   onPickCourt: (game: IGame) => void; // 빈 코트가 여럿이면 코트 고르기 시트
   onFillSlot: (game: IGame) => void; // 빈칸 → 사람 고르기 시트
   dragEnabled: boolean;
@@ -3633,7 +3633,7 @@ function QueueCard({
   return (
     <MotionCard
       ref={cardDrop.ref}
-      className={`rounded-xl border bg-panel2 p-4 ${full ? 'border-amber/30' : 'border-dashed border-amber/50'} ${
+      className={`rounded-xl p-3 ${full ? 'bg-panel2' : 'border-[1.5px] border-dashed border-amber/50'} ${
         cardDrop.overCls
       } ${gameDrag.isDragging ? 'opacity-40' : ''}`}
     >
@@ -3648,21 +3648,23 @@ function QueueCard({
           >
             ⠿
           </span>
-          다음 게임 {order}
-          {!full && <span className="ml-1.5 text-xs font-medium text-faint">짜는 중</span>}
+          <span className="text-body-sm">다음 게임 {order}</span>
+          {!full && <span className="ml-1.5 text-caption font-medium text-faint">짜는 중</span>}
         </span>
         <div className="flex gap-1">
           <button
             onClick={() => swapWith(neighborUp)}
             disabled={!neighborUp}
-            className="tap h-8 w-8 rounded-lg border border-line text-dim disabled:opacity-30"
+            aria-label="위로"
+            className="tap h-8 w-8 rounded-lg bg-panel text-dim disabled:opacity-30"
           >
             ▲
           </button>
           <button
             onClick={() => swapWith(neighborDown)}
             disabled={!neighborDown}
-            className="tap h-8 w-8 rounded-lg border border-line text-dim disabled:opacity-30"
+            aria-label="아래로"
+            className="tap h-8 w-8 rounded-lg bg-panel text-dim disabled:opacity-30"
           >
             ▼
           </button>
@@ -3675,17 +3677,18 @@ function QueueCard({
         dragEnabled={dragEnabled}
         onFillSlot={() => onFillSlot(game)}
       />
-      <div className="mt-3 flex flex-wrap gap-2">
+      {/* 4명 조합: 배정 + [⋯](교체·해체) / 빈칸 조합: 할 일이 해체뿐이라 바로 둔다 */}
+      <div className="mt-3 flex gap-1.5">
         {!full ? (
-          <span className="flex h-11 flex-1 items-center justify-center rounded-lg border border-dashed border-line px-2 text-center text-xs text-faint">
+          <span className="flex h-10 flex-1 items-center justify-center rounded-[10px] bg-panel px-2 text-center text-caption text-faint">
             {GAME_SIZE - (game.players?.length ?? 0)}명 더 필요
           </span>
         ) : busyNames.length > 0 ? (
-          <span className="flex h-11 flex-1 items-center justify-center rounded-lg border border-dashed border-line px-2 text-center text-xs text-faint">
+          <span className="flex h-10 flex-1 items-center justify-center rounded-[10px] bg-panel px-2 text-center text-caption text-faint">
             {busyNames.join(', ')} 게임 종료 후 배정 가능
           </span>
         ) : available.length === 0 ? (
-          <span className="flex h-11 flex-1 items-center justify-center rounded-lg border border-dashed border-line px-2 text-center text-xs text-faint">
+          <span className="flex h-10 flex-1 items-center justify-center rounded-[10px] bg-panel px-2 text-center text-caption text-faint">
             빈 코트가 없어요
           </span>
         ) : available.length === 1 ? (
@@ -3699,35 +3702,30 @@ function QueueCard({
                 }),
               )
             }
-            className="h-11 flex-1 rounded-lg bg-amber/90 text-sm font-bold text-bg"
+            className="h-10 flex-1 rounded-[10px] bg-amber text-body-sm font-bold text-bg"
           >
             {available[0].courtNo}번 코트로 배정
           </button>
         ) : (
           <button
             onClick={() => onPickCourt(game)}
-            className="h-11 flex-1 rounded-lg bg-amber/90 text-sm font-bold text-bg"
+            className="h-10 flex-1 rounded-[10px] bg-amber text-body-sm font-bold text-bg"
           >
             코트 배정
           </button>
         )}
-        {full && (
-          <button
-            onClick={() => onReplace(game)}
-            title="조합에서 한 명만 바꾸기 (순서 유지)"
-            className="h-11 rounded-lg border border-line px-3 text-sm text-dim"
-          >
-            교체
-          </button>
+        {full ? (
+          <MoreButton label={`다음 게임 ${order} 더보기 — 교체·해체`} onClick={() => onMore(game)} />
+        ) : (
+          <ConfirmButton
+            label="해체"
+            confirmLabel="정말 해체"
+            title="이 조합을 없애고 든 사람을 대기로 돌려보내요"
+            onConfirm={() => void run(() => api(`/games/${game.id}/cancel`, { method: 'PATCH', admin: true }))}
+            className="h-10 rounded-[10px] px-3 text-body-sm"
+            idleCls="text-coral"
+          />
         )}
-        <ConfirmButton
-          label="해체"
-          confirmLabel="정말 해체"
-          title="이 조합을 없애고 든 사람을 대기로 돌려보내요"
-          onConfirm={() => void run(() => api(`/games/${game.id}/cancel`, { method: 'PATCH', admin: true }))}
-          className="h-11 rounded-lg px-3 text-sm"
-          idleCls="border border-coral/40 text-coral"
-        />
       </div>
     </MotionCard>
   );
@@ -4033,6 +4031,83 @@ function WaitingRow({
         )}
       </div>
     </MotionCard>
+  );
+}
+
+// 카드의 [⋯] — 자주 안 쓰는 동작을 시트로 모은다
+function MoreButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-panel text-lg leading-none text-dim"
+    >
+      ⋯
+    </button>
+  );
+}
+
+// 코트·조합 카드 [⋯] 시트 — 게임 중: 다시 알림·교체·게임 취소 / 대기 조합: 교체·해체
+function GameActionSheet({
+  game,
+  title,
+  run,
+  onReplace,
+  onClose,
+}: {
+  game: IGame;
+  title: string;
+  run: (a: () => Promise<unknown>) => Promise<void>;
+  onReplace: (game: IGame) => void;
+  onClose: () => void;
+}) {
+  const playing = game.status === 'PLAYING';
+  const names = (game.players ?? []).map((p) => p.attendance?.member?.name).filter(Boolean).join(', ');
+  const cancel = () =>
+    void run(async () => {
+      await api(`/games/${game.id}/cancel`, { method: 'PATCH', admin: true });
+      onClose();
+    });
+  const row = 'h-12 w-full rounded-xl px-4 text-left text-body-sm font-medium';
+  return (
+    <Sheet
+      ariaLabel={`${title} 동작`}
+      onClose={onClose}
+      header={
+        <div className="flex min-w-0 flex-col">
+          <h2 className={`text-heading font-bold ${playing ? 'text-court' : 'text-amber'}`}>{title}</h2>
+          <p className="truncate text-caption text-dim">{names}</p>
+        </div>
+      }
+      bodyClassName="flex flex-col gap-2 pb-1"
+    >
+      {playing && (
+        <CallButton
+          path={`/games/${game.id}/renotify`}
+          label="다시 알림 — 4명에게 코트 알림 다시 보내기"
+          title="배정됐는데 안 오는 사람이 있을 때"
+          className={`${row} bg-panel2`}
+          idleCls="text-ink"
+        />
+      )}
+      <button
+        onClick={() => {
+          onReplace(game);
+          onClose();
+        }}
+        className={`${row} bg-panel2 text-ink`}
+      >
+        {playing ? '교체 — 한 명만 바꾸기(타이머 유지)' : '교체 — 한 명만 바꾸기(순서 유지)'}
+      </button>
+      <ConfirmButton
+        label={playing ? '게임 취소 — 조합까지 해체(게임 수 안 셈)' : '해체 — 조합을 없애고 대기로'}
+        confirmLabel={playing ? '한 번 더 누르면 게임 취소' : '한 번 더 누르면 해체'}
+        onConfirm={cancel}
+        className={row}
+        idleCls="bg-coral/10 text-coral"
+      />
+    </Sheet>
   );
 }
 
