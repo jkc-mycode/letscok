@@ -1,8 +1,8 @@
 import { ImageResponse } from 'next/og';
 import { ICON_THEME, iconDataUri } from '@/lib/shuttle-icon';
 
-// 브라우저 탭 파비콘 — 32px에선 서비스 라인·셔틀콕이 뭉개지므로 코트 바깥 라인과 네트만(simple)
-// (관제판 경로는 app/admin/icon.tsx가 덮어써서 초록 아이콘이 뜬다)
+// 브라우저 탭 파비콘 — 32px에선 가는 줄이 뭉개지므로 셔틀콕 덩어리만(simple)
+// (운영 앱 경로는 app/admin/icon.tsx가 덮어써서 초록 아이콘이 뜬다)
 export const size = { width: 32, height: 32 };
 export const contentType = 'image/png';
 

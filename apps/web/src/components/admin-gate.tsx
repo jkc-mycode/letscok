@@ -159,14 +159,18 @@ export function LoginGate({
   );
 }
 
-// 관제판 앱 아이콘(초록 코트 타일) — 입장 화면 머리
+// 운영 앱 아이콘(초록 바탕 셔틀콕) — 입장 화면 머리. 홈 화면 아이콘과 같은 그림(lib/shuttle-icon.ts admin)
 function AdminMark() {
   return (
     <svg width="56" height="56" viewBox="0 0 100 100" fill="none" aria-hidden className="shrink-0">
       <rect width="100" height="100" rx="22" className="fill-court" />
-      <rect x="24" y="14" width="52" height="72" rx="3" className="stroke-bg" strokeWidth="3" />
-      <path d="M24 36 H76 M24 64 H76 M50 14 V36 M50 64 V86" className="stroke-bg" strokeWidth="2" strokeOpacity="0.6" />
-      <path d="M17 50 H83" stroke="#eaf3ed" strokeWidth="4" strokeLinecap="round" />
+      <g transform="translate(18 18) scale(0.64) rotate(-14 50 54)">
+        <path d="M33 60 L22 22 Q50 10 78 22 L67 60 Z" className="fill-bg" />
+        <path d="M27 37 Q50 31 73 37" className="stroke-court" strokeWidth="2" />
+        <path d="M40 60 L32 19 M50 60 L50 14 M60 60 L68 19" className="stroke-court" strokeWidth="2.2" strokeLinecap="round" />
+        <rect x="32" y="57" width="36" height="8" rx="4" fill="#eaf3ed" />
+        <path d="M34 64 a16 16 0 0 0 32 0 Z" className="fill-bg" />
+      </g>
     </svg>
   );
 }

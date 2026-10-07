@@ -81,7 +81,7 @@ export default function AdminPage() {
       <ExitGuard />
     </>
   ) : (
-    <LoginGate title="렛츠콕 관제판" notice={notice} onSuccess={login} />
+    <LoginGate title="렛츠콕 운영" notice={notice} onSuccess={login} />
   );
 }
 
@@ -754,7 +754,7 @@ function BoardBody({
       <header className="flex items-center gap-2 pb-2 md:gap-3 md:pb-3">
         <HomeLink className="shrink-0 transition-opacity hover:opacity-70" title="홈으로">
           <h1 className="text-body font-bold md:text-heading">
-            렛츠콕 <span className="text-court">관제판</span>
+            렛츠콕 <span className="text-court">운영</span>
           </h1>
         </HomeLink>
         <p className="truncate text-caption text-dim md:text-body-sm">
@@ -2840,7 +2840,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
       '[모임원 관리]에서 명단 조회·등록·수정·정리를 해요. 모임 시작 전 화면에서도 열 수 있어요.',
       '[신규 등록]은 명단에만 추가돼요(체크인 안 됨) — 모임 전에 미리 등록해두는 용도예요. 모임 중 지각자는 [수동 체크인]의 [신규 등록]으로 등록+체크인을 한 번에 하세요.',
       '이름·생년월일·급수·성별·역할(모임장/운영진/모임원)을 고칠 수 있어요. 급수는 게임 추천 품질에 바로 영향을 주니 실제 실력에 맞춰주세요.',
-      '역할은 명단 표시용 구분이에요 — 관제판 접근 권한은 패스코드 하나로 같아요.',
+      '역할은 명단 표시용 구분이에요 — 운영 화면 접근 권한은 패스코드 하나로 같아요.',
       '자주 오는 게스트는 수정 화면에서 [정회원으로 승격]할 수 있어요 (생년월일 입력 필요).',
       '삭제는 명단에서만 감춰요 — 지난 기록은 남고 [삭제됨] 탭에서 복구돼요. 진행 중 모임에 체크인된 사람은 퇴장 처리가 먼저예요.',
       '[오래 안 온 게스트 정리]로 90일 이상 미출석 게스트를 골라서 한 번에 지울 수 있어요.',
@@ -2902,7 +2902,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
   {
     title: '잠금 vs 모임 종료',
     items: [
-      '[잠금] = 관제판 로그아웃만. 모임은 그대로 유지돼요.',
+      '[잠금] = 운영 화면 로그아웃만. 모임은 그대로 유지돼요.',
       '[모임 종료] = 그날 마감 — 진행 중 게임 정리 · 전원 퇴장 · 코트 해제 후 마무리 카톡 문구가 떠요. 문구 창을 닫으면 로그아웃돼요. 두 번 눌러야 실행.',
     ],
   },
@@ -2911,11 +2911,11 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
 function HelpModal({ onClose }: { onClose: () => void }) {
   return (
     <Sheet
-      ariaLabel="관제판 도움말"
+      ariaLabel="운영 도움말"
       onClose={onClose}
       width="sm:max-w-lg"
       bodyClassName="flex min-h-0 flex-1 flex-col"
-      header={<h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">관제판 도움말</h2>}
+      header={<h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">운영 도움말</h2>}
     >
       <div className="min-h-0 flex-1 space-y-4 scroll-area">
         {HELP_SECTIONS.map((section) => (

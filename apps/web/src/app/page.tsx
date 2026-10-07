@@ -41,7 +41,7 @@ export default function HomePage() {
             href="/admin"
             className="flex h-14 items-center rounded-xl bg-court px-8 font-bold text-bg"
           >
-            운영진 관제판
+            렛츠콕 운영
           </Link>
           <Link
             href="/m/checkin"

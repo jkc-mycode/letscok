@@ -112,7 +112,7 @@ export class PushService {
     return this.deliver([
       {
         memberId,
-        payload: { title: '운영진이 찾고 있어요', body: '관제판 쪽으로 와주세요', tag: 'letscok-call', url: '/m' },
+        payload: { title: '운영진이 찾고 있어요', body: '운영진 쪽으로 와 주세요', tag: 'letscok-call', url: '/m' },
       },
     ]);
   }

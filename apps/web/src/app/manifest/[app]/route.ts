@@ -40,9 +40,9 @@ const MANIFESTS: Record<string, MetadataRoute.Manifest> = {
   admin: {
     ...COMMON,
     id: '/admin',
-    name: '렛츠콕 관제판',
-    short_name: '관제판',
-    description: '운영진용 인원·코트 관제판',
+    name: '렛츠콕 운영',
+    short_name: '렛츠콕 운영',
+    description: '운영진용 인원·코트 운영 앱',
     start_url: '/admin',
     scope: '/admin',
     icons: appIcons('admin'),
