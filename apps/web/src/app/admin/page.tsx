@@ -2811,10 +2811,10 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
       '명단에서 4명 선택 → [조합 만들기] → 대기 조합에서 [코트 배정] → 끝나면 [게임 종료].',
       '[게임 종료]만 게임 수 +1 · 대기시간 리셋. [대기로]는 조합을 유지한 채 뒤로. 카드의 [⋯]에 있는 게임 취소·해체는 없던 일로 (둘 다 미집계).',
       '부상·급한 일로 한 명만 바꿀 땐 카드 [⋯] → 교체 — 게임을 갈아엎지 않아 타이머·순서가 유지돼요. 빠진 사람은 대기로 돌아와요.',
-      '대회 연습 파트너는 [🎙]에 "민수랑 준호 대회 연습한대"라고 말하면 돼요. 그날 게임 추천이 두 사람을 같은 게임에 넣는 쪽으로 기울고(둘 다 비어 있을 때만, 강제 아님) 카드에 "🤝 한 팀"이 보여요. 명단 이름 옆 🤝를 두 번 누르면 해제. 운영 메모에도 한 줄 남아요.',
+      '대회 연습 파트너는 [🎙]에 "민수랑 준호 대회 연습한대"라고 말하면 돼요. 그날 게임 추천이 두 사람을 같은 게임에 넣는 쪽으로 기울고(둘 다 비어 있을 때만, 강제 아님) 카드에 "대회 연습: ○○·○○ 한 팀"이 보여요. 명단 이름 옆 "파트너 ○○"를 두 번 누르면 해제. 운영 메모에도 한 줄 남아요.',
       '구두 요청("무릎 조심" 등)은 메모에 적어두세요. 모임이 끝나도 남아 다음 모임에 이어지고, 처리했으면 ✕로 지워요.',
       '오늘 끝난 게임은 상단 [게임 기록]에서 확인해요 — 이름으로 검색하면 그 사람이 뛴 게임만 모아 볼 수 있어요.',
-      '모임원이 폰에서 [잠깐 쉴래요]를 누르면 휴식으로 빠져요 — 조합 선택·게임 추천에서 제외되고, 복귀하면 대기시간이 새로 시작돼요. 명단 줄의 [휴식]/[복귀]로 운영진이 대신 처리할 수도 있어요.',
+      '모임원이 폰에서 [잠깐 쉴래요]를 누르면 휴식으로 빠져요 — 조합 선택·게임 추천에서 제외되고, 복귀하면 대기시간이 새로 시작돼요. 명단 줄의 [⋯] → 휴식·복귀로 운영진이 대신 처리할 수도 있어요.',
     ],
   },
   {
@@ -2877,7 +2877,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
     title: '알림 (호출 · 다시 알림)',
     items: [
       '모임원이 내 상태 화면에서 [게임 알림 받기]를 켜 두면, 조합 등록·코트 배정·교체 투입·콕 확인 때 폰으로 알림이 가요. 화면이 꺼져 있어도 와요.',
-      '명단 줄의 [호출] = 그 사람에게 "운영진이 찾고 있어요". 코트 카드 [⋯] → 다시 알림 = 그 게임 4명에게 코트 알림을 다시 보내요.',
+      '명단 줄 [⋯] → 호출 = 그 사람에게 "운영진이 찾고 있어요". 코트 카드 [⋯] → 다시 알림 = 그 게임 4명에게 코트 알림을 다시 보내요.',
       '결과가 버튼에 잠깐 떠요 — "N대 전송"이면 보낸 것, "알림 미등록"이면 알림을 안 켠 분이라 직접 불러야 해요. 같은 대상은 30초에 한 번만.',
       '아이폰은 홈 화면에 추가한 앱에서만 알림을 받을 수 있어요. 알림은 보조 수단이라 늦거나 빠질 수 있어요 — 현장 호명을 대신하진 않아요.',
     ],
@@ -3916,19 +3916,19 @@ function WaitingRow({
       ref={drag.ref}
       {...drag.props}
       onClick={resting ? undefined : onToggle}
-      className={`flex items-center gap-2 rounded-xl border p-3 transition-colors ${
-        selected ? 'border-amber bg-amber/10' : 'border-line bg-panel2'
+      className={`flex min-h-11 items-center gap-2 rounded-[10px] py-1.5 pr-1.5 pl-2.5 text-body-sm transition-colors ${
+        selected ? 'bg-amber/12 ring-[1.5px] ring-amber ring-inset' : 'bg-panel2'
       } ${(busyStatus && !selected) || resting ? 'opacity-60' : ''} ${
         resting ? '' : 'cursor-pointer'
       } ${drag.dragCls}`}
     >
       <GradeBadge grade={member.grade} />
-      <span className="min-w-0 truncate font-medium">{member.name}</span>
+      <span className={`min-w-0 truncate ${selected ? 'font-bold' : 'font-medium'}`}>{member.name}</span>
       <GenderMarker gender={member.gender} />
-      {member.isGuest && <span className="text-[10px] text-sky">게스트</span>}
+      {member.isGuest && <span className="text-caption text-sky">게스트</span>}
       {busyStatus && (
         <span
-          className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+          className={`shrink-0 rounded-md px-1.5 py-0.5 text-caption font-medium ${
             busyStatus === 'PLAYING' ? 'bg-court/15 text-court' : 'bg-amber/15 text-amber'
           }`}
         >
@@ -3936,100 +3936,34 @@ function WaitingRow({
         </span>
       )}
       {resting && (
-        <span className="shrink-0 rounded bg-sky/15 px-1.5 py-0.5 text-[10px] font-medium text-sky">
+        <span className="shrink-0 rounded-md bg-sky/15 px-1.5 py-0.5 text-caption font-medium text-sky">
           휴식
         </span>
       )}
       {partnerName && (
         <ConfirmButton
-          label={`🤝 ${partnerName}`}
+          label={`파트너 ${partnerName}`}
           confirmLabel="파트너 해제"
           title={`대회 연습 파트너: ${partnerName} — 두 번 누르면 해제`}
           onConfirm={() => void run(() => api(`/attendances/${attendance.id}/partner`, { method: 'DELETE', admin: true }))}
-          className="tap h-6 min-w-0 shrink truncate rounded px-1.5 text-[10px] font-medium"
+          className="tap h-6 min-w-0 shrink truncate rounded-md px-1.5 text-caption font-medium"
           idleCls="bg-sky/15 text-sky"
         />
       )}
-      <span className="tabular ml-auto shrink-0 font-mono text-xs text-dim">
+      <span className="tabular ml-auto shrink-0 font-mono text-caption text-dim">
         {attendance.gamesPlayed}게임 · {formatWaitingMinutes(attendance.waitingSince, now)}
       </span>
-      {/* 폰: 줄이 좁아 작은 버튼 4개가 붙으면 잘못 누르기 쉽다 — [⋯] 하나로 모으고 시트에서 고른다 */}
+      {/* 호출·휴식/복귀·콕 확인 취소·퇴장은 [⋯] 하나로 모으고 시트에서 고른다(폰·태블릿 공통) — 작은 버튼이 줄에 붙으면 잘못 누르기 쉽다 */}
       <button
         onClick={(e) => {
           e.stopPropagation(); // 행 선택 토글과 분리
           onMore(attendance);
         }}
         aria-label={`${member.name} 동작 더보기`}
-        className="tap h-8 w-8 shrink-0 rounded-lg text-lg leading-none text-dim md:hidden"
+        className="tap h-8 w-8 shrink-0 rounded-lg text-lg leading-none text-dim"
       >
         ⋯
       </button>
-      {/* 태블릿·데스크톱: 자리가 넉넉해 버튼을 그대로 펼쳐 둔다 */}
-      <div className="hidden shrink-0 items-center gap-2 md:flex">
-        <CallButton
-          path={`/attendances/${attendance.id}/call`}
-          label="호출"
-          title="이 분 폰으로 '운영진이 찾고 있어요' 알림을 보내요"
-          className="tap h-8 shrink-0 rounded-lg px-1.5 text-xs"
-          idleCls="text-dim hover:text-court"
-        />
-        {resting && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              void run(() =>
-                api(`/attendances/${attendance.id}/resume`, { method: 'PATCH' }),
-              );
-            }}
-            title="휴식 해제 — 대기로 복귀 (대기시간 리셋)"
-            className="tap h-8 shrink-0 rounded-lg border border-sky/40 px-2 text-xs font-medium text-sky"
-          >
-            복귀
-          </button>
-        )}
-        {!busyStatus && !resting && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation(); // 행 선택 토글과 분리
-              void run(() =>
-                api(`/attendances/${attendance.id}/rest`, { method: 'PATCH' }),
-              );
-            }}
-            title="휴식 처리 — 게임 조합 대상에서 제외"
-            className="tap h-8 shrink-0 rounded-lg px-1.5 text-xs text-dim hover:text-sky"
-          >
-            휴식
-          </button>
-        )}
-        {/* 콕을 잘못 확인했을 때의 유일한 복구 경로 — 되돌리면 콕 확인 대기로 올라간다 */}
-        {!busyStatus && (
-          <ConfirmButton
-            label="콕취소"
-            title="콕 확인 취소 — 콕 확인 대기로 되돌림"
-            onConfirm={() =>
-              void run(() =>
-                api(`/attendances/${attendance.id}/shuttle/cancel`, { method: 'PATCH', admin: true }),
-              )
-            }
-            className="tap h-8 shrink-0 rounded-lg px-1.5 text-xs"
-            idleCls="text-dim hover:text-amber"
-          />
-        )}
-        {!busyStatus && (
-          <ConfirmButton
-            label="✕"
-            confirmLabel="퇴장"
-            title="퇴장 처리"
-            onConfirm={() =>
-              void run(() =>
-                api(`/attendances/${attendance.id}/leave`, { method: 'PATCH', admin: true }),
-              )
-            }
-            className="tap h-8 min-w-8 shrink-0 rounded-lg px-1.5 text-xs"
-            idleCls="text-dim hover:text-coral"
-          />
-        )}
-      </div>
     </MotionCard>
   );
 }

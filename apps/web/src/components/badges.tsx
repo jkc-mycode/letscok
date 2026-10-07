@@ -110,7 +110,7 @@ export function PartnerNote({ people, className = 'mt-2' }: { people: PartnerPer
     }
   }
   if (pairs.length === 0) return null;
-  return <p className={`${className} text-xs font-medium text-sky`}>🤝 대회 연습: {pairs.join(', ')} 한 팀</p>;
+  return <p className={`${className} text-caption font-medium text-sky`}>대회 연습: {pairs.join(', ')} 한 팀</p>;
 }
 
 // 게임 카드의 4명 → 파트너 표시용
