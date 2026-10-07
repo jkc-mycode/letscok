@@ -20,7 +20,7 @@ import { useSpeech } from '@/lib/use-speech';
 // AI 운영 명령 — 문장을 보내면 서버가 미리보기만 돌려주고, 운영진이 [확인]해야 기존 API로 실행한다
 // (체크인만 예외: 기존 AI 체크인 규칙대로 확실한 사람은 바로 체크인된다)
 
-const EXAMPLES = ['남복 짜줘', '민수랑 준호 넣어서 혼복', '3번 코트 끝났어', '민수 휴식', '홍길동 체크인'];
+const EXAMPLES = ['남복 짜줘', '민수랑 준호 넣어서 혼복', '3번 코트 끝났어', '민수 휴식', '홍길동 체크인', '누가 제일 오래 기다렸어?'];
 
 const CATEGORY_LABEL: Record<RecommendationCategory, string> = {
   ALL: '전체',
@@ -324,6 +324,18 @@ function ResultView({
   switch (result.kind) {
     case 'message':
       return <p className="rounded-xl border border-line bg-panel2 p-3 text-sm text-dim">{result.text}</p>;
+    // 상황 질문 답 — 숫자는 서버가 지금 현황으로 계산(실행할 것이 없어 버튼 없음)
+    case 'answer':
+      return (
+        <div className="flex flex-col gap-1.5 rounded-xl border border-court/40 bg-court/5 p-4">
+          <p className="text-xs font-medium text-court">{result.title}</p>
+          {result.lines.map((line, i) => (
+            <p key={i} className="text-base font-medium whitespace-normal">
+              {line}
+            </p>
+          ))}
+        </div>
+      );
     case 'check_in':
       return (
         <p className="rounded-xl border border-court/40 bg-court/10 p-3 text-sm leading-relaxed">{result.result.message}</p>

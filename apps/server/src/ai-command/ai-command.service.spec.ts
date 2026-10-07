@@ -34,6 +34,7 @@ const command = (over: Record<string, unknown> = {}) => ({
   courtNo: null,
   checkInTargets: [],
   feature: 'other',
+  question: 'other',
   ...over,
 });
 
@@ -170,5 +171,106 @@ describe('AiCommandService.run', () => {
 
     expect(result.kind).toBe('check_in');
     if (result.kind === 'check_in') expect(result.result.checkedIn.map((m) => m.name)).toEqual(['홍길동']);
+  });
+});
+
+describe('AiCommandService.run — 상황 질문', () => {
+  const ask = (question: string, people: string[] = []) => command({ action: 'ask', question, people });
+
+  it('가장 오래 기다린 사람 — 조합 없이 기다리는 사람만, 오래된 순 3명', async () => {
+    const session = await seedSession();
+    const names = ['김하나', '이두리', '박세나', '최네오'];
+    const rows = [];
+    for (const name of names) rows.push(await seedAttendee(session.id, name));
+    // 두리가 가장 오래, 네오는 휴식이라 빠진다
+    const since = ['2026-01-01T10:20:00Z', '2026-01-01T10:00:00Z', '2026-01-01T10:10:00Z', '2026-01-01T09:00:00Z'];
+    for (const [i, row] of rows.entries()) {
+      await prisma.attendance.update({ where: { id: row.id }, data: { waitingSince: new Date(since[i]) } });
+    }
+    await prisma.attendance.update({ where: { id: rows[3].id }, data: { status: 'RESTING' } });
+    aiStub.extract.mockResolvedValue(ask('longest_wait'));
+
+    const result = await service.run(session.id, '누가 제일 오래 기다렸어?');
+
+    expect(result.kind).toBe('answer');
+    if (result.kind === 'answer') {
+      expect(result.lines.map((l) => l.split(' — ')[0])).toEqual(['이두리', '박세나', '김하나']);
+    }
+  });
+
+  it('사람 현황 — 게임 수와 지금 위치(코트 번호), 없는 이름은 안내', async () => {
+    const session = await seedSession();
+    const court = await prisma.court.create({ data: { sessionId: session.id, courtNo: 2, status: 'IN_GAME' } });
+    const players = [];
+    for (const name of ['김민수', '이두리', '박세나', '최네오']) players.push(await seedAttendee(session.id, name, 'MALE', 'PLAYING'));
+    await prisma.attendance.update({ where: { id: players[0].id }, data: { gamesPlayed: 3 } });
+    await prisma.game.create({
+      data: {
+        sessionId: session.id,
+        courtId: court.id,
+        status: 'PLAYING',
+        startedAt: new Date(),
+        players: { createMany: { data: players.map((p) => ({ attendanceId: p.id })) } },
+      },
+    });
+
+    aiStub.extract.mockResolvedValueOnce(ask('person', ['민수']));
+    expect(await service.run(session.id, '민수 오늘 몇 게임 했어?')).toEqual({
+      kind: 'answer',
+      title: '사람 현황',
+      lines: ['김민수 — 오늘 3게임 · 2번 코트에서 게임 중'],
+    });
+
+    aiStub.extract.mockResolvedValueOnce(ask('person', ['준호']));
+    expect(await service.run(session.id, '준호 어디 있어?')).toEqual({
+      kind: 'message',
+      text: '오늘 출석자 중에 준호님이(가) 없어요.',
+    });
+  });
+
+  it('0게임·빈 코트·인원 현황·다음 게임 — 빈칸 조합은 다음 게임으로 치지 않는다', async () => {
+    const session = await seedSession();
+    await prisma.court.create({ data: { sessionId: session.id, courtNo: 1 } });
+    await prisma.court.create({ data: { sessionId: session.id, courtNo: 2, isShared: true, ourTurn: false } });
+    const rows = [];
+    for (const name of ['김하나', '이두리', '박세나', '최네오', '정다섯']) rows.push(await seedAttendee(session.id, name));
+    await prisma.attendance.update({ where: { id: rows[4].id }, data: { gamesPlayed: 2 } });
+    // 빈칸 조합(1명)이 먼저, 4명 조합이 뒤
+    await prisma.game.create({
+      data: { sessionId: session.id, queueOrder: 1, players: { create: { attendanceId: rows[4].id } } },
+    });
+    await prisma.game.create({
+      data: {
+        sessionId: session.id,
+        queueOrder: 2,
+        players: { createMany: { data: rows.slice(0, 4).map((r) => ({ attendanceId: r.id })) } },
+      },
+    });
+
+    aiStub.extract.mockResolvedValueOnce(ask('no_games'));
+    const zero = await service.run(session.id, '아직 한 게임도 못 한 사람?');
+    expect(zero.kind === 'answer' && zero.lines.length).toBe(4);
+
+    aiStub.extract.mockResolvedValueOnce(ask('free_courts'));
+    expect(await service.run(session.id, '빈 코트 있어?')).toEqual({
+      kind: 'answer',
+      title: '빈 코트',
+      lines: ['1번 코트가 비어 있어요.', '2번 코트는 다른 모임 차례예요.'],
+    });
+
+    aiStub.extract.mockResolvedValueOnce(ask('headcount'));
+    const head = await service.run(session.id, '몇 명 왔어?');
+    expect(head.kind === 'answer' && head.lines[0]).toBe('출석 5명');
+
+    aiStub.extract.mockResolvedValueOnce(ask('next_game'));
+    expect(await service.run(session.id, '다음 게임 누구야?')).toEqual({
+      kind: 'answer',
+      title: '다음 게임',
+      lines: ['김하나, 이두리, 박세나, 최네오'],
+    });
+
+    aiStub.extract.mockResolvedValueOnce(ask('other'));
+    const other = await service.run(session.id, '오늘 누가 제일 잘 쳐?');
+    expect(other.kind).toBe('message');
   });
 });

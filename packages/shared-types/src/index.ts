@@ -482,7 +482,9 @@ export type IAiCommandResult =
   // 체크인 — 기존 AI 체크인 규칙 그대로(확실한 사람만 바로 체크인, 결과 카드에서 취소 가능)
   | { kind: 'check_in'; result: IAiCheckInResult }
   // 안내만(못 찾음·지원 안 함·못 알아들음) — 문구는 서버 고정, AI가 쓴 문장이 아니다
-  | { kind: 'message'; text: string };
+  | { kind: 'message'; text: string }
+  // 질문 답("누가 제일 오래 기다렸어?") — 숫자·문장 모두 서버가 실시간 현황에서 만든다(AI는 질문 종류만 고름)
+  | { kind: 'answer'; title: string; lines: string[] };
 
 // ===== 공통 응답 래퍼 =====
 

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
   AiCommandAction,
+  GAME_SIZE,
   IAiCommandResult,
   IAiCommandTarget,
   RecommendationCategory,
@@ -25,6 +26,7 @@ const commandSchema = z.strictObject({
       'rest',
       'resume',
       'call',
+      'ask',
       'known_unsupported',
       'unsupported',
       'unclear',
@@ -39,6 +41,9 @@ const commandSchema = z.strictObject({
   feature: z
     .enum(['court_manage', 'close_session', 'replace_player', 'leave', 'other'])
     .describe('known_unsupported일 때 어떤 기능인지, 그 외 other'),
+  question: z
+    .enum(['longest_wait', 'person', 'no_games', 'fewest_games', 'free_courts', 'headcount', 'next_game', 'other'])
+    .describe('ask일 때 질문 종류, 그 외 other'),
 });
 type Command = z.infer<typeof commandSchema>;
 
@@ -51,8 +56,12 @@ const SYSTEM_PROMPT = `당신은 배드민턴 모임 관제판의 명령 해석�
 - check_in: 출석(체크인) 처리 요청. checkInTargets에 사람마다 raw(말한 그대로), name(이름 부분), kind(full=성+이름, given=이름만, nickname=별명, unclear), birthYear("97년생"이면 97, 없으면 null), guest("게스트" 표기면 true)를 적습니다. 확신이 없으면 kind=unclear
 - finish_game: 게임이 끝났다는 말. 예: "3번 코트 끝났어"(courtNo=3), "민수 게임 끝"(people=[민수])
 - rest: 잠깐 쉬게(휴식) 해 달라는 요청 / resume: 휴식에서 복귀 / call: 사람을 불러 달라는 요청(알림 보내기)
+- ask: 지금 모임 상황을 묻는 질문. question:
+  - longest_wait: 누가 제일 오래 기다렸는지 / person: 특정 사람의 게임 수·지금 상태(people=[그 사람]) / no_games: 아직 한 게임도 못 한 사람
+  - fewest_games: 게임을 적게 한 사람 / free_courts: 빈 코트 / headcount: 몇 명 왔는지·인원 현황 / next_game: 다음 게임이 누구인지
+  - 위에 없는 질문은 other
 - known_unsupported: 관제판에 있는 기능이지만 위 목록에 없는 요청. feature: 코트 추가·공유=court_manage, 모임 종료=close_session, 선수 교체=replace_player, 퇴장=leave, 그 밖=other
-- unsupported: 잡담·질문·관제판과 무관한 요청
+- unsupported: 잡담·관제판과 무관한 요청
 - unclear: 문장이 깨져 무슨 뜻인지 모를 때(음성 인식 오류 등)
 
 규칙:
@@ -70,7 +79,9 @@ const FEATURE_GUIDE: Record<Command['feature'], string> = {
   other: '',
 };
 export const UNSUPPORTED_MESSAGE =
-  '게임 짜기, 게임 종료, 휴식·복귀, 호출, 체크인만 할 수 있어요. 예: "남복 짜줘", "3번 코트 끝났어", "민수 휴식"';
+  '게임 짜기, 게임 종료, 휴식·복귀, 호출, 체크인, 상황 질문만 할 수 있어요. 예: "남복 짜줘", "3번 코트 끝났어", "누가 제일 오래 기다렸어?"';
+export const ASK_UNSUPPORTED_MESSAGE =
+  '그 질문엔 아직 답할 수 없어요. 오래 기다린 사람, 누구 게임 수, 0게임인 사람, 게임 적은 사람, 빈 코트, 인원, 다음 게임을 물어봐 주세요.';
 export const UNCLEAR_MESSAGE = '잘 못 알아들었어요. 다시 말해 주시거나 글로 입력해 주세요.';
 
 const ACTION_LABEL: Record<Exclude<AiCommandAction, 'make_game'>, string> = {
@@ -126,6 +137,8 @@ export class AiCommandService {
       case 'resume':
       case 'call':
         return this.personAction(sessionId, command.action, command.people);
+      case 'ask':
+        return this.answer(sessionId, command);
       case 'known_unsupported':
         return { kind: 'message', text: FEATURE_GUIDE[command.feature] || UNSUPPORTED_MESSAGE };
       case 'unclear':
@@ -219,6 +232,117 @@ export class AiCommandService {
       gameId: game.id,
       targets,
     };
+  }
+
+  // 상황 질문 — AI는 질문 종류만 골랐다. 사람·숫자·문장은 전부 여기서 지금 DB 상태로 만든다
+  private async answer(sessionId: string, command: Command): Promise<IAiCommandResult> {
+    const now = Date.now();
+    const [attendees, games, courts] = await Promise.all([
+      this.todayAttendees(sessionId),
+      this.prisma.game.findMany({
+        where: { sessionId, status: { in: ['QUEUED', 'PLAYING'] } },
+        include: { court: true, players: { include: { attendance: { include: { member: true } } } } },
+        orderBy: { queueOrder: 'asc' },
+      }),
+      this.prisma.court.findMany({ where: { sessionId, deletedAt: null }, orderBy: { courtNo: 'asc' } }),
+    ]);
+    const minutes = (since: Date) => Math.max(0, Math.floor((now - since.getTime()) / 60_000));
+    const confirmed = attendees.filter((a) => a.shuttleConfirmedAt);
+    // 4명 다 찬 대기 조합만 "조합" — 빈칸 조합은 운영진이 짜는 중
+    const queued = games.filter((g) => g.status === 'QUEUED' && g.players.length >= GAME_SIZE);
+
+    const place = (a: Attendee): string => {
+      if (!a.shuttleConfirmedAt) return '콕 확인 전';
+      if (a.status === 'PLAYING') {
+        const court = games.find((g) => g.status === 'PLAYING' && g.players.some((p) => p.attendanceId === a.id))?.court;
+        return court ? `${court.courtNo}번 코트에서 게임 중` : '게임 중';
+      }
+      if (a.status === 'RESTING') return '휴식 중';
+      const orders = queued.flatMap((g, i) => (g.players.some((p) => p.attendanceId === a.id) ? [i + 1] : []));
+      if (orders.length > 0) return `다음 게임 ${orders.join(', ')}번째 조합`;
+      return `대기 ${minutes(a.waitingSince)}분`;
+    };
+
+    switch (command.question) {
+      case 'longest_wait': {
+        const waiting = confirmed
+          .filter((a) => a.status === 'CHECKED_IN')
+          .sort((x, y) => x.waitingSince.getTime() - y.waitingSince.getTime())
+          .slice(0, 3);
+        if (waiting.length === 0) return { kind: 'answer', title: '가장 오래 기다린 사람', lines: ['지금 조합 없이 기다리는 사람이 없어요.'] };
+        return {
+          kind: 'answer',
+          title: '가장 오래 기다린 사람',
+          lines: waiting.map((a) => `${a.member.name} — ${minutes(a.waitingSince)}분 · 오늘 ${a.gamesPlayed}게임`),
+        };
+      }
+      case 'person': {
+        if (command.people.length === 0) return { kind: 'message', text: '누구를 물어보시는지 이름을 함께 말해 주세요.' };
+        const lines: string[] = [];
+        const notFound: string[] = [];
+        for (const name of command.people.slice(0, 4)) {
+          const matches = matchAttendees(name, attendees);
+          if (matches.length === 0) notFound.push(name);
+          // 이름만 같은 사람이 여럿이면 모두 보여 준다(묻기만 하는 거라 고르게 할 필요 없음)
+          matches.forEach((a) => lines.push(`${a.member.name} — 오늘 ${a.gamesPlayed}게임 · ${place(a)}`));
+        }
+        if (lines.length === 0) return this.notFoundMessage(notFound);
+        if (notFound.length > 0) lines.push(`오늘 출석자 중에 ${notFound.map((n) => `${n}님`).join(', ')}은(는) 없어요.`);
+        return { kind: 'answer', title: '사람 현황', lines };
+      }
+      case 'no_games': {
+        const zero = confirmed.filter((a) => a.gamesPlayed === 0);
+        return {
+          kind: 'answer',
+          title: '아직 0게임',
+          lines: zero.length === 0 ? ['모두 한 게임 이상 했어요.'] : zero.map((a) => `${a.member.name} — ${place(a)}`),
+        };
+      }
+      case 'fewest_games': {
+        const fewest = confirmed
+          .filter((a) => a.status !== 'RESTING')
+          .sort((x, y) => x.gamesPlayed - y.gamesPlayed || x.waitingSince.getTime() - y.waitingSince.getTime())
+          .slice(0, 5);
+        return {
+          kind: 'answer',
+          title: '게임을 적게 한 사람',
+          lines: fewest.length === 0 ? ['콕 확인된 출석자가 없어요.'] : fewest.map((a) => `${a.member.name} — 오늘 ${a.gamesPlayed}게임 · ${place(a)}`),
+        };
+      }
+      case 'free_courts': {
+        if (courts.length === 0) return { kind: 'answer', title: '빈 코트', lines: ['등록된 코트가 없어요.'] };
+        const idle = courts.filter((c) => c.status === 'IDLE');
+        const usable = idle.filter((c) => !c.isShared || c.ourTurn);
+        const lines =
+          usable.length === 0 ? ['지금 바로 쓸 수 있는 빈 코트가 없어요.'] : [`${usable.map((c) => `${c.courtNo}번`).join(', ')} 코트가 비어 있어요.`];
+        const otherTurn = idle.filter((c) => c.isShared && !c.ourTurn);
+        if (otherTurn.length > 0) lines.push(`${otherTurn.map((c) => `${c.courtNo}번`).join(', ')} 코트는 다른 모임 차례예요.`);
+        return { kind: 'answer', title: '빈 코트', lines };
+      }
+      case 'headcount': {
+        const count = (status: Attendee['status']) => confirmed.filter((a) => a.status === status).length;
+        const unconfirmed = attendees.length - confirmed.length;
+        return {
+          kind: 'answer',
+          title: '인원 현황',
+          lines: [
+            `출석 ${attendees.length}명${unconfirmed > 0 ? `(콕 확인 전 ${unconfirmed}명)` : ''}`,
+            `게임 중 ${count('PLAYING')}명 · 조합 대기 ${count('MATCHED')}명 · 대기 ${count('CHECKED_IN')}명 · 휴식 ${count('RESTING')}명`,
+          ],
+        };
+      }
+      case 'next_game': {
+        const next = queued[0];
+        if (!next) return { kind: 'answer', title: '다음 게임', lines: ['대기 중인 조합이 없어요.'] };
+        return {
+          kind: 'answer',
+          title: '다음 게임',
+          lines: [next.players.map((p) => p.attendance.member.name).join(', ')],
+        };
+      }
+      default:
+        return { kind: 'message', text: ASK_UNSUPPORTED_MESSAGE };
+    }
   }
 
   // 휴식·복귀·호출 — 대상만 찾아 미리보기(실행 가능 여부는 실행 API가 기존 규칙대로 판단)
