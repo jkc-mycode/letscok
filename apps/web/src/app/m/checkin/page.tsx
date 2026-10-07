@@ -5,6 +5,7 @@
 // 자가 가입은 없다: 명단 등록은 운영진이 관제판에서 한다 (코드를 아는 외부인의 가짜 회원 생성 차단)
 // 운영진이 대신 등록한 회원은 동의 이력이 없으므로 이 화면에서 본인 동의를 받는다
 // 체크인 성공 시 memberId를 저장하고 내 상태 화면(/m)으로 이동
+// 디자인 시스템: 큰 제목 + 면으로 구분한 입력, 아래 고정 주요 버튼 하나
 
 import { IAttendance, IMember } from '@letscok/shared-types';
 import { useRouter } from 'next/navigation';
@@ -53,7 +54,7 @@ export default function CheckinPage() {
   };
 
   if (loading) {
-    return <Shell><LogoLoader /></Shell>;
+    return <Shell><LogoLoader className="flex-1" /></Shell>;
   }
   // 서버에 닿지 못하면 체크인 폼을 보여 줘도 눌러지지 않는다 — 오류 화면으로
   if (failed && !snapshot) {
@@ -66,9 +67,9 @@ export default function CheckinPage() {
   if (noSession) {
     return (
       <Shell>
-        <div className="text-center">
-          <h1 className="text-2xl font-bold">아직 모임 전이에요</h1>
-          <p className="mt-2 text-dim">운영진이 모임을 시작하면 체크인할 수 있어요</p>
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
+          <h1 className="text-display font-bold">아직 모임 전이에요</h1>
+          <p className="text-body text-dim">운영진이 모임을 시작하면 체크인할 수 있어요</p>
         </div>
       </Shell>
     );
@@ -76,28 +77,12 @@ export default function CheckinPage() {
 
   return (
     <Shell>
-      <header className="text-center">
-        <HomeLink className="inline-block text-xs font-medium tracking-[0.3em] text-court transition-opacity hover:opacity-70">
-          LETSCOK
-        </HomeLink>
-        <h1 className="mt-1 text-2xl font-bold">이름으로 체크인</h1>
+      <header className="flex flex-col gap-1.5">
+        <h1 className="text-display font-bold">오늘 모임에 체크인할게요</h1>
+        <p className="text-body text-dim">코드와 이름만 있으면 돼요</p>
       </header>
 
-      {/* 코드 입력 — 소모임 공지사항 작성월일. 틀린 값은 서버가 막으므로 여기선 형식(숫자 4자리)만 맞춘다 */}
-      <div className="rounded-xl border border-line bg-panel p-4">
-        <p className="text-sm font-medium">코드 입력</p>
-        <p className="mt-1 text-xs leading-relaxed text-dim">
-          소모임에 있는 &lsquo;[필독]공지사항&rsquo;의 작성월일 4자리 입력하세요.
-        </p>
-        <input
-          value={inputCode}
-          onChange={(e) => setInputCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
-          inputMode="numeric"
-          autoComplete="off"
-          placeholder="0000"
-          className="tabular mt-3 h-14 w-full rounded-lg border border-line bg-panel2 text-center font-mono text-2xl tracking-[0.4em] outline-none placeholder:text-faint focus:border-court"
-        />
-      </div>
+      <CodeBoxes value={inputCode} onChange={setInputCode} />
 
       <SearchPanel busy={busy} hasCode={code !== null} onSelect={checkIn} />
 
@@ -108,13 +93,60 @@ export default function CheckinPage() {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="fade-in mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-6 p-6">
+    <main className="fade-in mx-auto flex min-h-dvh w-full max-w-md flex-col gap-7 px-5 pt-2 pb-6">
       {/* 설치 안내는 /m뿐 아니라 여기에도 필요하다 — 구 /checkin 링크로 바로 들어오는 사람이 있고,
           무엇보다 카톡 인앱 브라우저에서 체크인하면 memberId가 카톡 저장소에만 남아
           나중에 앱·사파리로 열었을 때 "체크인이 필요해요"가 뜬다 */}
       <InstallPrompt />
+      <HomeLink className="flex h-11 items-center self-start text-caption font-bold tracking-[0.3em] text-court transition-opacity hover:opacity-70">
+        LETSCOK
+      </HomeLink>
       {children}
     </main>
+  );
+}
+
+// 코드 입력 — 실제 입력칸은 하나(붙여넣기·자동 채우기·지우기가 평소처럼 동작), 보이는 모양만 4칸
+// 투명한 입력칸을 4칸 위에 겹쳐 두고, 칸마다 숫자를 그린다. 지금 입력할 칸은 초록 테두리
+// 틀린 값은 서버가 막으므로 여기선 형식(숫자 4자리)만 맞춘다
+function CodeBoxes({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <div className="flex flex-col gap-2.5">
+      <label htmlFor="checkin-code" className="text-body-sm font-bold text-dim">
+        체크인 코드
+      </label>
+      <div className="relative">
+        <div className="grid grid-cols-4 gap-2" aria-hidden>
+          {[0, 1, 2, 3].map((i) => {
+            const active = focused && (i === value.length || (i === 3 && value.length === 4));
+            return (
+              <span
+                key={i}
+                className={`tabular flex h-15 items-center justify-center rounded-xl bg-panel font-mono text-[1.625rem] font-semibold transition-shadow ${
+                  active ? 'ring-2 ring-court' : ''
+                }`}
+              >
+                {value[i] ?? ''}
+              </span>
+            );
+          })}
+        </div>
+        <input
+          id="checkin-code"
+          value={value}
+          onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 4))}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          inputMode="numeric"
+          autoComplete="off"
+          maxLength={4}
+          aria-label="체크인 코드 4자리"
+          className="absolute inset-0 h-full w-full cursor-pointer text-transparent caret-transparent opacity-0"
+        />
+      </div>
+      <p className="text-caption text-faint">소모임 [필독]공지사항의 작성월일 4자리예요</p>
+    </div>
   );
 }
 
@@ -155,41 +187,53 @@ function SearchPanel({
 
   return (
     <>
-      <input
-        autoComplete="off"
-        enterKeyHint="search"
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setSelected(null);
-          setConsent(false);
-        }}
-        placeholder="이름을 입력하세요"
-        className="h-14 rounded-xl border border-line bg-panel px-5 text-lg outline-none focus:border-court"
-      />
+      <div className="flex flex-col gap-2.5">
+        <label htmlFor="checkin-name" className="text-body-sm font-bold text-dim">
+          이름
+        </label>
+        <input
+          id="checkin-name"
+          autoComplete="off"
+          enterKeyHint="search"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setSelected(null);
+            setConsent(false);
+          }}
+          placeholder="이름을 입력하세요"
+          className="h-14 rounded-xl border-2 border-transparent bg-panel px-4 text-heading font-medium outline-none placeholder:text-faint focus:border-court"
+        />
 
-      <div className="flex flex-col gap-2">
-        {results.map((member) => (
-          <button
-            key={member.id}
-            onClick={() => {
-              setSelected(member);
-              setConsent(false);
-            }}
-            className={`flex items-center gap-2 rounded-xl border p-4 text-left ${
-              selected?.id === member.id ? 'border-court bg-court/10' : 'border-line bg-panel'
-            }`}
-          >
-            <GradeBadge grade={member.grade} />
-            <span className="font-medium">{member.name}</span>
-            <GenderMarker gender={member.gender} />
-            {member.isGuest && <span className="text-[10px] text-sky">게스트</span>}
-            {/* 동명이인 구분용 생년월일 노출 */}
-            <span className="ml-auto text-sm text-dim">{member.birthDate}</span>
-          </button>
-        ))}
+        {results.length > 0 && (
+          <div className="flex flex-col rounded-2xl bg-panel p-1.5">
+            {results.map((member) => {
+              const isSelected = selected?.id === member.id;
+              return (
+                <button
+                  key={member.id}
+                  onClick={() => {
+                    setSelected(member);
+                    setConsent(false);
+                  }}
+                  className={`flex h-14 items-center gap-2.5 rounded-xl px-3 text-left ${isSelected ? 'bg-court/12' : ''}`}
+                >
+                  <GradeBadge grade={member.grade} />
+                  <span className={`min-w-0 truncate text-body ${isSelected ? 'font-bold' : 'font-medium'}`}>
+                    {member.name}
+                  </span>
+                  <GenderMarker gender={member.gender} />
+                  {member.isGuest && <span className="shrink-0 text-caption text-sky">게스트</span>}
+                  {/* 동명이인 구분용 생년월일 노출 */}
+                  <span className="tabular ml-auto font-mono text-body-sm text-dim">{member.birthDate}</span>
+                  <CheckIcon className={isSelected ? 'text-court' : 'text-transparent'} />
+                </button>
+              );
+            })}
+          </div>
+        )}
         {query.trim() && results.length === 0 && (
-          <p className="py-4 text-center text-sm text-faint">검색 결과가 없어요</p>
+          <p className="rounded-2xl bg-panel p-5 text-center text-body-sm text-faint">검색 결과가 없어요</p>
         )}
       </div>
 
@@ -197,43 +241,61 @@ function SearchPanel({
       {needsConsent && (
         <button
           onClick={() => setConsent((v) => !v)}
-          className={`rounded-xl border p-4 text-left whitespace-normal ${
-            consent ? 'border-court bg-court/10' : 'border-line bg-panel'
-          }`}
+          className={`rounded-2xl p-4 text-left whitespace-normal ${consent ? 'bg-court/12' : 'bg-panel'}`}
         >
-          <span className="flex items-center gap-2 text-sm font-medium">
+          <span className="flex items-center gap-2.5 text-body font-bold">
             <span
-              className={`flex h-5 w-5 items-center justify-center rounded border text-xs ${
-                consent ? 'border-court bg-court text-bg' : 'border-line text-transparent'
+              className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
+                consent ? 'bg-court text-bg' : 'bg-panel2 text-transparent'
               }`}
             >
-              ✓
+              <CheckIcon />
             </span>
             개인정보 수집·이용에 동의합니다
           </span>
-          <span className="mt-2 block pl-7 text-xs leading-relaxed text-dim">
+          <span className="mt-2 block pl-8.5 text-caption leading-relaxed text-dim">
             수집 항목: 이름, 생년월일, 급수, 성별 · 목적: 모임 출석·게임 배정 관리, 동명이인 구분 ·
             보관: 모임 운영 기간 (삭제 요청 시 운영진이 지체 없이 삭제)
           </span>
         </button>
       )}
 
-      <button
-        onClick={() => selected && void onSelect(selected, needsConsent)}
-        disabled={blocked}
-        className="min-h-14 rounded-xl bg-court px-3 text-lg font-bold whitespace-normal text-bg disabled:bg-panel2 disabled:text-faint"
-      >
-        {!selected
-          ? '본인을 선택해주세요'
-          : !hasCode
-            ? '코드 4자리를 입력해주세요'
-            : needsConsent && !consent
-              ? '동의 후 체크인할 수 있어요'
-              : `${selected.name}(으)로 체크인`}
-      </button>
-      <p className="text-center text-sm text-dim">
-        이름이 안 보이면 운영진에게 등록을 요청해주세요
-      </p>
+      {/* 주요 버튼 하나 — 화면 아래에 붙어 있어 검색 결과가 길어도 바로 누를 수 있다 */}
+      <div className="sticky bottom-0 -mx-5 mt-auto flex flex-col gap-3 bg-bg/95 px-5 pt-3 pb-[calc(var(--safe-bottom)+0.25rem)] backdrop-blur">
+        <button
+          onClick={() => selected && void onSelect(selected, needsConsent)}
+          disabled={blocked}
+          className="min-h-14 rounded-xl bg-court px-3 text-body font-bold whitespace-normal text-bg disabled:bg-panel disabled:text-faint"
+        >
+          {!selected
+            ? '본인을 선택해주세요'
+            : !hasCode
+              ? '코드 4자리를 입력해주세요'
+              : needsConsent && !consent
+                ? '동의 후 체크인할 수 있어요'
+                : `${selected.name}(으)로 체크인`}
+        </button>
+        <p className="text-center text-caption text-faint">이름이 안 보이면 운영진에게 등록을 요청해 주세요</p>
+      </div>
     </>
+  );
+}
+
+function CheckIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={`shrink-0 ${className}`}
+    >
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
   );
 }
