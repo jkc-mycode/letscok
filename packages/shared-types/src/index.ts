@@ -496,7 +496,12 @@ export type IAiCommandResult =
   // 질문 답("누가 제일 오래 기다렸어?") — 숫자·문장 모두 서버가 실시간 현황에서 만든다(AI는 질문 종류만 고름)
   | { kind: 'answer'; title: string; lines: string[] }
   // 게스트 추가 — 확인하면 웹이 기존 등록·수동 체크인 API로 실행(콕 확인은 따로)
-  | { kind: 'guest_preview'; guests: IAiGuestDraft[] };
+  | { kind: 'guest_preview'; guests: IAiGuestDraft[] }
+  // 한 문장에 여러 명령("3번 코트 끝났고 남복 하나 짜줘") — 웹이 말한 순서대로 하나씩 보여 준다(최대 3개)
+  | { kind: 'multi'; steps: IAiCommandStep[] };
+
+// 여러 명령의 한 단계 — multi는 다시 들어가지 않는다
+export type IAiCommandStep = Exclude<IAiCommandResult, { kind: 'multi' }>;
 
 // ===== 공통 응답 래퍼 =====
 

@@ -26,8 +26,8 @@ const service = new AiCommandService(
   ai,
 );
 
-// AI가 돌려줄 명령 — 기본은 아무것도 지정 안 한 make_game
-const command = (over: Record<string, unknown> = {}) => ({
+// AI가 돌려줄 명령 — 기본은 아무것도 지정 안 한 make_game. AI 응답은 명령 목록이라 하나짜리 목록으로 감싼다
+const step = (over: Record<string, unknown> = {}) => ({
   action: 'make_game',
   category: 'ALL',
   people: [],
@@ -38,6 +38,7 @@ const command = (over: Record<string, unknown> = {}) => ({
   guests: [],
   ...over,
 });
+const command = (over: Record<string, unknown> = {}) => ({ commands: [step(over)] });
 
 async function seedSession() {
   return prisma.session.create({ data: { date: new Date('2026-01-01'), checkInCode: '0101' } });
@@ -320,5 +321,42 @@ describe('AiCommandService.run — 게스트 추가', () => {
     aiStub.extract.mockResolvedValue(command({ action: 'add_guest', guests: [] }));
     const result = await service.run(session.id, '게스트 추가해줘');
     expect(result.kind).toBe('message');
+  });
+});
+
+describe('AiCommandService.run — 한 문장에 여러 명령', () => {
+  it('말한 순서대로 단계별 결과, 하나면 기존처럼 단일 결과, 3개까지만', async () => {
+    const session = await seedSession();
+    const court = await prisma.court.create({ data: { sessionId: session.id, courtNo: 3, status: 'IN_GAME' } });
+    const players = [];
+    for (const name of ['김하나', '이두리', '박세나', '최네오']) players.push(await seedAttendee(session.id, name, 'MALE', 'PLAYING'));
+    const game = await prisma.game.create({
+      data: {
+        sessionId: session.id,
+        courtId: court.id,
+        status: 'PLAYING',
+        startedAt: new Date(),
+        players: { createMany: { data: players.map((p) => ({ attendanceId: p.id })) } },
+      },
+    });
+    for (const name of ['정다섯', '한여섯', '윤일곱', '장여덟']) await seedAttendee(session.id, name);
+
+    aiStub.extract.mockResolvedValueOnce({
+      commands: [step({ action: 'finish_game', courtNo: 3 }), step({ action: 'make_game', category: 'MENS' })],
+    });
+    const result = await service.run(session.id, '3번 코트 끝났고 남복 하나 짜줘');
+
+    expect(result.kind).toBe('multi');
+    if (result.kind !== 'multi') return;
+    expect(result.steps.map((s) => s.kind)).toEqual(['action_preview', 'game_preview']);
+    expect(result.steps[0]).toMatchObject({ action: 'finish_game', gameId: game.id });
+    // 미리보기만 — 게임은 아직 진행 중
+    expect((await prisma.game.findUniqueOrThrow({ where: { id: game.id } })).status).toBe('PLAYING');
+
+    aiStub.extract.mockResolvedValueOnce({
+      commands: [step({ action: 'unsupported' }), step({ action: 'unsupported' }), step({ action: 'unsupported' }), step({ action: 'unsupported' })],
+    });
+    const many = await service.run(session.id, '아무 말 네 번');
+    expect(many.kind === 'multi' && many.steps.length).toBe(3);
   });
 });

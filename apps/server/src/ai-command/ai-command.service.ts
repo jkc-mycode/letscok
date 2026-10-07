@@ -3,6 +3,7 @@ import {
   AiCommandAction,
   GAME_SIZE,
   IAiCommandResult,
+  IAiCommandStep,
   IAiCommandTarget,
   IAiGuestDraft,
   RecommendationCategory,
@@ -58,7 +59,14 @@ const commandSchema = z.strictObject({
 });
 type Command = z.infer<typeof commandSchema>;
 
-const SYSTEM_PROMPT = `당신은 배드민턴 모임 관제판의 명령 해석기입니다. 운영진이 말하거나 쓴 한 문장을 정해진 동작 하나로 바꿉니다.
+// 한 문장에 명령이 여럿일 수 있다 — 말한 순서대로 최대 3개만 처리
+const MAX_STEPS = 3;
+const commandListSchema = z.strictObject({
+  commands: z.array(commandSchema).describe('말한 순서대로의 명령들. 보통 1개, "끝났고 짜줘"처럼 이어 말하면 여러 개(최대 3개)'),
+});
+
+const SYSTEM_PROMPT = `당신은 배드민턴 모임 관제판의 명령 해석기입니다. 운영진이 말하거나 쓴 한 문장을 정해진 동작으로 바꿉니다.
+한 문장에 요청이 여럿이면("3번 코트 끝났고 남복 하나 짜줘", "민수 휴식하고 준호 불러줘") commands에 말한 순서대로 나눠 담습니다. 요청이 하나면 commands에 하나만 담습니다.
 
 동작:
 - make_game: 다음 게임(4명 조합)을 짜 달라는 요청. 예: "남복 짜줘", "민수랑 준호 넣어서 혼복", "지은이 넣어서 한 게임"
@@ -137,8 +145,16 @@ export class AiCommandService {
 
   async run(sessionId: string, text: string): Promise<IAiCommandResult> {
     await this.sessionsService.findOpenSessionOrThrow(sessionId); // 닫힌 모임에 AI 비용을 쓰지 않게 먼저
-    const command = await this.ai.extract(commandSchema, 'operation_command', SYSTEM_PROMPT, text.trim(), FALLBACK);
+    const { commands } = await this.ai.extract(commandListSchema, 'operation_command', SYSTEM_PROMPT, text.trim(), FALLBACK);
+    const list = commands.slice(0, MAX_STEPS);
+    if (list.length === 0) return { kind: 'message', text: UNCLEAR_MESSAGE };
+    // 단계마다 지금 상태로 따로 계산 — 앞 단계를 실행하기 전 기준이라, 웹이 실시간 화면으로 바뀐 점을 다시 표시한다
+    const steps: IAiCommandStep[] = [];
+    for (const command of list) steps.push(await this.runOne(sessionId, command));
+    return steps.length === 1 ? steps[0] : { kind: 'multi', steps };
+  }
 
+  private async runOne(sessionId: string, command: Command): Promise<IAiCommandStep> {
     switch (command.action) {
       case 'check_in':
         return { kind: 'check_in', result: await this.aiCheckIn.applyNames(sessionId, command.checkInTargets) };
@@ -192,11 +208,11 @@ export class AiCommandService {
     return { ok: false, notFound, resolved, unresolved };
   }
 
-  private notFoundMessage(names: string[]): IAiCommandResult {
+  private notFoundMessage(names: string[]): IAiCommandStep {
     return { kind: 'message', text: `오늘 출석자 중에 ${names.map((n) => `${n}님`).join(', ')}이(가) 없어요.` };
   }
 
-  private async makeGame(sessionId: string, command: Command): Promise<IAiCommandResult> {
+  private async makeGame(sessionId: string, command: Command): Promise<IAiCommandStep> {
     const category = command.category as RecommendationCategory;
     const found = await this.resolve(sessionId, command.people.slice(0, 4));
     if (!found.ok) {
@@ -222,7 +238,7 @@ export class AiCommandService {
   }
 
   // 게임 종료 — 코트 번호가 있으면 그 코트, 없으면 말한 사람이 뛰고 있는 게임
-  private async finishGame(sessionId: string, command: Command): Promise<IAiCommandResult> {
+  private async finishGame(sessionId: string, command: Command): Promise<IAiCommandStep> {
     const playing = await this.prisma.game.findMany({
       where: { sessionId, status: 'PLAYING' },
       include: { court: true, players: { include: { attendance: { include: { member: true } } } } },
@@ -251,7 +267,7 @@ export class AiCommandService {
 
   // 게스트 추가 미리보기 — 만들기·체크인은 하지 않는다(운영진이 성별·급수를 확인·보충한 뒤 웹이 실행)
   // 같은 이름 게스트가 있으면 그 사람으로(서버도 이름+생년월일 없음 중복을 막는다), 오늘 이미 왔으면 할 일 없음으로 표시
-  private async guestPreview(sessionId: string, command: Command): Promise<IAiCommandResult> {
+  private async guestPreview(sessionId: string, command: Command): Promise<IAiCommandStep> {
     const spoken = [...new Map(command.guests.map((g) => [normalizeName(g.name), g])).values()]
       .filter((g) => normalizeName(g.name))
       .slice(0, 6);
@@ -279,7 +295,7 @@ export class AiCommandService {
   }
 
   // 상황 질문 — AI는 질문 종류만 골랐다. 사람·숫자·문장은 전부 여기서 지금 DB 상태로 만든다
-  private async answer(sessionId: string, command: Command): Promise<IAiCommandResult> {
+  private async answer(sessionId: string, command: Command): Promise<IAiCommandStep> {
     const now = Date.now();
     const [attendees, games, courts] = await Promise.all([
       this.todayAttendees(sessionId),
@@ -394,7 +410,7 @@ export class AiCommandService {
     sessionId: string,
     action: 'rest' | 'resume' | 'call',
     people: string[],
-  ): Promise<IAiCommandResult> {
+  ): Promise<IAiCommandStep> {
     if (people.length === 0) return { kind: 'message', text: '누구를 말씀하시는지 이름을 함께 말해 주세요.' };
     const found = await this.resolve(sessionId, people.slice(0, 4));
     if (!found.ok) {

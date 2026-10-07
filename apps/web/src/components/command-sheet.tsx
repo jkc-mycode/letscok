@@ -5,6 +5,7 @@ import {
   Gender,
   Grade,
   IAiCommandResult,
+  IAiCommandStep,
   IAiGuestDraft,
   IMember,
   IAttendance,
@@ -14,7 +15,7 @@ import {
   IPushCallResult,
   RecommendationCategory,
 } from '@letscok/shared-types';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { GradeBadge } from '@/components/badges';
 import { GRADES } from '@/components/multi-member-form';
 import { Sheet } from '@/components/sheet';
@@ -25,7 +26,7 @@ import { useSpeech } from '@/lib/use-speech';
 // AI 운영 명령 — 문장을 보내면 서버가 미리보기만 돌려주고, 운영진이 [확인]해야 기존 API로 실행한다
 // (체크인만 예외: 기존 AI 체크인 규칙대로 확실한 사람은 바로 체크인된다)
 
-const EXAMPLES = ['남복 짜줘', '민수랑 준호 넣어서 혼복', '3번 코트 끝났어', '민수 휴식', '홍길동 체크인', '게스트 홍길동 남자 C급 추가', '누가 제일 오래 기다렸어?'];
+const EXAMPLES = ['남복 짜줘', '민수랑 준호 넣어서 혼복', '3번 코트 끝났고 남복 하나 짜줘', '민수 휴식', '홍길동 체크인', '게스트 홍길동 남자 C급 추가', '누가 제일 오래 기다렸어?'];
 
 const CATEGORY_LABEL: Record<RecommendationCategory, string> = {
   ALL: '전체',
@@ -94,6 +95,32 @@ export function CommandSheet({
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<IAiCommandResult | null>(null);
+  // 한 문장에 여러 명령 — 지금 단계(result) 뒤에 남은 단계들. 단계를 마치면 시트를 닫지 않고 다음 단계로
+  const [pending, setPending] = useState<IAiCommandStep[]>([]);
+  const pendingRef = useRef<IAiCommandStep[]>([]);
+  const [step, setStep] = useState<{ index: number; total: number } | null>(null);
+  const setQueue = (steps: IAiCommandStep[]) => {
+    pendingRef.current = steps;
+    setPending(steps);
+  };
+  // 이번 단계 끝 — 남은 단계가 있으면 다음 단계, 없으면 닫기(stay=true면 열어 둔 채 결과만 비움: 호출·게스트처럼 결과 한 줄을 보여 줄 때)
+  const next = (stay = false) => {
+    const [head, ...rest] = pendingRef.current;
+    if (head) {
+      setResult(head);
+      setQueue(rest);
+      setStep((prev) => (prev ? { ...prev, index: prev.index + 1 } : prev));
+      return;
+    }
+    setStep(null);
+    if (stay) setResult(null);
+    else onClose();
+  };
+  // 실행을 마친 단계 — 다음 단계가 있으면 방금 한 일을 한 줄로 남기고 넘어간다(마지막이면 닫기)
+  const done = (text: string) => {
+    if (pendingRef.current.length > 0) setNotice(text);
+    next();
+  };
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null); // 실행 결과 한 줄(호출 "2대 전송" 등)
   // 음성 인식이 잘못 적은 용어·이름을 바로잡을 기준 — 오늘 온 사람(퇴장 제외)
@@ -117,14 +144,22 @@ export function CommandSheet({
     setError(null);
     setNotice(null);
     setResult(null);
+    setQueue([]);
+    setStep(null);
     try {
-      setResult(
-        await api<IAiCommandResult>(`/sessions/${sessionId}/ai-command`, {
-          method: 'POST',
-          admin: true,
-          body: { text: trimmed },
-        }),
-      );
+      const answer = await api<IAiCommandResult>(`/sessions/${sessionId}/ai-command`, {
+        method: 'POST',
+        admin: true,
+        body: { text: trimmed },
+      });
+      if (answer.kind === 'multi') {
+        const [first, ...rest] = answer.steps;
+        setResult(first ?? null);
+        setQueue(rest);
+        setStep({ index: 1, total: answer.steps.length });
+      } else {
+        setResult(answer);
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : '명령을 처리하지 못했어요. 잠시 후 다시 시도해주세요.');
     } finally {
@@ -172,7 +207,7 @@ export function CommandSheet({
     void run(async () => {
       if (preview.action === 'finish_game' && preview.gameId) {
         await api(`/games/${preview.gameId}/finish`, { method: 'PATCH', admin: true });
-        onClose();
+        done(preview.label);
         return;
       }
       if (preview.action === 'call') {
@@ -181,14 +216,14 @@ export function CommandSheet({
           devices += (await api<IPushCallResult>(`/attendances/${t.attendanceId}/call`, { method: 'POST', admin: true })).devices;
         }
         // 호출은 결과를 보여 주고 시트를 닫지 않는다(알림 미등록이면 직접 불러야 해서)
-        setResult(null);
         setNotice(devices > 0 ? `${devices}대에 알림을 보냈어요` : '알림을 등록하지 않은 분이에요. 직접 불러주세요');
+        next(true);
         return;
       }
       for (const t of preview.targets) {
         await api(`/attendances/${t.attendanceId}/${preview.action}`, { method: 'PATCH' });
       }
-      onClose();
+      done(preview.label);
     });
 
   // 게스트 추가 — 새 게스트는 등록 후 체크인, 등록된 게스트는 체크인만(수동 체크인과 같은 API). 콕 확인은 명단에서 따로
@@ -213,7 +248,6 @@ export function CommandSheet({
         }
       }
       const ok = guests.length - failed.length;
-      setResult(null);
       setNotice(
         [
           ok > 0 ? `게스트 ${ok}명 체크인했어요. 콕을 내면 명단 맨 위에서 [콕 확인]을 눌러 주세요` : '',
@@ -222,6 +256,7 @@ export function CommandSheet({
           .filter(Boolean)
           .join(' · '),
       );
+      next(true);
     });
 
   const addGame = (recommendation: IGameRecommendation) =>
@@ -231,7 +266,7 @@ export function CommandSheet({
         admin: true,
         body: { attendanceIds: recommendation.players.map((p) => p.attendanceId) },
       });
-      onClose();
+      done(`${recommendation.players.map((p) => p.name).join(', ')} 대기 조합에 넣었어요`);
     });
 
   return (
@@ -339,6 +374,17 @@ export function CommandSheet({
       {!speech.listening && sending && <p className="py-6 text-center text-sm text-court">알아듣는 중이에요…</p>}
       {error && <p className="rounded-xl border border-coral/40 bg-coral/10 p-3 text-sm text-coral">{error}</p>}
       {notice && <p className="rounded-xl border border-court/40 bg-court/10 p-3 text-sm text-court">✓ {notice}</p>}
+      {/* 여러 명령 — 몇 번째 단계인지, 실행할 것이 없는 단계는 [다음], 원치 않는 단계는 [건너뛰기] */}
+      {step && result && !sending && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-faint">
+            {step.index}/{step.total}단계{pending.length > 0 && ` · 다음: ${stepSummary(pending[0])}`}
+          </span>
+          <button onClick={() => next(true)} className="tap ml-auto h-8 rounded-lg border border-line px-3 text-xs text-dim">
+            {['message', 'answer', 'check_in'].includes(result.kind) ? (pending.length > 0 ? '다음' : '끝') : '건너뛰기'}
+          </button>
+        </div>
+      )}
       {result && !sending && (
         <ResultView
           result={result}
@@ -369,6 +415,8 @@ function ResultView({
   onAddGuests: (guests: GuestPick[]) => void;
 }) {
   switch (result.kind) {
+    case 'multi':
+      return null; // 시트가 단계로 풀어서 넘겨준다
     case 'guest_preview':
       return <GuestPreview guests={result.guests} onConfirm={onAddGuests} />;
     case 'message':
@@ -581,4 +629,24 @@ function GuestPreview({ guests, onConfirm }: { guests: IAiGuestDraft[]; onConfir
       </button>
     </div>
   );
+}
+
+// 다음 단계 한 줄 요약 — "다음: 남복 게임 짜기"
+function stepSummary(step: IAiCommandStep): string {
+  switch (step.kind) {
+    case 'game_preview':
+      return `${CATEGORY_LABEL[step.category]} 게임 짜기`;
+    case 'action_preview':
+      return step.label;
+    case 'choose':
+      return '사람 고르기';
+    case 'guest_preview':
+      return '게스트 추가';
+    case 'answer':
+      return step.title;
+    case 'check_in':
+      return '체크인';
+    default:
+      return '안내';
+  }
 }
