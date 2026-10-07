@@ -50,3 +50,28 @@ export function LogoLoader({ className = '' }: { className?: string }) {
     </div>
   );
 }
+
+// AI 처리 중 — 작은 셔틀콕 + 빛이 훑고 지나가는 문구(.text-shimmer), 문구는 단계별로 넘어간다
+// 실제 진행률을 아는 게 아니라 시간에 맞춘 대략적인 단계라, 마지막 문구에서 멈춰 기다린다
+const STEP_MS = 1600;
+
+export function AiThinking({ steps, note, className = '' }: { steps: string[]; note?: string; className?: string }) {
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    if (index >= steps.length - 1) return;
+    const timer = setTimeout(() => setIndex((i) => i + 1), STEP_MS);
+    return () => clearTimeout(timer);
+  }, [index, steps.length]);
+  return (
+    <div role="status" aria-live="polite" className={`flex items-center gap-3 ${className}`}>
+      <BouncingShuttle size={28} />
+      <div className="flex min-w-0 flex-col gap-0.5">
+        {/* key로 단계마다 다시 그려 살짝 떠오르며 바뀐다 — 떠오르기와 빛 효과는 둘 다 animation이라 요소를 나눈다 */}
+        <p key={index} className="fade-in text-sm font-bold">
+          <span className="text-shimmer">{steps[Math.min(index, steps.length - 1)]}</span>
+        </p>
+        {note && <p className="text-xs text-faint">{note}</p>}
+      </div>
+    </div>
+  );
+}

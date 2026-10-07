@@ -2,6 +2,7 @@
 
 import { IAiCheckInStatus, IReceiptReadResult, ReceiptCategory } from '@letscok/shared-types';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { AiThinking } from '@/components/logo-loader';
 import { Sheet } from '@/components/sheet';
 import { api, ApiError } from '@/lib/api';
 import { shrinkImage } from '@/lib/image';
@@ -311,9 +312,10 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
               }}
             />
             {reading ? (
-              <p className="flex h-11 items-center justify-center rounded-xl border border-court/50 text-sm font-bold text-court opacity-60">
-                영수증을 읽는 중이에요…
-              </p>
+              <AiThinking
+                className="min-h-11 justify-center rounded-xl border border-court/50 px-3 py-2"
+                steps={['영수증을 올리는 중이에요', '영수증을 읽는 중이에요', '품목을 나누는 중이에요']}
+              />
             ) : (
               <div className="flex gap-2">
                 <button

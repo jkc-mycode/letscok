@@ -17,6 +17,7 @@ import {
 } from '@letscok/shared-types';
 import { useMemo, useRef, useState } from 'react';
 import { GradeBadge, PartnerNote } from '@/components/badges';
+import { AiThinking } from '@/components/logo-loader';
 import { GRADES } from '@/components/multi-member-form';
 import { Sheet } from '@/components/sheet';
 import { api, ApiError } from '@/lib/api';
@@ -387,7 +388,12 @@ export function CommandSheet({
           </p>
         </>
       )}
-      {!speech.listening && sending && <p className="py-6 text-center text-sm text-court">알아듣는 중이에요…</p>}
+      {!speech.listening && sending && (
+        <AiThinking
+          className="justify-center py-6"
+          steps={['말을 알아듣는 중이에요', '오늘 출석자와 맞춰 보는 중이에요', '미리보기를 만드는 중이에요']}
+        />
+      )}
       {error && <p className="rounded-xl border border-coral/40 bg-coral/10 p-3 text-sm text-coral">{error}</p>}
       {notice && <p className="rounded-xl border border-court/40 bg-court/10 p-3 text-sm text-court">✓ {notice}</p>}
       {/* 여러 명령 — 몇 번째 단계인지, 실행할 것이 없는 단계는 [다음], 원치 않는 단계는 [건너뛰기] */}

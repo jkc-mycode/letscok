@@ -209,10 +209,39 @@ button:not(:disabled):active {
     animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.3);
   }
 }
+/* AI 처리 중 문구 — 빛이 왼쪽에서 오른쪽으로 훑고 지나간다(components/logo-loader AiThinking) */
+.text-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-court) 0%,
+    var(--color-court) 35%,
+    var(--color-ink) 50%,
+    var(--color-court) 65%,
+    var(--color-court) 100%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: text-shimmer 1.6s linear infinite;
+}
+@keyframes text-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .logo-bounce,
   .logo-shadow {
     animation: none;
+  }
+  .text-shimmer {
+    animation: none;
+    background: none;
+    color: var(--color-court);
   }
 }
 

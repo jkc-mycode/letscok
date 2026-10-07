@@ -8,6 +8,7 @@ import {
 } from '@letscok/shared-types';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { GenderMarker, GradeBadge } from '@/components/badges';
+import { AiThinking } from '@/components/logo-loader';
 import { api, ApiError } from '@/lib/api';
 import { shrinkImage } from '@/lib/image';
 
@@ -33,7 +34,7 @@ export function AiCheckInPanel({
 }) {
   const [enabled, setEnabled] = useState(false);
   const [open, setOpen] = useState(false);
-  const [working, setWorking] = useState<string | null>(null); // 처리 중 안내 문구
+  const [working, setWorking] = useState<{ steps: string[]; note?: string } | null>(null); // 처리 중 안내(단계 문구)
   const [error, setError] = useState<string | null>(null);
   const [command, setCommand] = useState('');
   const [log, setLog] = useState<LogEntry[]>([]); // 이번 모달에서만 유지 — 서버 저장 없음
@@ -53,7 +54,11 @@ export function AiCheckInPanel({
     [attendances],
   );
 
-  const submit = async (input: string, request: () => Promise<IAiCheckInResult>, label: string) => {
+  const submit = async (
+    input: string,
+    request: () => Promise<IAiCheckInResult>,
+    label: { steps: string[]; note?: string },
+  ) => {
     if (working) return;
     setWorking(label);
     setError(null);
@@ -87,7 +92,10 @@ export function AiCheckInPanel({
           body: form,
         });
       },
-      '명단을 읽는 중이에요… (캡처가 많으면 수십 초 걸릴 수 있어요)',
+      {
+        steps: ['캡처를 올리는 중이에요', '명단을 읽는 중이에요', '출석자와 맞춰 보는 중이에요'],
+        note: '캡처가 많으면 수십 초 걸릴 수 있어요',
+      },
     );
   };
 
@@ -102,7 +110,7 @@ export function AiCheckInPanel({
           admin: true,
           body: { text },
         }),
-      '명령을 처리하는 중이에요…',
+      { steps: ['명령을 알아듣는 중이에요', '출석자와 맞춰 보는 중이에요'] },
     );
     setCommand('');
   };
@@ -175,7 +183,7 @@ export function AiCheckInPanel({
             아래 후보 버튼으로, 못 찾은 사람은 검색으로 직접 체크인해주세요.
           </p>
 
-          {working && <p className="text-xs font-medium text-court">{working}</p>}
+          {working && <AiThinking steps={working.steps} note={working.note} />}
           {error && <p className="text-xs font-medium text-coral">{error}</p>}
 
           {log.map((entry) => (
