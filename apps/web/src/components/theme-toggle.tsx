@@ -31,21 +31,3 @@ export function ThemeToggle({ className = '' }: { className?: string }) {
     </div>
   );
 }
-
-// 아이콘 한 개 — 누를 때마다 시스템 → 라이트 → 다크 순서로(태블릿 관제판 헤더용, 자리가 좁아서)
-export function ThemeCycleButton({ className = '' }: { className?: string }) {
-  const [pref, setPref] = useTheme();
-  const index = OPTIONS.findIndex((o) => o.value === pref);
-  const current = OPTIONS[index];
-  const next = OPTIONS[(index + 1) % OPTIONS.length];
-  return (
-    <button
-      onClick={() => setPref(next.value)}
-      aria-label={`화면 테마: ${current.label} (누르면 ${next.label})`}
-      title={`화면 테마: ${current.label} — 누르면 ${next.label}`}
-      className={className}
-    >
-      {current.icon}
-    </button>
-  );
-}

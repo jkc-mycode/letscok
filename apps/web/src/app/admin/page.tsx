@@ -51,7 +51,7 @@ import { ConnectionError } from '@/components/connection-error';
 import { SessionReportModal } from '@/components/session-report-modal';
 import { SettlementModal } from '@/components/settlement-modal';
 import { Sheet } from '@/components/sheet';
-import { ThemeCycleButton, ThemeToggle } from '@/components/theme-toggle';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { ExitGuard } from '@/components/exit-guard';
 import { gamePartnerPeople, GenderMarker, GradeBadge, PartnerNote, Toast } from '@/components/badges';
 import { HomeLink } from '@/components/home-link';
@@ -613,26 +613,22 @@ function BoardBody({
   // 구역마다 폭이 어긋나고 옆 구역이 밀린다. 폰에서는 늘이지도 줄이지도 않고 정확히 화면 폭(w-full)
   const pane = 'flex min-h-0 flex-col gap-3 max-md:w-full max-md:flex-none';
 
-  // 헤더 액션 — 데스크톱은 가로 버튼 줄, 폰은 햄버거 메뉴로 같은 목록을 재사용한다
+  // 더보기 시트의 항목 — 폰·태블릿 공용(태블릿 머리에는 체크인 코드·게임 기록만 따로 펼친다)
   const headerActions: {
     key: string;
     label: string;
-    icon?: string; // 데스크톱에서 아이콘으로만 표시 (도움말)
     keepMenuOpen?: boolean; // 2탭 확인·토글이라 메뉴를 닫으면 안 되는 것
     onClick: () => void;
-    cls: string;
   }[] = [
     {
       key: 'code',
       label: '체크인 코드',
       onClick: () => setCodeOpen(true),
-      cls: 'border-court/50 text-court',
     },
     {
       key: 'log',
       label: '게임 기록',
       onClick: () => setGamesLogOpen(true),
-      cls: 'border-line text-dim',
     },
     {
       key: 'history',
@@ -640,46 +636,31 @@ function BoardBody({
       // 화면 이동 — 더보기 시트를 먼저 닫으면 그 뒤로가기 정리(history.go)가 이동을 되돌릴 수 있어, 닫지 않고 이동한다(이동하면 시트도 사라짐)
       keepMenuOpen: true,
       onClick: () => router.push('/admin/history'),
-      cls: 'border-line text-dim',
     },
     {
       key: 'members',
       label: '모임원 관리',
       onClick: () => setMembersOpen(true),
-      cls: 'border-line text-dim',
     },
     {
       key: 'birthday',
       label: '생일',
       onClick: () => setBirthdayOpen(true),
-      cls: 'border-line text-dim',
     },
     {
       key: 'settlement',
       label: '정산',
       onClick: () => setSettlementOpen(true),
-      cls: 'border-line text-dim',
     },
     {
       key: 'courts',
       label: '코트 관리',
       onClick: () => setCourtsOpen(true),
-      cls: 'border-line text-dim',
     },
-    {
-      key: 'close',
-      label: confirmClose ? '한 번 더 누르면 종료' : '모임 종료',
-      keepMenuOpen: true,
-      onClick: closeSession,
-      cls: confirmClose ? 'border-coral bg-coral/15 text-coral' : 'border-line text-dim',
-    },
-    { key: 'lock', label: '잠금', onClick: onLogout, cls: 'border-transparent text-faint' },
     {
       key: 'help',
       label: '도움말',
-      icon: '?',
       onClick: () => setHelpOpen(true),
-      cls: 'border-line text-dim',
     },
   ];
 
@@ -762,38 +743,38 @@ function BoardBody({
       className="fade-in flex h-dvh flex-col overflow-x-hidden p-2 md:p-4"
     >
       {/* 헤더 */}
-      <header className="flex items-center gap-2 pb-2 md:gap-4 md:pb-3">
+      {/* 머리 — 태블릿은 자주 쓰는 두 개(체크인 코드·게임 기록)만 펼치고 나머지는 폰과 같은 더보기 시트로 */}
+      <header className="flex items-center gap-2 pb-2 md:gap-3 md:pb-3">
         <HomeLink className="shrink-0 transition-opacity hover:opacity-70" title="홈으로">
-          <h1 className="text-base font-bold md:text-xl">
+          <h1 className="text-body font-bold md:text-heading">
             렛츠콕 <span className="text-court">관제판</span>
           </h1>
         </HomeLink>
-        <p className="truncate text-xs text-dim md:text-sm">
+        <p className="truncate text-caption text-dim md:text-body-sm">
           {session.date} · 출석 {presentCount}명
         </p>
-        {/* 데스크톱·태블릿: 가로 버튼 줄 */}
         <div className="ml-auto hidden items-center gap-2 md:flex">
-          <ThemeCycleButton className="h-10 w-10 rounded-lg border border-line text-base text-dim" />
-          {headerActions.map((action) => (
-            <button
-              key={action.key}
-              onClick={action.onClick}
-              title={action.icon ? action.label : undefined}
-              className={`h-10 rounded-lg border text-sm font-medium ${
-                action.icon ? 'w-10 font-bold' : 'px-4'
-              } ${action.cls}`}
-            >
-              {action.icon ?? action.label}
-            </button>
-          ))}
+          <button
+            onClick={() => setCodeOpen(true)}
+            className="h-11 rounded-xl bg-court/15 px-4 text-body-sm font-bold text-court"
+          >
+            체크인 코드
+          </button>
+          <button
+            onClick={() => setGamesLogOpen(true)}
+            className="h-11 rounded-xl bg-panel px-4 text-body-sm font-medium text-dim"
+          >
+            게임 기록
+          </button>
         </div>
-        {/* 폰: 햄버거 (버튼 6개가 한 줄에 안 들어감) */}
         <button
           onClick={() => setMenuOpen(true)}
           aria-label="더보기"
-          className="tap ml-auto h-9 w-9 shrink-0 rounded-lg border border-line text-sm text-dim md:hidden"
+          className="tap ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-panel text-dim md:ml-0 md:h-11 md:w-11"
         >
-          ☰
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+            <path d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
         </button>
       </header>
 
@@ -1086,8 +1067,8 @@ function BoardBody({
         >
           {MORE_GROUPS.map((group) => (
             <div key={group.title} className="flex flex-col gap-1.5">
-              <p className="px-1 text-xs text-faint">{group.title}</p>
-              <div className="flex flex-col overflow-hidden rounded-xl border border-line bg-panel2">
+              <p className="px-1 text-caption font-bold text-dim">{group.title}</p>
+              <div className="flex flex-col overflow-hidden rounded-2xl bg-panel2">
                 {group.keys.map((key) => {
                   const action = headerActions.find((a) => a.key === key);
                   if (!action) return null;
@@ -1098,7 +1079,7 @@ function BoardBody({
                         action.onClick();
                         if (!action.keepMenuOpen) setMenuOpen(false);
                       }}
-                      className="flex h-12 items-center border-b border-line px-4 text-left text-sm font-medium last:border-b-0"
+                      className="flex h-13 items-center border-b border-line/60 px-4 text-left text-body font-medium last:border-b-0"
                     >
                       {action.label}
                       <span className="ml-auto text-faint">›</span>
@@ -1109,22 +1090,22 @@ function BoardBody({
             </div>
           ))}
           <div className="flex flex-col gap-1.5">
-            <p className="px-1 text-xs text-faint">화면</p>
+            <p className="px-1 text-caption font-bold text-dim">화면</p>
             <ThemeToggle />
           </div>
           {/* shrink-0 — overflow-hidden 상자는 세로 목록에서 내용보다 작게 줄어든다. 낮은 폰에서 목록이 넘치면
               스크롤 대신 이 상자가 눌려 [잠금]·[모임 종료]가 납작해지던 문제(위 묶음들은 바깥 div가 있어 안 줄어듦) */}
-          <div className="flex shrink-0 flex-col overflow-hidden rounded-xl border border-line bg-panel2">
+          <div className="flex shrink-0 flex-col overflow-hidden rounded-2xl bg-panel2">
             <button
               onClick={onLogout}
-              className="flex h-12 items-center border-b border-line px-4 text-left text-sm text-dim"
+              className="flex h-13 items-center border-b border-line/60 px-4 text-left text-body text-dim"
             >
               잠금 — 저장된 패스코드 지우기
             </button>
             {/* 2탭 확인(4초) — 첫 탭은 문구만 바뀌고 시트는 그대로 */}
             <button
               onClick={closeSession}
-              className={`flex h-12 items-center px-4 text-left text-sm font-bold ${
+              className={`flex h-13 items-center px-4 text-left text-body font-bold ${
                 confirmClose ? 'bg-coral/15 text-coral' : 'text-coral'
               }`}
             >
