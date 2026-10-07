@@ -277,3 +277,48 @@ describe('page (모임원 관리 목록)', () => {
     expect(stale.map((m) => m.id)).toEqual([never.id]);
   });
 });
+
+describe('생년월일 모름', () => {
+  it('모임원도 생년월일 없이 등록되고, 그땐 같은 이름(모임원·게스트)이 있으면 409', async () => {
+    const unknown = await service.create(memberDto({ name: '모름이', birthDate: undefined }));
+    expect(unknown.birthDate).toBeNull();
+    expect(unknown.isGuest).toBe(false);
+
+    await expect(service.create(memberDto({ name: '모름이', birthDate: undefined }))).rejects.toThrow(
+      '같은 이름이 이미 있어요',
+    );
+    await service.create(memberDto({ name: '손님', isGuest: true }));
+    await expect(service.create(memberDto({ name: '손님', birthDate: undefined }))).rejects.toThrow(ConflictException);
+    // 생년월일을 넣으면 구분되므로 같은 이름이어도 된다
+    const known = await service.create(memberDto({ name: '모름이', birthDate: '1991-01-01' }));
+    expect(known.birthDate).toBe('1991-01-01');
+  });
+
+  it('생년월일 없는 모임원의 이름을 다른 사람 이름으로 바꾸면 409', async () => {
+    await service.create(memberDto({ name: '김가나' }));
+    const unknown = await service.create(memberDto({ name: '박다라', birthDate: undefined }));
+    await expect(service.update(unknown.id, { name: '김가나' })).rejects.toThrow('같은 이름이 이미 있어요');
+  });
+});
+
+describe('page 정렬', () => {
+  it('이름순·급수순·출석 많은 순·최근 등록순', async () => {
+    const b = await service.create(memberDto({ name: '나영', grade: 'A', birthDate: '1990-01-01' }));
+    const a = await service.create(memberDto({ name: '가영', grade: 'C', birthDate: '1990-01-02' }));
+    const c = await service.create(memberDto({ name: '다영', grade: 'B', birthDate: '1990-01-03' }));
+    const session = await prisma.session.create({ data: { date: new Date('2026-01-01'), checkInCode: '0101', status: 'CLOSED' } });
+    await prisma.attendance.create({ data: { sessionId: session.id, memberId: c.id } });
+    // 등록 시각을 직접 벌려 둔다 — 같은 밀리초에 만들어지면 순서가 흔들린다
+    for (const [i, m] of [b, a, c].entries()) {
+      await prisma.member.update({ where: { id: m.id }, data: { createdAt: new Date(Date.UTC(2026, 0, 1 + i)) } });
+    }
+
+    const names = async (sort: 'NAME' | 'GRADE' | 'ATTENDANCE' | 'CREATED') =>
+      (await service.page({ sort })).items.map((m) => m.name);
+
+    expect(await names('NAME')).toEqual(['가영', '나영', '다영']);
+    expect(await names('GRADE')).toEqual(['나영', '다영', '가영']);
+    expect((await names('ATTENDANCE'))[0]).toBe('다영');
+    expect(await names('CREATED')).toEqual(['다영', '가영', '나영']);
+  });
+});

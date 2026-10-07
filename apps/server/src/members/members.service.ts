@@ -9,6 +9,7 @@ import {
   IMemberSummary,
   MEMBER_PAGE_SIZE,
   MemberListFilter,
+  MemberListSort,
 } from '@letscok/shared-types';
 import { toMemberResponse } from '../common/mappers/entity.mappers';
 import { toDateString } from '../common/utils/date.util';
@@ -29,9 +30,11 @@ export class MembersService {
 
   async create(dto: CreateMemberDto): Promise<IMember> {
     // 게스트는 생년월일 없이 등록 (보내와도 무시하고 null 저장 — 게스트 정책)
+    // 모임원도 모르면 비워 둘 수 있다 — 그땐 동명이인을 구분할 수 없어 같은 이름 자체를 막는다
     const birthDate = dto.isGuest || !dto.birthDate ? null : new Date(dto.birthDate);
 
-    await this.assertNoDuplicate(dto.name, birthDate);
+    if (!dto.isGuest && !birthDate) await this.assertNameFree(dto.name);
+    else await this.assertNoDuplicate(dto.name, birthDate);
 
     const member = await this.prisma.member.create({
       data: {
@@ -72,7 +75,7 @@ export class MembersService {
 
   // 모임원 관리 목록 — 탭·검색에 맞는 100명 + 탭별 진짜 전체 인원(검색과 상관없이)
   async page(query: MemberPageQueryDto): Promise<IMemberPage> {
-    const all = await this.summaries();
+    const all = sortSummaries(await this.summaries(), query.sort ?? 'RECENT');
     const filter = query.filter ?? 'ALL';
     const keyword = query.q?.trim() ?? '';
     const page = Number(query.page ?? 1);
@@ -141,6 +144,7 @@ export class MembersService {
           lastAttendedAt: stat?.lastDate ? toDateString(stat.lastDate) : null,
           totalSessions: stat?.totalSessions ?? 0,
           totalGames: stat?.totalGames ?? 0,
+          createdAt: member.createdAt.toISOString(),
         };
       })
       .sort((a, b) => {
@@ -180,6 +184,8 @@ export class MembersService {
       nextBirth?.getTime() !== member.birthDate?.getTime()
     ) {
       await this.assertNoDuplicate(nextName, nextBirth, member.id);
+      // 생년월일 없는 모임원은 이름만으로 구분된다 — 같은 이름이 생기면 안 된다
+      if (!member.isGuest && !promoting && !nextBirth) await this.assertNameFree(nextName, member.id);
     }
 
     const updated = await this.prisma.member.update({
@@ -262,6 +268,16 @@ export class MembersService {
 
   // (이름, 생년월일) 중복 방지 — 등록·수정·복구가 같은 규칙을 공유한다
   // 게스트는 이름+null 매칭이라 같은 이름 게스트 재등록도 걸린다
+  // 같은 이름의 사람이 하나라도 있으면(모임원·게스트, 삭제 제외) 막는다 — 생년월일 없이 등록할 때
+  private async assertNameFree(name: string, excludeId?: string) {
+    const same = await this.prisma.member.findFirst({
+      where: { name, deletedAt: null, ...(excludeId && { id: { not: excludeId } }) },
+    });
+    if (same) {
+      throw new ConflictException('같은 이름이 이미 있어요. 생년월일을 넣어 구분해 주세요.');
+    }
+  }
+
   private async assertNoDuplicate(
     name: string,
     birthDate: Date | null,
@@ -333,4 +349,19 @@ export class MembersService {
     }
     return map;
   }
+}
+
+const GRADE_ORDER = ['A', 'B', 'C', 'D', 'E', 'F'];
+
+// 모임원 관리 정렬 — summaries()는 이미 최근 출석순(RECENT). 나머지는 동률이면 이름순
+function sortSummaries(list: IMemberSummary[], sort: MemberListSort): IMemberSummary[] {
+  if (sort === 'RECENT') return list;
+  const byName = (a: IMemberSummary, b: IMemberSummary) => a.name.localeCompare(b.name, 'ko');
+  const compare: Record<Exclude<MemberListSort, 'RECENT'>, (a: IMemberSummary, b: IMemberSummary) => number> = {
+    NAME: byName,
+    ATTENDANCE: (a, b) => b.totalSessions - a.totalSessions || b.totalGames - a.totalGames || byName(a, b),
+    CREATED: (a, b) => b.createdAt.localeCompare(a.createdAt) || byName(a, b),
+    GRADE: (a, b) => GRADE_ORDER.indexOf(a.grade) - GRADE_ORDER.indexOf(b.grade) || byName(a, b),
+  };
+  return [...list].sort(compare[sort]);
 }

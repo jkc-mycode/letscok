@@ -15,8 +15,8 @@ export class CreateMemberDto implements ICreateMemberDto {
   @Length(1, 20, { message: '이름은 1~20자여야 합니다.' })
   name: string;
 
-  // 게스트는 생년월일을 받지 않는다 (운영진 대리 등록 시 물어볼 수 없음) — 정회원만 필수
-  @ValidateIf((dto: CreateMemberDto) => dto.isGuest !== true)
+  // 생략 가능 — 모르면 비워 두고 나중에 채운다(비우면 서비스가 같은 이름을 막는다). 게스트는 보내와도 null 저장
+  @ValidateIf((dto: CreateMemberDto) => dto.isGuest !== true && dto.birthDate !== undefined && dto.birthDate !== null)
   @Matches(/^\d{4}-\d{2}-\d{2}$/, {
     message: '생년월일은 YYYY-MM-DD 형식이어야 합니다.',
   })

@@ -76,10 +76,13 @@ export interface IMemberSummary extends IMember {
   lastAttendedAt: string | null; // 마지막 출석 세션 날짜 (YYYY-MM-DD) — 없으면 미출석
   totalSessions: number;
   totalGames: number;
+  createdAt: string; // 등록 시각(ISO) — 최근 등록순 정렬
 }
 
 // 모임원 관리 목록 — 탭(전체·모임원·게스트·삭제됨) + 이름 검색 + 100명씩 페이지
 export type MemberListFilter = 'ALL' | 'REGULAR' | 'GUEST' | 'DELETED';
+// 정렬 — 최근 출석(기본)·이름·출석 많은 순·최근 등록·급수(A→F)
+export type MemberListSort = 'RECENT' | 'NAME' | 'ATTENDANCE' | 'CREATED' | 'GRADE';
 export const MEMBER_PAGE_SIZE = 100;
 
 export interface IMemberPage {
@@ -159,7 +162,7 @@ export interface IGamePlayer {
 
 export interface ICreateMemberDto {
   name: string;
-  birthDate?: string; // YYYY-MM-DD — 정회원 필수, 게스트는 생략(서버가 null 저장)
+  birthDate?: string; // YYYY-MM-DD — 생략 가능(모르면 비워 두고 나중에 채움, 게스트는 늘 null). 비우면 같은 이름이 있을 때 409
   grade: Grade;
   gender: Gender; // 신규 등록은 필수 (남/여)
   isGuest: boolean;
