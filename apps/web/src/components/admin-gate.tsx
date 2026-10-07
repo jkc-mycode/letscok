@@ -100,23 +100,29 @@ export function LoginGate({
   };
 
   return (
-    <main className="fade-in flex min-h-dvh flex-col items-center justify-center gap-8 p-6">
+    // 디자인 시스템: 왼쪽 정렬 큰 제목 + 면 입력칸, 주요 버튼 하나를 아래에
+    <main className="fade-in mx-auto flex min-h-dvh w-full max-w-md flex-col gap-7 px-5 pt-2 pb-6">
       {/* 관제판 설치 안내 — 운영진이 /admin에 처음 들어오는 자리가 여기다
           (보드 안쪽은 화면이 빽빽해서 배너를 끼울 자리가 마땅치 않다) */}
-      <div className="w-full max-w-sm">
-        <InstallPrompt app="admin" />
-      </div>
-      <div className="text-center">
-        <HomeLink className="inline-block text-sm font-medium tracking-[0.3em] text-court transition-opacity hover:opacity-70">
-          LETSCOK
-        </HomeLink>
-        <h1 className="mt-2 text-4xl font-bold">{title}</h1>
-        <p className="mt-2 text-dim">{subtitle ?? '운영진 패스코드를 입력해주세요'}</p>
-      </div>
-      <div className="flex w-full max-w-sm flex-col gap-3">
+      <InstallPrompt app="admin" />
+      <HomeLink className="flex h-11 items-center self-start text-caption font-bold tracking-[0.3em] text-court transition-opacity hover:opacity-70">
+        LETSCOK
+      </HomeLink>
+      <header className="flex flex-col gap-4">
+        <AdminMark />
+        <div className="flex flex-col gap-1.5">
+          <h1 className="text-display font-bold">{title}에 들어갈게요</h1>
+          <p className="text-body text-dim">{subtitle ?? '운영진 패스코드를 입력해 주세요'}</p>
+        </div>
+      </header>
+      <div className="flex flex-col gap-2.5">
+        <label htmlFor="admin-passcode" className="text-body-sm font-bold text-dim">
+          패스코드
+        </label>
         {/* 비밀번호 필드가 아니라서 브라우저의 "비밀번호 저장" 팝업이 뜨지 않는다 — 가림은 .text-mask가 담당
             (autocomplete="off"만으로는 크롬이 비밀번호 필드의 저장 제안을 끄지 않는다) */}
         <input
+          id="admin-passcode"
           type="text"
           name="letscok-admin-code"
           autoComplete="off"
@@ -127,26 +133,41 @@ export function LoginGate({
           onChange={(e) => setPasscode(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && void submit()}
           placeholder="패스코드"
-          className="text-mask h-14 rounded-xl border border-line bg-panel px-5 text-lg outline-none focus:border-court"
+          className="text-mask h-14 rounded-xl border-2 border-transparent bg-panel px-4 text-heading outline-none placeholder:text-faint focus:border-court"
         />
+        <p className="text-caption text-faint">한 번 들어오면 이 기기에서는 다시 묻지 않아요</p>
+        {/* 새로 입력해 실패한 에러가 있으면 그쪽이 더 최신 정보라 안내는 숨긴다 */}
+        {notice && !error && <p className="text-body-sm text-amber">{notice}</p>}
+        {error && <p className="text-body-sm text-coral">{error}</p>}
+      </div>
+      <div className="mt-auto flex flex-col gap-3">
+        {slow && (
+          <div className="flex items-center gap-3 rounded-xl bg-panel px-4 py-3">
+            <NetHop size={28} />
+            <p className="text-body-sm text-dim">서버를 깨우는 중이에요. 최대 5분 정도 걸릴 수 있어요.</p>
+          </div>
+        )}
         <button
           onClick={() => void submit()}
           disabled={busy}
-          className="h-14 rounded-xl bg-court text-lg font-bold text-bg disabled:opacity-50"
+          className="h-14 rounded-xl bg-court text-body font-bold text-bg disabled:opacity-50"
         >
-          {busy ? '확인 중...' : '입장'}
+          {busy ? '확인하는 중…' : '입장'}
         </button>
-        {slow && (
-          <div className="flex flex-col items-center gap-2 pt-2">
-            <NetHop size={36} />
-            <p className="text-center text-sm text-dim">서버를 깨우는 중이에요. 최대 5분 정도 걸릴 수 있어요.</p>
-          </div>
-        )}
-        {/* 새로 입력해 실패한 에러가 있으면 그쪽이 더 최신 정보라 안내는 숨긴다 */}
-        {notice && !error && <p className="text-center text-sm text-amber">{notice}</p>}
-        {error && <p className="text-center text-sm text-coral">{error}</p>}
       </div>
     </main>
+  );
+}
+
+// 관제판 앱 아이콘(초록 코트 타일) — 입장 화면 머리
+function AdminMark() {
+  return (
+    <svg width="56" height="56" viewBox="0 0 100 100" fill="none" aria-hidden className="shrink-0">
+      <rect width="100" height="100" rx="22" className="fill-court" />
+      <rect x="24" y="14" width="52" height="72" rx="3" className="stroke-bg" strokeWidth="3" />
+      <path d="M24 36 H76 M24 64 H76 M50 14 V36 M50 64 V86" className="stroke-bg" strokeWidth="2" strokeOpacity="0.6" />
+      <path d="M17 50 H83" stroke="#eaf3ed" strokeWidth="4" strokeLinecap="round" />
+    </svg>
   );
 }
 
