@@ -50,7 +50,7 @@ function HistoryDetail() {
             </p>
             <button
               onClick={() => setReportOpen(true)}
-              className="ml-auto h-9 shrink-0 rounded-lg border border-court/50 px-3 text-sm font-medium text-court"
+              className="ml-auto h-9 shrink-0 rounded-lg bg-court/10 px-3 text-sm font-medium text-court"
             >
               마무리 문구
             </button>
@@ -73,7 +73,7 @@ function HistoryDetail() {
                 <Link
                   key={attendee.memberId}
                   href={`/admin/history/members/${attendee.memberId}`}
-                  className="flex items-center gap-2 rounded-xl border border-line bg-panel p-3 transition-colors hover:border-court/50"
+                  className="flex items-center gap-2 rounded-xl bg-panel p-3 transition-colors hover:bg-panel2"
                 >
                   <GradeBadge grade={attendee.grade} />
                   <span className="font-medium">{attendee.name}</span>
@@ -94,7 +94,7 @@ function HistoryDetail() {
             )}
             <div className="flex flex-col gap-2">
               {detail.games.map((game, index) => (
-                <div key={game.id} className="rounded-xl border border-line bg-panel p-3">
+                <div key={game.id} className="rounded-xl bg-panel p-3">
                   <div className="flex items-center gap-2 text-xs text-dim">
                     <span className="font-bold text-amber">{index + 1}</span>
                     <span>{game.courtNo ? `${game.courtNo}번 코트` : '코트 미상'}</span>

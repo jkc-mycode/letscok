@@ -3,6 +3,7 @@
 import { IAiCheckInStatus, IReceiptReadResult, ReceiptCategory } from '@letscok/shared-types';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AiThinking } from '@/components/logo-loader';
+import { CameraIcon, ImageIcon } from '@/components/icons';
 import { Sheet } from '@/components/sheet';
 import { api, ApiError } from '@/lib/api';
 import { shrinkImage } from '@/lib/image';
@@ -32,7 +33,7 @@ function AmountField({
         inputMode="numeric"
         autoComplete="off"
         placeholder="0"
-        className="tabular h-11 min-w-0 flex-1 rounded-lg border border-line bg-panel2 px-3 text-right text-base outline-none placeholder:text-faint focus:border-court"
+        className="tabular h-11 min-w-0 flex-1 rounded-lg border-2 border-transparent bg-panel2 px-3 text-right text-base outline-none placeholder:text-faint focus:border-court"
       />
       <span className="text-sm text-dim">원</span>
     </label>
@@ -113,7 +114,7 @@ function Counter({
         <button
           onClick={() => onChange(Math.max(0, count - 1))}
           disabled={locked || count === 0}
-          className="h-10 w-10 rounded-lg border border-line text-lg text-dim disabled:opacity-40"
+          className="h-10 w-10 rounded-lg bg-panel2 text-lg text-dim disabled:opacity-40"
         >
           −
         </button>
@@ -124,12 +125,12 @@ function Counter({
           inputMode="numeric"
           autoComplete="off"
           placeholder="0"
-          className="tabular h-10 w-12 rounded-lg border border-line bg-panel2 text-center text-base outline-none placeholder:text-faint focus:border-court"
+          className="tabular h-10 w-12 rounded-lg border-2 border-transparent bg-panel2 text-center text-base outline-none placeholder:text-faint focus:border-court"
         />
         <button
           onClick={() => onChange(count + 1)}
           disabled={locked}
-          className="h-10 w-10 rounded-lg border border-line text-lg text-dim disabled:opacity-40"
+          className="h-10 w-10 rounded-lg bg-panel2 text-lg text-dim disabled:opacity-40"
         >
           +
         </button>
@@ -139,7 +140,7 @@ function Counter({
         onChange={(e) => onNamesChange(e.target.value)}
         autoComplete="off"
         placeholder="이름 (선택, 쉼표나 띄어쓰기로 구분)"
-        className="h-9 rounded-lg border border-line bg-panel2 px-3 text-sm outline-none placeholder:text-faint focus:border-court"
+        className="h-9 rounded-lg border-2 border-transparent bg-panel2 px-3 text-sm outline-none placeholder:text-faint focus:border-court"
       />
     </div>
   );
@@ -313,29 +314,29 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
             />
             {reading ? (
               <AiThinking
-                className="min-h-11 justify-center rounded-xl border border-court/50 px-3 py-2"
+                className="min-h-11 justify-center rounded-xl bg-court/10 px-3 py-2"
                 steps={['영수증을 올리는 중이에요', '영수증을 읽는 중이에요', '품목을 나누는 중이에요']}
               />
             ) : (
               <div className="flex gap-2">
                 <button
                   onClick={() => cameraInput.current?.click()}
-                  className="h-11 flex-1 rounded-xl border border-court/50 text-sm font-bold text-court"
+                  className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-court/10 text-body-sm font-bold text-court"
                 >
-                  📷 영수증 촬영
+                  <CameraIcon /> 영수증 촬영
                 </button>
                 <button
                   onClick={() => fileInput.current?.click()}
-                  className="h-11 flex-1 rounded-xl border border-court/50 text-sm font-bold text-court"
+                  className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-court/10 text-body-sm font-bold text-court"
                 >
-                  🖼 앨범 (최대 {MAX_RECEIPTS}장)
+                  <ImageIcon /> 앨범 (최대 {MAX_RECEIPTS}장)
                 </button>
               </div>
             )}
             {receiptError && <p className="text-xs font-medium text-coral">{receiptError}</p>}
 
             {receipt && (
-              <div className="flex flex-col gap-1 rounded-xl border border-line bg-panel2 p-3">
+              <div className="flex flex-col gap-1 rounded-xl bg-panel2 p-3">
                 <div className="flex items-center pb-1">
                   <p className="text-xs text-dim">분류를 누르면 공통 → 술 → 음료로 바뀌고, 이름·금액은 눌러서 고쳐요</p>
                   <button onClick={() => setReceipt(null)} className="tap ml-auto text-xs text-dim">
@@ -364,7 +365,7 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
                       inputMode="numeric"
                       autoComplete="off"
                       placeholder="0"
-                      className={`tabular h-8 w-24 shrink-0 rounded-md border border-line bg-panel px-2 text-right outline-none placeholder:text-faint focus:border-court ${
+                      className={`tabular h-8 w-24 shrink-0 rounded-md border-2 border-transparent bg-panel2 px-2 text-right outline-none placeholder:text-faint focus:border-court ${
                         amountOf(item.amountText) < 0 ? 'text-coral' : ''
                       }`}
                     />
@@ -418,9 +419,9 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
               inputMode="numeric"
               autoComplete="off"
               placeholder="0"
-              className="tabular h-11 min-w-0 flex-1 rounded-lg border border-line bg-panel2 px-3 text-right text-base outline-none placeholder:text-faint focus:border-court"
+              className="tabular h-11 min-w-0 flex-1 rounded-lg border-2 border-transparent bg-panel2 px-3 text-right text-base outline-none placeholder:text-faint focus:border-court"
             />
-            <div className="flex shrink-0 overflow-hidden rounded-lg border border-line text-sm">
+            <div className="flex shrink-0 overflow-hidden rounded-lg bg-panel2 text-sm">
               {(['won', 'percent'] as const).map((unit) => (
                 <button
                   key={unit}
@@ -477,7 +478,7 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
                 value={date}
                 max={todayInput()}
                 onChange={(e) => e.target.value && setDate(e.target.value)} // 지우기 버튼으로 빈 값이 오면 무시
-                className="h-10 min-w-0 flex-1 rounded-lg border border-line bg-panel2 px-2 text-sm outline-none focus:border-court"
+                className="h-10 min-w-0 flex-1 rounded-lg border-2 border-transparent bg-panel2 px-2 text-sm outline-none focus:border-court"
               />
             )}
           </div>
@@ -487,7 +488,7 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
             autoComplete="off"
             maxLength={30}
             placeholder="가게 이름 (선택)"
-            className="h-10 rounded-lg border border-line bg-panel2 px-3 text-sm outline-none placeholder:text-faint focus:border-court"
+            className="h-10 rounded-lg border-2 border-transparent bg-panel2 px-3 text-sm outline-none placeholder:text-faint focus:border-court"
           />
         </div>
 
@@ -500,7 +501,7 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
               {result.shares.map((s) => (
                 <div
                   key={s.group.key}
-                  className="flex items-center rounded-lg border border-line bg-panel2 px-3 py-2 text-sm"
+                  className="flex items-center rounded-lg bg-panel2 px-3 py-2 text-sm"
                 >
                   <span className="font-medium">{s.group.label}</span>
                   <span className="ml-1.5 text-xs text-faint">{s.group.count}명</span>
@@ -528,7 +529,7 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
                     value={text}
                     rows={text.split('\n').length}
                     onFocus={(e) => e.currentTarget.select()}
-                    className="resize-none rounded-lg border border-line bg-panel2 p-3 text-sm outline-none"
+                    className="resize-none rounded-lg bg-panel2 p-3 text-sm outline-none"
                   />
                 </>
               )}

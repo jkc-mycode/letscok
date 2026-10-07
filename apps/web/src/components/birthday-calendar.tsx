@@ -42,7 +42,7 @@ function daysUntil(b: Birthday, today: Date): { days: number; date: Date } {
 
 function MemberLine({ member, note }: { member: IMemberSummary; note?: string }) {
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-line bg-panel2 px-3 py-2 text-sm">
+    <div className="flex items-center gap-2 rounded-lg bg-panel2 px-3 py-2 text-sm">
       <GradeBadge grade={member.grade} />
       <span className="font-medium">{member.name}</span>
       <GenderMarker gender={member.gender} />
@@ -137,7 +137,7 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
           <>
             {/* 월 이동 */}
             <div className="flex items-center justify-between">
-              <button onClick={() => moveMonth(-1)} className="h-9 w-9 rounded-lg border border-line text-dim">
+              <button onClick={() => moveMonth(-1)} className="h-9 w-9 rounded-lg bg-panel2 text-dim">
                 ‹
               </button>
               <button
@@ -150,7 +150,7 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
               >
                 {view.year}년 {view.month}월
               </button>
-              <button onClick={() => moveMonth(1)} className="h-9 w-9 rounded-lg border border-line text-dim">
+              <button onClick={() => moveMonth(1)} className="h-9 w-9 rounded-lg bg-panel2 text-dim">
                 ›
               </button>
             </div>

@@ -55,6 +55,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { ExitGuard } from '@/components/exit-guard';
 import { gamePartnerPeople, GenderMarker, GradeBadge, PartnerNote, Toast } from '@/components/badges';
 import { HomeLink } from '@/components/home-link';
+import { MegaphoneIcon } from '@/components/icons';
 import { LogoLoader } from '@/components/logo-loader';
 import { MotionCard } from '@/components/motion-card';
 import { GRADES, MultiMemberForm, NewMemberBody } from '@/components/multi-member-form';
@@ -1271,7 +1272,7 @@ function RecommendModal({
           <p className="min-w-0 text-xs text-faint">참고용이에요 — 넣을지는 운영진 마음!</p>
           <button
             onClick={() => void load()}
-            className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm text-dim"
+            className="ml-auto h-9 shrink-0 rounded-lg bg-panel2 px-3 text-sm text-dim"
           >
             다시 추천
           </button>
@@ -1465,7 +1466,7 @@ function CodeEditor({
         inputMode="numeric"
         placeholder="공지 작성월일 4자리 (예: 0715)"
         autoComplete="off"
-        className="tabular h-12 w-full rounded-lg border border-line bg-panel2 text-center font-mono text-lg tracking-[0.2em] outline-none placeholder:font-sans placeholder:text-xs placeholder:tracking-normal focus:border-court"
+        className="tabular h-12 w-full rounded-lg border-2 border-transparent bg-panel2 text-center font-mono text-lg tracking-[0.2em] outline-none placeholder:font-sans placeholder:text-xs placeholder:tracking-normal focus:border-court"
       />
       <p className="text-caption leading-relaxed text-faint">
         바꾼 코드는 다음 모임에도 그대로 이어져요 — 공지를 새로 올릴 때만 바꾸면 돼요
@@ -1473,7 +1474,7 @@ function CodeEditor({
       <div className="flex gap-2">
         <button
           onClick={() => setOpen(false)}
-          className="h-11 flex-1 rounded-lg border border-line text-sm text-dim"
+          className="h-11 flex-1 rounded-lg bg-panel2 text-sm text-dim"
         >
           취소
         </button>
@@ -1678,7 +1679,7 @@ function MemoPanel({
   };
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col rounded-2xl border border-line bg-panel/70">
+    <section className="flex min-h-0 flex-1 flex-col rounded-2xl bg-panel">
       <h2 className="flex items-center gap-2 px-4 pt-3 pb-2 text-sm font-bold text-sky">
         메모
         <span className="tabular font-mono text-xs text-faint">{memos.length}</span>
@@ -1721,12 +1722,12 @@ function MemoPanel({
           onKeyDown={(e) => e.key === 'Enter' && add()}
           maxLength={200}
           placeholder="메모 — 모임 끝나도 유지돼요"
-          className="h-10 min-w-0 flex-1 rounded-lg border border-line bg-panel2 px-3 text-sm outline-none focus:border-court"
+          className="h-10 min-w-0 flex-1 rounded-lg border-2 border-transparent bg-panel2 px-3 text-sm outline-none focus:border-court"
         />
         <button
           onClick={add}
           disabled={!input.trim() || busy}
-          className="h-10 shrink-0 rounded-lg border border-court/40 px-3 text-sm font-medium text-court disabled:opacity-50"
+          className="h-10 shrink-0 rounded-lg bg-court/10 px-3 text-sm font-medium text-court disabled:opacity-50"
         >
           추가
         </button>
@@ -1960,7 +1961,7 @@ function ManualCheckInModal({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="모임원 이름을 검색하세요"
-          className="h-12 rounded-xl border border-line bg-panel2 px-4 outline-none focus:border-court"
+          className="h-12 rounded-xl border-2 border-transparent bg-panel2 px-4 outline-none focus:border-court"
         />
         <p className="pt-2 text-xs text-faint">
           탭해서 선택한 뒤 아래 [체크인] 버튼을 누르면 한 번에 처리돼요. 검색에 없으면 아래 [신규
@@ -2034,7 +2035,7 @@ function ManualCheckInModal({
                 <button
                   key={member.id}
                   onClick={() => toggle(member)}
-                  className="flex items-center gap-1 rounded-lg border border-court/40 bg-court/10 px-2 py-1 text-xs font-medium text-court"
+                  className="flex items-center gap-1 rounded-lg bg-court/10 px-2 py-1 text-xs font-medium text-court"
                 >
                   {member.name}
                   <span className="text-faint">✕</span>
@@ -2056,7 +2057,7 @@ function ManualCheckInModal({
           {!regOpen ? (
             <button
               onClick={() => setRegOpen(true)}
-              className="min-h-11 w-full rounded-xl border border-sky/40 px-3 text-sm font-medium whitespace-normal text-sky"
+              className="min-h-11 w-full rounded-xl bg-sky/10 px-3 text-sm font-medium whitespace-normal text-sky"
             >
               + 신규 등록 — 검색에 없는 인원 (여러 명 가능)
             </button>
@@ -2214,7 +2215,7 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="이름으로 검색"
-          className="h-11 rounded-xl border border-line bg-panel2 px-4 text-sm outline-none focus:border-court"
+          className="h-11 rounded-xl border-2 border-transparent bg-panel2 px-4 text-sm outline-none focus:border-court"
         />
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {FILTER_TABS.map((tab) => (
@@ -2233,7 +2234,7 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
           {staleGuests.length > 0 && (
             <button
               onClick={() => setCleanupOpen(true)}
-              className="tap ml-auto h-8 rounded-lg border border-amber/40 px-3 text-xs font-medium text-amber"
+              className="tap ml-auto h-8 rounded-lg bg-amber/10 px-3 text-xs font-medium text-amber"
             >
               오래 안 온 게스트 정리 ({staleGuests.length})
             </button>
@@ -2251,7 +2252,7 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
             <button
               key={member.id}
               onClick={() => setEditTarget(member)}
-              className={`flex items-center gap-2 rounded-xl border border-line bg-panel2 p-3 text-left text-sm ${
+              className={`flex items-center gap-2 rounded-xl bg-panel2 p-3 text-left text-sm ${
                 member.deletedAt ? 'opacity-50' : ''
               }`}
             >
@@ -2271,7 +2272,7 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
         {/* 등록 — 체크인 없이 명단에만 추가 (모임 전 사전 등록용). 모임 중 즉석 등록+체크인은 [수동 체크인]의 [신규 등록] */}
         <button
           onClick={() => setRegisterOpen(true)}
-          className="mt-3 h-11 shrink-0 rounded-xl border border-sky/40 text-sm font-medium text-sky"
+          className="mt-3 h-11 shrink-0 rounded-xl bg-sky/10 text-sm font-medium text-sky"
         >
           + 신규 등록
         </button>
@@ -2426,7 +2427,7 @@ function MemberEditSheet({
             onChange={(e) => setName(e.target.value)}
             maxLength={20}
             placeholder="이름"
-            className="h-11 rounded-xl border border-line bg-panel2 px-4 text-sm outline-none focus:border-court"
+            className="h-11 rounded-xl border-2 border-transparent bg-panel2 px-4 text-sm outline-none focus:border-court"
           />
 
           {member.isGuest && (
@@ -2449,7 +2450,7 @@ function MemberEditSheet({
                 value={birth}
                 onChange={(e) => setBirth(formatBirthInput(e.target.value))}
                 placeholder="생년월일 8자리 (예: 19970312)"
-                className="h-11 w-full rounded-xl border border-line bg-panel2 px-4 text-sm outline-none focus:border-court"
+                className="h-11 w-full rounded-xl border-2 border-transparent bg-panel2 px-4 text-sm outline-none focus:border-court"
               />
               {birthDigits.length === 8 && !birthDate && (
                 <p className="mt-1 text-xs text-coral">날짜가 올바르지 않아요</p>
@@ -2531,7 +2532,7 @@ function MemberEditSheet({
               })
             }
             disabled={busy}
-            className="min-h-11 rounded-xl border border-court/40 px-3 text-sm font-bold whitespace-normal text-court disabled:opacity-50"
+            className="min-h-11 rounded-xl bg-court/10 px-3 text-sm font-bold whitespace-normal text-court disabled:opacity-50"
           >
             복구 — 명단에 다시 표시
           </button>
@@ -2748,7 +2749,7 @@ function TodayGamesModal({
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="이름으로 검색"
-        className="mb-3 h-11 rounded-lg border border-line bg-panel2 px-3 text-sm outline-none focus:border-court"
+        className="mb-3 h-11 rounded-lg border-2 border-transparent bg-panel2 px-3 text-sm outline-none focus:border-court"
       />
       {q && detail && (
         <p className="pb-2 text-xs text-dim">
@@ -2871,7 +2872,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
   {
     title: 'AI 체크인 (수동 체크인 안)',
     items: [
-      '[수동 체크인] → [✨ AI 체크인]에서 소모임 참석 신청 목록 캡처(최대 4장)를 올리면, 명단과 이름이 확실히 맞는 사람만 자동으로 체크인해요.',
+      '[수동 체크인] → [AI 체크인]에서 소모임 참석 신청 목록 캡처(최대 4장)를 올리면, 명단과 이름이 확실히 맞는 사람만 자동으로 체크인해요.',
       '성+이름이 한 명과 정확히 맞을 때만 자동이에요. 동명이인·이름만 적힌 경우는 후보 버튼으로, 별명·못 찾은 사람은 검색으로 직접 체크인해주세요.',
       '"97년생 김민수 체크인해줘"처럼 문장으로도 돼요. 체크인 말고 다른 요청은 처리하지 않아요.',
       '잘못 잡힌 사람은 결과 카드의 이름 옆 ✕로 바로 취소할 수 있어요(콕 확인 전까지).',
@@ -3022,7 +3023,7 @@ function CourtsManager({
             onChange={(e) => setCourtNo(e.target.value.replace(/\D/g, '').slice(0, 2))}
             onKeyDown={(e) => e.key === 'Enter' && add()}
             placeholder="코트 번호"
-            className="h-11 min-w-0 flex-1 rounded-xl border border-line bg-panel2 px-4 text-sm outline-none focus:border-court"
+            className="h-11 min-w-0 flex-1 rounded-xl border-2 border-transparent bg-panel2 px-4 text-sm outline-none focus:border-court"
           />
           <button onClick={add} disabled={!courtNo} className="h-11 rounded-xl bg-court px-5 text-sm font-bold text-bg disabled:opacity-50">
             추가
@@ -3038,7 +3039,7 @@ function CourtsManager({
         return (
           <div
             key={court.id}
-            className="flex items-center gap-2 rounded-xl border border-line bg-panel2 p-3"
+            className="flex items-center gap-2 rounded-xl bg-panel2 p-3"
           >
             <span className="font-bold">{court.courtNo}번 코트</span>
             {inGame && <span className="text-xs text-court">게임 중</span>}
@@ -3064,7 +3065,7 @@ function CourtsManager({
               onClick={() => void run(() => api(`/courts/${court.id}`, { method: 'DELETE', admin: true }))}
               disabled={inGame}
               title={inGame ? '게임 진행 중' : '코트 해제'}
-              className="h-9 rounded-lg border border-line px-3 text-xs text-dim disabled:opacity-30"
+              className="h-9 rounded-lg bg-panel2 px-3 text-xs text-dim disabled:opacity-30"
             >
               해제
             </button>
@@ -3210,7 +3211,7 @@ function CourtCard({
           <button
             onClick={() => void setTurn(false)}
             title="이번 차례를 다른 모임에 양보"
-            className="mt-3 h-9 w-full rounded-lg border border-line text-xs text-dim"
+            className="mt-3 h-9 w-full rounded-lg bg-panel2 text-xs text-dim"
           >
             다른 모임 차례로 넘기기
           </button>
@@ -3543,7 +3544,7 @@ function SlotFillSheet({
             key={attendance.id}
             onClick={() => pick(attendance.id)}
             disabled={busy}
-            className="flex shrink-0 items-center gap-1.5 rounded-xl border border-line bg-panel2 p-3 text-left text-sm disabled:opacity-50"
+            className="flex shrink-0 items-center gap-1.5 rounded-xl bg-panel2 p-3 text-left text-sm disabled:opacity-50"
           >
             <GradeBadge grade={member.grade} />
             <span className="min-w-0 truncate font-medium">{member.name}</span>
@@ -3830,7 +3831,7 @@ function CallButton({
   idleCls,
 }: {
   path: string;
-  label: string;
+  label: React.ReactNode; // 글자 또는 아이콘 + 글자
   title: string;
   className: string; // 크기·테두리만 — 글자색은 상태별로 갈리므로 idleCls로 따로 받는다
   idleCls: string;
@@ -4083,18 +4084,22 @@ function WaitingActionSheet({
     >
       <CallButton
         path={`/attendances/${attendance.id}/call`}
-        label="📣 호출 — 폰으로 '운영진이 찾고 있어요' 알림"
+        label={
+          <span className="flex items-center gap-2">
+            <MegaphoneIcon /> 호출 — 폰으로 &lsquo;운영진이 찾고 있어요&rsquo; 알림
+          </span>
+        }
         title="이 분 폰으로 알림을 보내요"
-        className={`${row} border border-line`}
+        className={`${row} bg-panel2`}
         idleCls="text-ink"
       />
       {resting && (
-        <button onClick={() => act('resume', false)} className={`${row} border border-sky/40 text-sky`}>
+        <button onClick={() => act('resume', false)} className={`${row} bg-sky/10 text-sky`}>
           복귀 — 대기로 돌아가기(대기시간 새로 시작)
         </button>
       )}
       {!busy && !resting && (
-        <button onClick={() => act('rest', false)} className={`${row} border border-line text-ink`}>
+        <button onClick={() => act('rest', false)} className={`${row} bg-panel2 text-ink`}>
           휴식 — 게임 조합에서 잠깐 빼기
         </button>
       )}
@@ -4104,7 +4109,7 @@ function WaitingActionSheet({
           confirmLabel="한 번 더 누르면 콕 확인 취소"
           onConfirm={() => act('shuttle/cancel', true)}
           className={row}
-          idleCls="border border-line text-amber"
+          idleCls="bg-panel2 text-amber"
         />
       )}
       {!busy && (
@@ -4113,7 +4118,7 @@ function WaitingActionSheet({
           confirmLabel="한 번 더 누르면 퇴장"
           onConfirm={() => act('leave', true)}
           className={row}
-          idleCls="border border-coral/40 text-coral"
+          idleCls="bg-coral/10 text-coral"
         />
       )}
     </Sheet>

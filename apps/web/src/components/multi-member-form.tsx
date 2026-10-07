@@ -106,7 +106,7 @@ export function MultiMemberForm({
           >
             <div className="flex items-center gap-1.5">
               <span className="w-5 shrink-0 text-center text-xs text-faint">{index + 1}</span>
-              <div className="flex shrink-0 overflow-hidden rounded-lg border border-line text-xs font-bold">
+              <div className="flex shrink-0 overflow-hidden rounded-lg bg-panel2 text-xs font-bold">
                 <button
                   onClick={() => update(row.key, { isGuest: false })}
                   className={`h-9 px-2.5 ${!row.isGuest ? 'bg-court/15 text-court' : 'text-dim'}`}
@@ -126,7 +126,7 @@ export function MultiMemberForm({
                 onChange={(e) => update(row.key, { name: e.target.value })}
                 maxLength={20}
                 placeholder="이름"
-                className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-panel px-3 text-sm outline-none focus:border-sky"
+                className="h-9 min-w-0 flex-1 rounded-lg border-2 border-transparent bg-panel2 px-3 text-sm outline-none focus:border-sky"
               />
               {rows.length > 1 && (
                 <button
@@ -147,7 +147,7 @@ export function MultiMemberForm({
                 value={row.birth}
                 onChange={(e) => update(row.key, { birth: formatBirthInput(e.target.value) })}
                 placeholder="생년월일 8자리 (예: 19970312)"
-                className="h-9 rounded-lg border border-line bg-panel px-3 text-sm outline-none focus:border-court"
+                className="h-9 rounded-lg border-2 border-transparent bg-panel2 px-3 text-sm outline-none focus:border-court"
               />
             )}
             {!row.isGuest && birthDigits.length === 8 && !parseBirthDate(row.birth) && (

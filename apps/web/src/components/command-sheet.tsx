@@ -17,6 +17,7 @@ import {
 } from '@letscok/shared-types';
 import { useMemo, useRef, useState } from 'react';
 import { GradeBadge, PartnerNote } from '@/components/badges';
+import { AlertIcon, MicIcon, StopIcon } from '@/components/icons';
 import { AiThinking } from '@/components/logo-loader';
 import { GRADES } from '@/components/multi-member-form';
 import { Sheet } from '@/components/sheet';
@@ -293,8 +294,10 @@ export function CommandSheet({
       onClose={onClose}
       header={
         <>
-          <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">🎙 명령</h2>
-          <p className="min-w-0 text-xs text-faint">말하듯 적으면 확인 후 실행해요</p>
+          <h2 className="flex shrink-0 items-center gap-1.5 text-heading font-bold whitespace-nowrap text-court">
+            <MicIcon size={20} /> 명령
+          </h2>
+          <p className="min-w-0 text-caption text-faint">말하듯 적으면 확인 후 실행해요</p>
         </>
       }
       footer={
@@ -304,11 +307,11 @@ export function CommandSheet({
               onClick={speech.listening ? speech.stop : speech.start}
               disabled={sending}
               aria-label={speech.listening ? '말 끝' : '눌러서 말하기'}
-              className={`h-12 w-12 shrink-0 rounded-xl border text-xl disabled:opacity-50 ${
-                speech.listening ? 'border-coral bg-coral/15' : 'border-court/40'
+              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl disabled:opacity-50 ${
+                speech.listening ? 'bg-coral/15 text-coral' : 'bg-panel2 text-court'
               }`}
             >
-              {speech.listening ? '■' : '🎙'}
+              {speech.listening ? <StopIcon size={20} /> : <MicIcon size={22} />}
             </button>
           )}
           <input
@@ -324,7 +327,7 @@ export function CommandSheet({
             enterKeyHint="send"
             maxLength={200}
             placeholder="말하듯 적어 주세요"
-            className="h-12 min-w-0 flex-1 rounded-xl border border-line bg-panel2 px-4 text-sm outline-none placeholder:text-faint focus:border-court"
+            className="h-12 min-w-0 flex-1 rounded-xl border-2 border-transparent bg-panel2 px-4 text-sm outline-none placeholder:text-faint focus:border-court"
           />
           <button
             onClick={() => void send()}
@@ -340,7 +343,9 @@ export function CommandSheet({
         <div className="flex flex-col items-center gap-4 py-4 text-center">
           <span className="relative flex h-16 w-16 items-center justify-center">
             <span className="absolute inset-0 animate-ping rounded-full bg-court/30" />
-            <span className="relative flex h-16 w-16 items-center justify-center rounded-full bg-court/20 text-3xl">🎙</span>
+            <span className="relative flex h-16 w-16 items-center justify-center rounded-full bg-court/20 text-court">
+              <MicIcon size={30} />
+            </span>
           </span>
           <p className="text-sm font-medium text-court">듣고 있어요… 말이 끝나면 저절로 멈춰요</p>
           <p className="min-h-6 text-lg font-bold">{fixSpeech(speech.interim, names)}</p>
@@ -348,7 +353,7 @@ export function CommandSheet({
             <button onClick={speech.stop} className="h-12 rounded-xl bg-court px-6 text-sm font-bold text-bg">
               말 끝
             </button>
-            <button onClick={speech.cancel} className="h-12 rounded-xl border border-line px-5 text-sm text-dim">
+            <button onClick={speech.cancel} className="h-12 rounded-xl bg-panel2 px-5 text-sm text-dim">
               취소
             </button>
           </div>
@@ -358,16 +363,16 @@ export function CommandSheet({
         <p className="text-xs text-faint">들린 말 &ldquo;{heardRaw}&rdquo;을 바로잡았어요</p>
       )}
       {speech.error && !speech.listening && (
-        <p className="rounded-xl border border-coral/40 bg-coral/10 p-3 text-sm text-coral">{speech.error}</p>
+        <p className="rounded-xl bg-coral/10 p-3 text-sm text-coral">{speech.error}</p>
       )}
       {!speech.listening && !result && !sending && !error && !notice && (
         <>
           {speech.supported && (
             <button
               onClick={speech.start}
-              className="flex h-20 items-center justify-center gap-3 rounded-2xl border border-court/40 bg-court/10 text-base font-bold text-court"
+              className="flex h-20 items-center justify-center gap-3 rounded-2xl bg-court/10 text-body font-bold text-court"
             >
-              <span className="text-2xl">🎙</span> 눌러서 말하기
+              <MicIcon size={26} /> 눌러서 말하기
             </button>
           )}
           <p className="text-xs text-dim">이렇게 말해 보세요</p>
@@ -376,7 +381,7 @@ export function CommandSheet({
               <button
                 key={example}
                 onClick={() => setText(example)}
-                className="h-9 rounded-full border border-line px-3 text-sm text-dim"
+                className="h-9 rounded-full bg-panel2 px-3 text-sm text-dim"
               >
                 {example}
               </button>
@@ -394,15 +399,15 @@ export function CommandSheet({
           steps={['말을 알아듣는 중이에요', '오늘 출석자와 맞춰 보는 중이에요', '미리보기를 만드는 중이에요']}
         />
       )}
-      {error && <p className="rounded-xl border border-coral/40 bg-coral/10 p-3 text-sm text-coral">{error}</p>}
-      {notice && <p className="rounded-xl border border-court/40 bg-court/10 p-3 text-sm text-court">✓ {notice}</p>}
+      {error && <p className="rounded-xl bg-coral/10 p-3 text-sm text-coral">{error}</p>}
+      {notice && <p className="rounded-xl bg-court/10 p-3 text-sm text-court">✓ {notice}</p>}
       {/* 여러 명령 — 몇 번째 단계인지, 실행할 것이 없는 단계는 [다음], 원치 않는 단계는 [건너뛰기] */}
       {step && result && !sending && (
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-faint">
             {step.index}/{step.total}단계{pending.length > 0 && ` · 다음: ${stepSummary(pending[0])}`}
           </span>
-          <button onClick={() => next(true)} className="tap ml-auto h-8 rounded-lg border border-line px-3 text-xs text-dim">
+          <button onClick={() => next(true)} className="tap ml-auto h-8 rounded-lg bg-panel2 px-3 text-xs text-dim">
             {['message', 'answer', 'check_in'].includes(result.kind) ? (pending.length > 0 ? '다음' : '끝') : '건너뛰기'}
           </button>
         </div>
@@ -442,11 +447,11 @@ function ResultView({
     case 'guest_preview':
       return <GuestPreview guests={result.guests} onConfirm={onAddGuests} />;
     case 'message':
-      return <p className="rounded-xl border border-line bg-panel2 p-3 text-sm text-dim">{result.text}</p>;
+      return <p className="rounded-xl bg-panel2 p-3 text-sm text-dim">{result.text}</p>;
     // 상황 질문 답 — 숫자는 서버가 지금 현황으로 계산(실행할 것이 없어 버튼 없음)
     case 'answer':
       return (
-        <div className="flex flex-col gap-1.5 rounded-xl border border-court/40 bg-court/5 p-4">
+        <div className="flex flex-col gap-1.5 rounded-xl bg-court/5 p-4">
           <p className="text-xs font-medium text-court">{result.title}</p>
           {result.lines.map((line, i) => (
             <p key={i} className="text-base font-medium whitespace-normal">
@@ -457,7 +462,7 @@ function ResultView({
       );
     case 'check_in':
       return (
-        <p className="rounded-xl border border-court/40 bg-court/10 p-3 text-sm leading-relaxed">{result.result.message}</p>
+        <p className="rounded-xl bg-court/10 p-3 text-sm leading-relaxed">{result.result.message}</p>
       );
     case 'game_preview':
       return (
@@ -466,9 +471,13 @@ function ResultView({
     case 'action_preview': {
       const stale = actionStale(live, result);
       return (
-        <div className="flex flex-col gap-3 rounded-xl border border-amber/40 bg-amber/5 p-4">
+        <div className="flex flex-col gap-3 rounded-xl bg-amber/5 p-4">
           <p className="text-base font-bold">{result.label}</p>
-          {stale && <p className="text-sm font-medium text-coral">⚠ {stale} — 다른 운영진이 먼저 처리했을 수 있어요</p>}
+          {stale && (
+            <p className="flex items-start gap-1.5 text-body-sm font-medium text-coral">
+              <AlertIcon size={16} className="mt-0.5" /> {stale} — 다른 운영진이 먼저 처리했을 수 있어요
+            </p>
+          )}
           <button
             onClick={() => onExecute(result)}
             disabled={!!stale}
@@ -505,7 +514,7 @@ function GamePreview({
   // 퇴장·콕 취소·휴식은 서버가 어차피 거절 — 미리 막는다. 다른 조합·게임에 들어간 건 겹침 허용이라 경고만
   const blocked = duplicate || changes.some((c) => c === '퇴장했어요' || c === '콕 확인이 취소됐어요' || c === '휴식 중이에요');
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-amber/40 bg-amber/5 p-4">
+    <div className="flex flex-col gap-3 rounded-xl bg-amber/5 p-4">
       <p className="text-xs font-bold text-amber">
         {CATEGORY_LABEL[category]} · {current.genderLabel} · 추천 {index + 1}/{recommendations.length}
       </p>
@@ -534,7 +543,11 @@ function GamePreview({
           partnerId: live.attendances.find((a) => a.id === p.attendanceId)?.partnerAttendanceId ?? null,
         }))}
       />
-      {duplicate && <p className="text-sm font-medium text-coral">⚠ 같은 4명 조합이 이미 대기 중이에요 — 다른 운영진이 먼저 넣었어요</p>}
+      {duplicate && (
+        <p className="flex items-start gap-1.5 text-body-sm font-medium text-coral">
+          <AlertIcon size={16} className="mt-0.5" /> 같은 4명 조합이 이미 대기 중이에요 — 다른 운영진이 먼저 넣었어요
+        </p>
+      )}
       {current.repeatPairCount > 0 && (
         <p className="text-xs text-dim">오늘 같이 친 짝 {current.repeatPairCount}쌍</p>
       )}
@@ -549,7 +562,7 @@ function GamePreview({
         {recommendations.length > 1 && (
           <button
             onClick={() => setIndex((i) => (i + 1) % recommendations.length)}
-            className="h-12 shrink-0 rounded-xl border border-line px-4 text-sm text-dim"
+            className="h-12 shrink-0 rounded-xl bg-panel2 px-4 text-sm text-dim"
           >
             다른 추천
           </button>
@@ -610,7 +623,7 @@ function GuestPreview({ guests, onConfirm }: { guests: IAiGuestDraft[]; onConfir
     `h-9 min-w-9 rounded-lg border px-2 text-sm font-medium ${on ? 'border-court bg-court/15 text-court' : 'border-line text-dim'}`;
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-amber/40 bg-amber/5 p-4">
+    <div className="flex flex-col gap-3 rounded-xl bg-amber/5 p-4">
       <p className="text-base font-bold">게스트 추가</p>
       {guests.map((guest, i) => (
         <div key={guest.name} className="flex flex-col gap-2 rounded-lg bg-panel2 p-3">

@@ -59,7 +59,7 @@ function MemberStats() {
             ].map((item) => (
               <div
                 key={item.label}
-                className="flex flex-col items-center gap-1 rounded-xl border border-line bg-panel p-4"
+                className="flex flex-col items-center gap-1 rounded-xl bg-panel p-4"
               >
                 <span className="text-xs text-faint">{item.label}</span>
                 <span className="tabular text-center font-mono text-sm font-bold">
@@ -79,7 +79,7 @@ function MemberStats() {
                 <Link
                   key={partner.memberId}
                   href={`/admin/history/members/${partner.memberId}`}
-                  className="flex items-center gap-3 rounded-xl border border-line bg-panel p-3 transition-colors hover:border-court/50"
+                  className="flex items-center gap-3 rounded-xl bg-panel p-3 transition-colors hover:bg-panel2"
                 >
                   <span className="w-4 text-center text-xs font-bold text-faint">{index + 1}</span>
                   <span className="font-medium">{partner.name}</span>
@@ -100,7 +100,7 @@ function MemberStats() {
               {stats.recentSessions.map((session) => (
                 <div
                   key={session.date}
-                  className="flex items-center rounded-xl border border-line bg-panel p-3 text-sm"
+                  className="flex items-center rounded-xl bg-panel p-3 text-sm"
                 >
                   <span className="font-medium">{session.date}</span>
                   <span className="tabular ml-auto font-mono text-xs text-dim">

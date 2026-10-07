@@ -98,10 +98,10 @@ export function SessionReportModal({ sessionId, onClose }: { sessionId: string; 
               rows={2}
               maxLength={200}
               placeholder="끝인사 (비우면 넣지 않아요)"
-              className="resize-none rounded-lg border border-line bg-panel2 p-3 text-sm outline-none placeholder:text-faint focus:border-court"
+              className="resize-none rounded-lg border-2 border-transparent bg-panel2 p-3 text-sm outline-none placeholder:text-faint focus:border-court"
             />
             <p className="text-xs text-dim">미리보기</p>
-            <pre className="rounded-lg border border-line bg-panel2 p-3 font-sans text-sm leading-relaxed whitespace-pre-wrap select-text">
+            <pre className="rounded-lg bg-panel2 p-3 font-sans text-sm leading-relaxed whitespace-pre-wrap select-text">
               {text}
             </pre>
             {copied === 'failed' && (

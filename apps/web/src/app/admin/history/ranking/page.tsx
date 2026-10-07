@@ -80,7 +80,7 @@ function Ranking() {
         ))}
         <button
           onClick={() => setSortKey((k) => (k === 'sessions' ? 'games' : 'sessions'))}
-          className="tap ml-auto h-8 rounded-lg border border-amber/40 px-3 text-xs font-medium text-amber"
+          className="tap ml-auto h-8 rounded-lg bg-amber/10 px-3 text-xs font-medium text-amber"
         >
           {sortKey === 'sessions' ? '출석순 ↓' : '게임순 ↓'}
         </button>
@@ -99,7 +99,7 @@ function Ranking() {
           <Link
             key={entry.memberId}
             href={`/admin/history/members/${entry.memberId}`}
-            className={`flex items-center gap-2 rounded-xl border bg-panel p-3 transition-colors hover:border-court/50 ${
+            className={`flex items-center gap-2 rounded-xl border bg-panel p-3 transition-colors hover:bg-panel2 ${
               entry.totalSessions === 0 ? 'border-line opacity-60' : 'border-line'
             }`}
           >

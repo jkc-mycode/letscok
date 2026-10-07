@@ -59,7 +59,7 @@ function HistoryList() {
           <Link
             key={session.id}
             href={`/admin/history/${session.id}`}
-            className="flex items-center gap-3 rounded-xl border border-line bg-panel p-4 transition-colors hover:border-court/50"
+            className="flex items-center gap-3 rounded-xl bg-panel p-4 transition-colors hover:bg-panel2"
           >
             <span className="font-bold">{session.date}</span>
             <span className="ml-auto text-sm text-dim">
@@ -74,7 +74,7 @@ function HistoryList() {
           <button
             onClick={() => setPage((p) => p - 1)}
             disabled={page <= 1}
-            className="h-10 rounded-lg border border-line px-4 text-sm text-dim disabled:opacity-30"
+            className="h-10 rounded-lg bg-panel px-4 text-sm text-dim disabled:opacity-30"
           >
             이전
           </button>
@@ -84,7 +84,7 @@ function HistoryList() {
           <button
             onClick={() => setPage((p) => p + 1)}
             disabled={page >= totalPages}
-            className="h-10 rounded-lg border border-line px-4 text-sm text-dim disabled:opacity-30"
+            className="h-10 rounded-lg bg-panel px-4 text-sm text-dim disabled:opacity-30"
           >
             다음
           </button>

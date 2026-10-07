@@ -8,6 +8,7 @@ import {
 } from '@letscok/shared-types';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { GenderMarker, GradeBadge } from '@/components/badges';
+import { SparkleIcon } from '@/components/icons';
 import { AiThinking } from '@/components/logo-loader';
 import { api, ApiError } from '@/lib/api';
 import { shrinkImage } from '@/lib/image';
@@ -130,12 +131,12 @@ export function AiCheckInPanel({
   if (!enabled) return null;
 
   return (
-    <div className="mb-3 rounded-xl border border-court/30 bg-court/5 p-3">
+    <div className="mb-3 rounded-xl bg-court/5 p-3">
       <button
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center gap-2 text-left text-sm font-bold whitespace-normal text-court"
       >
-        ✨ AI 체크인 — 신청 명단 캡처·명령
+        <SparkleIcon /> AI 체크인 — 신청 명단 캡처·명령
         <span className="ml-auto shrink-0 text-xs font-normal text-dim">{open ? '접기' : '열기'}</span>
       </button>
 
@@ -168,12 +169,12 @@ export function AiCheckInPanel({
               onKeyDown={(e) => e.key === 'Enter' && void sendCommand()}
               maxLength={200}
               placeholder="예: 97년생 김민수 체크인해줘"
-              className="h-11 min-w-0 flex-1 rounded-xl border border-line bg-panel2 px-3 text-sm outline-none focus:border-court"
+              className="h-11 min-w-0 flex-1 rounded-xl border-2 border-transparent bg-panel2 px-3 text-sm outline-none focus:border-court"
             />
             <button
               onClick={() => void sendCommand()}
               disabled={!!working || !command.trim()}
-              className="h-11 shrink-0 rounded-xl border border-court/40 px-3 text-sm font-medium text-court disabled:opacity-50"
+              className="h-11 shrink-0 rounded-xl bg-court/10 px-3 text-sm font-medium text-court disabled:opacity-50"
             >
               실행
             </button>
@@ -219,7 +220,7 @@ function ResultCard({
   };
 
   return (
-    <div className="rounded-xl border border-line bg-panel2 p-3 text-sm">
+    <div className="rounded-xl bg-panel2 p-3 text-sm">
       <p className="truncate text-caption text-faint">{input}</p>
       <p className="mt-1 font-medium">{result.message}</p>
 
