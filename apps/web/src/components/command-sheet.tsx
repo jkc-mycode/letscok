@@ -10,10 +10,11 @@ import {
   IPushCallResult,
   RecommendationCategory,
 } from '@letscok/shared-types';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { GradeBadge } from '@/components/badges';
 import { Sheet } from '@/components/sheet';
 import { api, ApiError } from '@/lib/api';
+import { fixSpeech } from '@/lib/speech-fix';
 import { useSpeech } from '@/lib/use-speech';
 
 // AI 운영 명령 — 문장을 보내면 서버가 미리보기만 돌려주고, 운영진이 [확인]해야 기존 API로 실행한다
@@ -90,10 +91,18 @@ export function CommandSheet({
   const [result, setResult] = useState<IAiCommandResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null); // 실행 결과 한 줄(호출 "2대 전송" 등)
-  // 음성 — 다 들으면 입력칸에 채우고 바로 보낸다(틀렸으면 고쳐서 다시 보내면 된다)
+  // 음성 인식이 잘못 적은 용어·이름을 바로잡을 기준 — 오늘 온 사람(퇴장 제외)
+  const names = useMemo(
+    () => live.attendances.filter((a) => a.status !== 'LEFT').map((a) => a.member?.name ?? '').filter(Boolean),
+    [live.attendances],
+  );
+  const [heardRaw, setHeardRaw] = useState<string | null>(null); // 바로잡기 전 들린 말 — 고쳤을 때만 작게 보여 준다
+  // 음성 — 다 들으면 바로잡아 입력칸에 채우고 바로 보낸다(틀렸으면 고쳐서 다시 보내면 된다)
   const speech = useSpeech((heard) => {
-    setText(heard);
-    void send(heard);
+    const fixed = fixSpeech(heard, names);
+    setHeardRaw(fixed !== heard ? heard : null);
+    setText(fixed);
+    void send(fixed);
   });
 
   const send = async (value = text) => {
@@ -214,7 +223,10 @@ export function CommandSheet({
           )}
           <input
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              setHeardRaw(null);
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.nativeEvent.isComposing) void send();
             }}
@@ -241,7 +253,7 @@ export function CommandSheet({
             <span className="relative flex h-16 w-16 items-center justify-center rounded-full bg-court/20 text-3xl">🎙</span>
           </span>
           <p className="text-sm font-medium text-court">듣고 있어요… 말이 끝나면 저절로 멈춰요</p>
-          <p className="min-h-6 text-lg font-bold">{speech.interim}</p>
+          <p className="min-h-6 text-lg font-bold">{fixSpeech(speech.interim, names)}</p>
           <div className="flex gap-2">
             <button onClick={speech.stop} className="h-12 rounded-xl bg-court px-6 text-sm font-bold text-bg">
               말 끝
@@ -251,6 +263,9 @@ export function CommandSheet({
             </button>
           </div>
         </div>
+      )}
+      {heardRaw && !speech.listening && (
+        <p className="text-xs text-faint">들린 말 &ldquo;{heardRaw}&rdquo;을 바로잡았어요</p>
       )}
       {speech.error && !speech.listening && (
         <p className="rounded-xl border border-coral/40 bg-coral/10 p-3 text-sm text-coral">{speech.error}</p>
