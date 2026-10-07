@@ -54,6 +54,7 @@ export function Sheet({
   dismissible = true,
   layer = 'z-40',
   width = 'sm:max-w-md',
+  height = '',
   bodyClassName = 'flex min-h-0 flex-1 flex-col gap-3 scroll-area',
   footer,
   children,
@@ -64,6 +65,7 @@ export function Sheet({
   dismissible?: boolean; // false = 바깥 배경 탭으로는 닫지 않음(입력 팝업)
   layer?: 'z-40' | 'z-50'; // 다른 시트 위에 겹쳐 뜨면 z-50
   width?: string; // 넓은 화면에서의 최대 폭
+  height?: string; // 고정 높이 — 비우면 내용만큼(최대 92dvh). 검색처럼 내용 양이 오가는 시트가 출렁이지 않게
   bodyClassName?: string;
   footer?: React.ReactNode; // 스크롤 밖 하단 고정(주요 버튼)
   children: React.ReactNode;
@@ -191,7 +193,7 @@ export function Sheet({
         onAnimationComplete={() => {
           if (!phone && closingRef.current) onCloseRef.current();
         }}
-        className={`flex max-h-[92dvh] w-full flex-col rounded-t-2xl border border-line bg-panel px-5 pt-2 pb-safe-sheet sm:rounded-2xl sm:pt-5 ${width}`}
+        className={`flex max-h-[92dvh] w-full flex-col rounded-t-2xl border border-line bg-panel px-5 pt-2 pb-safe-sheet sm:rounded-2xl sm:pt-5 ${width} ${height}`}
       >
         <div
           data-sheet-handle

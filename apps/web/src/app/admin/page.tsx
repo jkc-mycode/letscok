@@ -18,6 +18,7 @@ import {
   IPushCallResult,
   ISessionSnapshot,
   MemberListFilter,
+  MemberListSort,
   MemberRole,
   RecommendationCategory,
   RecommendationKind,
@@ -2131,6 +2132,23 @@ function formatLastAttended(date: string | null): string {
   return y === thisYear ? `${Number(m)}/${Number(d)}` : `${y.slice(2)}.${Number(m)}.${Number(d)}`;
 }
 
+const SORT_OPTIONS: { value: MemberListSort; label: string }[] = [
+  { value: 'RECENT', label: '최근 출석순' },
+  { value: 'NAME', label: '이름순' },
+  { value: 'ATTENDANCE', label: '출석 많은 순' },
+  { value: 'CREATED', label: '최근 등록순' },
+  { value: 'GRADE', label: '급수 순' },
+];
+
+function SearchIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
 function MembersManagerModal({ onClose }: { onClose: () => void }) {
   // 서버가 탭·검색에 맞는 100명씩 + 탭별 전체 인원을 준다(모임원이 늘어도 가볍게)
   const [data, setData] = useState<IMemberPage | null>(null); // null=첫 로딩
@@ -2138,6 +2156,7 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState('');
   const [keyword, setKeyword] = useState(''); // 입력이 300ms 멈춘 뒤의 검색어 — 타이핑마다 요청하지 않게
   const [filter, setFilter] = useState<MemberListFilter>('ALL');
+  const [sort, setSort] = useState<MemberListSort>('RECENT');
   const [page, setPage] = useState(1);
   const listRef = useRef<HTMLDivElement>(null);
   const [editTarget, setEditTarget] = useState<IMemberSummary | null>(null);
@@ -2150,11 +2169,11 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
     const timer = setTimeout(() => setKeyword(query.trim()), 300);
     return () => clearTimeout(timer);
   }, [query]);
-  // 탭·검색어가 바뀌면 첫 쪽부터
-  useEffect(() => setPage(1), [filter, keyword]);
+  // 탭·검색어·정렬이 바뀌면 첫 쪽부터
+  useEffect(() => setPage(1), [filter, keyword, sort]);
 
   const refetch = useCallback(async () => {
-    const params = new URLSearchParams({ filter, page: String(page), ...(keyword && { q: keyword }) });
+    const params = new URLSearchParams({ filter, sort, page: String(page), ...(keyword && { q: keyword }) });
     try {
       const [pageData, stale] = await Promise.all([
         api<IMemberPage>(`/members/page?${params}`, { admin: true }),
@@ -2165,14 +2184,14 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
     } catch {
       showToast('명단을 불러오지 못했습니다.');
     }
-  }, [filter, page, keyword, showToast]);
+  }, [filter, sort, page, keyword, showToast]);
   useEffect(() => {
     void refetch();
   }, [refetch]);
-  // 쪽을 넘기면 목록 맨 위로
+  // 쪽·정렬이 바뀌면 목록 맨 위로
   useEffect(() => {
     listRef.current?.scrollTo({ top: 0 });
-  }, [page]);
+  }, [page, sort, filter]);
 
   // 모달 전용 실행기 — Board의 run은 스냅샷 refetch까지 묶여 있어 세션 없는 화면에선 못 쓴다
   const run = async (action: () => Promise<unknown>) => {
@@ -2205,103 +2224,160 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
       <Sheet
         ariaLabel="모임원 관리"
         onClose={onClose}
-        width="sm:max-w-2xl"
+        width="sm:max-w-3xl"
+        // 높이 고정 — 검색 결과 수에 따라 시트가 커졌다 작아지지 않게
+        height="h-[88dvh] sm:h-[min(720px,88dvh)]"
         bodyClassName="flex min-h-0 flex-1 flex-col"
         header={
           <>
-            <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">모임원 관리</h2>
-            {data && <span className="text-caption text-faint">{data.counts.ALL}명</span>}
+            <h2 className="shrink-0 text-heading font-bold whitespace-nowrap">모임원 관리</h2>
+            {data && <span className="tabular font-mono text-body-sm text-faint">{data.counts.ALL}명</span>}
           </>
         }
+        footer={
+          <div className="flex items-center gap-2">
+            {/* 100명씩 — 넘을 때만 쪽 넘기기 */}
+            {data && pageCount > 1 && (
+              <>
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  aria-label="이전 쪽"
+                  className="tap h-12 w-11 shrink-0 rounded-xl bg-panel2 text-dim disabled:opacity-30"
+                >
+                  ‹
+                </button>
+                <span className="tabular shrink-0 text-center font-mono text-body-sm text-dim">
+                  {page}/{pageCount}
+                </span>
+                <button
+                  onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                  disabled={page >= pageCount}
+                  aria-label="다음 쪽"
+                  className="tap h-12 w-11 shrink-0 rounded-xl bg-panel2 text-dim disabled:opacity-30"
+                >
+                  ›
+                </button>
+              </>
+            )}
+            {/* 등록 — 체크인 없이 명단에만 추가 (모임 전 사전 등록용). 모임 중 즉석 등록+체크인은 [수동 체크인]의 [신규 등록] */}
+            <button
+              onClick={() => setRegisterOpen(true)}
+              className="tap h-12 flex-1 rounded-xl bg-court text-body font-bold text-bg sm:ml-auto sm:flex-none sm:px-6"
+            >
+              + 신규 등록
+            </button>
+          </div>
+        }
       >
-        <ClearableInput
-          autoComplete="off"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="이름으로 검색"
-          className="h-11 rounded-xl border-2 border-transparent bg-panel2 px-4 text-sm outline-none focus:border-court"
-          onClear={() => setQuery('')}
-        />
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <div className="relative shrink-0">
+          <span className="pointer-events-none absolute top-1/2 left-3.5 z-10 -translate-y-1/2 text-faint">
+            <SearchIcon />
+          </span>
+          <ClearableInput
+            autoComplete="off"
+            enterKeyHint="search"
+            aria-label="이름으로 검색"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="이름으로 검색"
+            className="h-12 rounded-xl border-2 border-transparent bg-panel2 pl-11 text-body outline-none placeholder:text-faint focus:border-court"
+            onClear={() => setQuery('')}
+          />
+        </div>
+        <div className="mt-3 flex shrink-0 gap-1.5 overflow-x-auto">
           {FILTER_TABS.map((tab) => (
             <button
               key={tab.value}
               onClick={() => setFilter(tab.value)}
-              className={`tap h-8 rounded-lg px-3 text-caption font-medium ${
+              aria-pressed={filter === tab.value}
+              className={`tap h-9 shrink-0 rounded-lg px-3 text-body-sm ${
                 filter === tab.value ? 'bg-court/15 font-bold text-court' : 'bg-panel2 text-dim'
               }`}
             >
               {tab.label}
-              {data && <span className="tabular ml-1 font-mono opacity-80">{data.counts[tab.value]}</span>}
+              {data && <span className="tabular ml-1 font-mono font-medium">{data.counts[tab.value]}</span>}
             </button>
           ))}
-          {staleGuests.length > 0 && (
-            <button
-              onClick={() => setCleanupOpen(true)}
-              className="tap ml-auto h-8 rounded-lg bg-amber/10 px-3 text-xs font-medium text-amber"
+        </div>
+        <div className="flex shrink-0 items-center pt-2 pb-2">
+          <span className="text-caption text-faint">
+            {data ? `${keyword ? '검색 결과 ' : ''}${data.total}명` : ''}
+          </span>
+          {/* 폰에선 OS 선택 창이 떠서 고르기 쉽다 — 글자처럼 보이게만 꾸민다 */}
+          <label className="relative ml-auto flex items-center text-body-sm text-dim">
+            <span className="sr-only">정렬</span>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as MemberListSort)}
+              className="h-9 appearance-none bg-transparent pr-6 pl-2 text-right outline-none"
             >
-              오래 안 온 게스트 정리 ({staleGuests.length})
-            </button>
-          )}
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <svg className="pointer-events-none absolute right-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </label>
         </div>
 
-        <div ref={listRef} className="mt-3 flex min-h-0 flex-1 flex-col gap-1.5 scroll-area">
-          {data === null && <p className="py-8 text-center text-sm text-dim">불러오는 중...</p>}
+        {/* 오래 안 온 게스트 정리 — 게스트 탭에서만, 목록 바로 위 */}
+        {filter === 'GUEST' && staleGuests.length > 0 && (
+          <div className="mb-2 flex shrink-0 items-center gap-2 rounded-xl bg-amber/10 py-2 pr-2 pl-3.5">
+            <span className="min-w-0 text-body-sm text-amber">
+              {STALE_GUEST_DAYS}일 넘게 안 온 게스트 <b>{staleGuests.length}명</b>
+            </span>
+            <button
+              onClick={() => setCleanupOpen(true)}
+              className="tap ml-auto h-9 shrink-0 rounded-lg bg-amber px-3 text-body-sm font-bold text-bg"
+            >
+              정리하기
+            </button>
+          </div>
+        )}
+
+        {/* 남는 높이를 다 쓰고 이 안에서만 스크롤 — 태블릿은 두 줄 */}
+        <div
+          ref={listRef}
+          className="grid min-h-0 flex-1 grid-cols-1 content-start gap-1.5 scroll-area sm:grid-cols-2"
+        >
+          {data === null && <p className="py-8 text-center text-body-sm text-dim sm:col-span-2">불러오는 중...</p>}
           {data !== null && visible.length === 0 && (
-            <p className="py-8 text-center text-sm text-faint">
-              {filter === 'DELETED' ? '삭제된 모임원이 없어요' : '검색 결과가 없어요'}
+            <p className="py-8 text-center text-body-sm text-faint sm:col-span-2">
+              {keyword ? '검색 결과가 없어요' : filter === 'DELETED' ? '삭제된 모임원이 없어요' : '아직 아무도 없어요'}
             </p>
           )}
           {visible.map((member) => (
             <button
               key={member.id}
               onClick={() => setEditTarget(member)}
-              className={`flex items-center gap-2 rounded-xl bg-panel2 p-3 text-left text-sm ${
+              className={`flex min-h-15 items-center gap-2.5 rounded-xl bg-panel2 px-3 py-2.5 text-left ${
                 member.deletedAt ? 'opacity-50' : ''
               }`}
             >
               <GradeBadge grade={member.grade} />
-              <span className="truncate font-medium">{member.name}</span>
-              <GenderMarker gender={member.gender} />
-              {member.isGuest && <span className="shrink-0 text-caption text-sky">게스트</span>}
-              <RoleBadge role={member.role} />
-              <span className="ml-auto flex shrink-0 flex-col items-end text-caption leading-tight text-dim">
-                <span>{formatLastAttended(member.lastAttendedAt)}</span>
-                <span className="text-faint">{member.totalGames}게임</span>
+              <span className="flex min-w-0 flex-col">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate text-body font-medium">{member.name}</span>
+                  <GenderMarker gender={member.gender} />
+                  <RoleBadge role={member.role} />
+                </span>
+                <span className={`text-caption ${member.isGuest ? 'text-sky' : 'tabular font-mono text-faint'}`}>
+                  {member.isGuest ? '게스트' : (member.birthDate ?? '생년월일 없음')}
+                </span>
+              </span>
+              <span className="ml-auto flex shrink-0 flex-col items-end text-caption leading-tight">
+                <span className="text-dim">{formatLastAttended(member.lastAttendedAt)}</span>
+                <span className="tabular font-mono text-faint">
+                  출석 {member.totalSessions} · {member.totalGames}게임
+                </span>
               </span>
             </button>
           ))}
-          {/* 100명씩 — 넘으면 아래에서 쪽 넘기기 */}
-          {data && pageCount > 1 && (
-            <div className="flex shrink-0 items-center justify-center gap-2 py-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className="h-9 rounded-lg bg-panel2 px-3 text-body-sm text-dim disabled:opacity-30"
-              >
-                ‹ 이전
-              </button>
-              <span className="tabular min-w-20 text-center font-mono text-body-sm text-dim">
-                {page} / {pageCount}
-              </span>
-              <button
-                onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-                disabled={page >= pageCount}
-                className="h-9 rounded-lg bg-panel2 px-3 text-body-sm text-dim disabled:opacity-30"
-              >
-                다음 ›
-              </button>
-            </div>
-          )}
         </div>
-
-        {/* 등록 — 체크인 없이 명단에만 추가 (모임 전 사전 등록용). 모임 중 즉석 등록+체크인은 [수동 체크인]의 [신규 등록] */}
-        <button
-          onClick={() => setRegisterOpen(true)}
-          className="mt-3 h-11 shrink-0 rounded-xl bg-sky/10 text-sm font-medium text-sky"
-        >
-          + 신규 등록
-        </button>
       </Sheet>
       {registerOpen && (
         <MemberRegisterSheet onRegistered={refetch} onClose={() => setRegisterOpen(false)} />
