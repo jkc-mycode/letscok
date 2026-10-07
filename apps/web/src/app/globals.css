@@ -173,40 +173,30 @@ button:not(:disabled):active {
   }
 }
 
-/* 로딩 로고 — 셔틀콕이 통통 튄다(components/logo-loader). 내려올 땐 빨라지고 올라갈 땐 느려지며, 바닥에서 살짝 눌린다.
-   그림자는 셔틀콕이 높이 뜰수록 작고 흐려진다. 동작 줄이기 설정이면 멈춘 로고만 */
-.logo-bounce {
-  transform-origin: 50% 100%;
-  animation: logo-bounce 0.9s infinite;
+/* 로딩 — 셔틀콕이 포물선을 그리며 네트를 넘어간다(components/logo-loader NetHop). 진행 방향으로 기울고(offset-rotate),
+   양 끝에서 흐려져 되돌아오는 느낌 없이 계속 넘어간다. 동작 줄이기면 네트 위 꼭대기에 멈춘 모습 */
+.net-hop {
+  position: absolute;
+  left: 0;
+  top: 0;
+  offset-path: path('M14 66 Q80 -14 146 66');
+  offset-rotate: auto;
+  animation: net-hop 1.4s cubic-bezier(0.35, 0.1, 0.65, 0.9) infinite;
 }
-@keyframes logo-bounce {
-  0%,
-  100% {
-    transform: translateY(0) scale(1.06, 0.9);
-    animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1);
+@keyframes net-hop {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
   }
   12% {
-    transform: translateY(-6%) scale(1, 1);
+    opacity: 1;
   }
-  50% {
-    transform: translateY(-38%) rotate(-10deg);
-    animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.3);
+  88% {
+    opacity: 1;
   }
-}
-.logo-shadow {
-  animation: logo-shadow 0.9s infinite;
-}
-@keyframes logo-shadow {
-  0%,
   100% {
-    transform: scaleX(1);
-    opacity: 0.9;
-    animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1);
-  }
-  50% {
-    transform: scaleX(0.5);
-    opacity: 0.35;
-    animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.3);
+    offset-distance: 100%;
+    opacity: 0;
   }
 }
 /* AI 처리 중 문구 — 빛이 왼쪽에서 오른쪽으로 훑고 지나간다(components/logo-loader AiThinking) */
@@ -234,9 +224,9 @@ button:not(:disabled):active {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .logo-bounce,
-  .logo-shadow {
+  .net-hop {
     animation: none;
+    offset-distance: 50%;
   }
   .text-shimmer {
     animation: none;

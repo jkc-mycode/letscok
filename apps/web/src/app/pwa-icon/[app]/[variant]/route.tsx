@@ -1,5 +1,5 @@
 import { ImageResponse } from 'next/og';
-import { ICON_THEME, shuttleDataUri, type IconApp } from '@/lib/shuttle-icon';
+import { ICON_THEME, iconDataUri, type IconApp } from '@/lib/shuttle-icon';
 
 // 두 manifest가 참조하는 아이콘 — 빌드 시 PNG로 미리 생성된다(force-static)
 // maskable은 Android가 기기 테마에 맞춰 원형·스퀘어클로 깎아내므로,
@@ -42,7 +42,7 @@ export async function GET(
           background: theme.background,
         }}
       >
-        <img src={shuttleDataUri(app as IconApp)} width={glyph} height={glyph} alt="" />
+        <img src={iconDataUri(app as IconApp)} width={glyph} height={glyph} alt="" />
       </div>
     ),
     { width: spec.size, height: spec.size },

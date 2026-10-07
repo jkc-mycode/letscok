@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { BouncingShuttle } from '@/components/logo-loader';
+import { NetHop } from '@/components/logo-loader';
 
 // 서버에 닿지 못했을 때의 화면 — "아직 모임 전"과 구분한다. 훅이 5초마다 다시 시도하므로 버튼은 기다리기 싫을 때용
 export function ConnectionError({ onRetry }: { onRetry: () => Promise<void> }) {
@@ -9,7 +9,7 @@ export function ConnectionError({ onRetry }: { onRetry: () => Promise<void> }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
       {/* 저절로 다시 시도하는 중이라 멈춘 화면처럼 보이지 않게 */}
-      <BouncingShuttle size={48} />
+      <NetHop size={44} />
       <h1 className="text-xl font-bold">연결이 원활하지 않아요</h1>
       <p className="text-sm leading-relaxed text-dim">
         서버를 깨우는 중이거나 인터넷이 불안정해요.

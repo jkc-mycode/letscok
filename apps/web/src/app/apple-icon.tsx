@@ -1,5 +1,5 @@
 import { ImageResponse } from 'next/og';
-import { ICON_THEME, shuttleDataUri } from '@/lib/shuttle-icon';
+import { ICON_THEME, iconDataUri } from '@/lib/shuttle-icon';
 
 // iOS 홈 화면 아이콘(모임원 앱) — 애플은 SVG를 안 받아서 PNG가 반드시 필요하다
 // (iOS가 알아서 모서리를 둥글게 깎으므로 여기선 사각 그대로 그린다)
@@ -19,7 +19,7 @@ export default function AppleIcon() {
           background: ICON_THEME.member.background,
         }}
       >
-        <img src={shuttleDataUri('member')} width={130} height={130} alt="" />
+        <img src={iconDataUri('member')} width={130} height={130} alt="" />
       </div>
     ),
     size,
