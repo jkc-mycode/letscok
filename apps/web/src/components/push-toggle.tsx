@@ -52,7 +52,7 @@ export function PushToggle({ memberId }: { memberId: string }) {
 
   if (state === 'needs-install') {
     return (
-      <p className="text-center text-xs text-dim">
+      <p className="text-center text-caption text-dim">
         홈 화면에 추가하면 내 게임 알림을 받을 수 있어요
       </p>
     );
@@ -60,7 +60,7 @@ export function PushToggle({ memberId }: { memberId: string }) {
 
   if (state === 'denied') {
     return (
-      <p className="rounded-xl border border-amber/40 bg-amber/10 p-3 text-sm text-amber">
+      <p className="rounded-xl bg-amber/10 p-4 text-body-sm text-amber">
         알림이 꺼져 있어요. <b>{deniedGuide()}</b>에서 허용하면 게임 알림을 받을 수 있어요
       </p>
     );
@@ -72,23 +72,50 @@ export function PushToggle({ memberId }: { memberId: string }) {
         <button
           onClick={() => void toggle(true)}
           disabled={busy}
-          className="min-h-12 rounded-xl border border-court/40 px-3 text-sm font-medium whitespace-normal text-court disabled:opacity-50"
+          className="flex min-h-13 items-center gap-3 rounded-xl bg-panel px-4 py-3 text-left disabled:opacity-50"
         >
-          🔔 내 게임 알림 받기 — 화면이 꺼져 있어도 알려드려요
+          <BellIcon className="text-court" />
+          <span className="flex min-w-0 flex-col">
+            <span className="text-body font-bold text-court">내 게임 알림 받기</span>
+            <span className="text-caption whitespace-normal text-dim">화면이 꺼져 있어도 알려 드려요</span>
+          </span>
         </button>
       ) : (
-        <div className="flex h-12 items-center justify-between rounded-xl border border-line px-4 text-sm">
-          <span className="text-court">🔔 게임 알림 켜짐</span>
+        <div className="flex h-13 items-center justify-between rounded-xl bg-panel px-4 text-body-sm">
+          <span className="flex items-center gap-2 font-medium text-court">
+            <BellIcon /> 게임 알림 켜짐
+          </span>
           <button
             onClick={() => void toggle(false)}
             disabled={busy}
-            className="tap text-xs text-dim disabled:opacity-50"
+            className="tap text-body-sm text-dim disabled:opacity-50"
           >
             끄기
           </button>
         </div>
       )}
-      {error && <p className="text-center text-xs text-coral">{error}</p>}
+      {error && <p className="text-center text-caption text-coral">{error}</p>}
     </div>
+  );
+}
+
+// 종 모양 선 아이콘 — 이모지 대신(디자인 시스템: 아이콘은 선 아이콘)
+function BellIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={`shrink-0 ${className}`}
+    >
+      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+    </svg>
   );
 }

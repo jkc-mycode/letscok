@@ -19,6 +19,21 @@
   --color-pink: #ff8fab; /* 여성(♀) */
   --color-gold: #ffd76e; /* 급수 C 배지 */
   --color-violet: #b7a8ff; /* 급수 F 배지 */
+
+  /* 글자 크기 6단계(디자인 시스템) — text-display·text-title·text-heading·text-body·text-body-sm·text-caption.
+     새 화면은 이것만 쓴다. 10·11px은 만들지 않는다(가장 작은 글자 = caption 12px) */
+  --text-display: 1.75rem;
+  --text-display--line-height: 2.25rem;
+  --text-title: 1.375rem;
+  --text-title--line-height: 1.875rem;
+  --text-heading: 1.125rem;
+  --text-heading--line-height: 1.625rem;
+  --text-body: 1rem;
+  --text-body--line-height: 1.5rem;
+  --text-body-sm: 0.875rem;
+  --text-body-sm--line-height: 1.25rem;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
 }
 
 /* 테마 — 위 색 이름표만 바꿔 끼운다(모든 화면이 bg-bg·text-ink·bg-court/10처럼 이름표로 색을 쓴다).

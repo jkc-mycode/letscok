@@ -17,7 +17,7 @@ const GRADE_STYLE: Record<Grade, string> = {
 export function GradeBadge({ grade }: { grade: Grade }) {
   return (
     <span
-      className={`inline-flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold ${GRADE_STYLE[grade]}`}
+      className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-caption font-bold ${GRADE_STYLE[grade]}`}
     >
       {grade}
     </span>
@@ -41,7 +41,7 @@ export function GenderMarker({ gender }: { gender: Gender | null }) {
 // 본인 표시 칩 — 모임원 화면에서 어느 구역에 있든 내 이름을 한눈에 찾도록
 export function MeChip() {
   return (
-    <span className="inline-flex shrink-0 items-center rounded bg-court px-1.5 py-0.5 text-[10px] font-bold text-bg">
+    <span className="inline-flex shrink-0 items-center rounded-md bg-court px-1.5 py-0.5 text-caption font-bold text-bg">
       나
     </span>
   );

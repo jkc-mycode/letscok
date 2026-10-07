@@ -1,13 +1,14 @@
 'use client';
 
 // 모임원 화면 — 관제판과 같은 보드를 읽기 전용으로 본다 (모바일 세로 스택)
-// 상단에 내 상태 한 줄 + 아래 3구역(게임 중/대기 조합/대기 인원), 내 이름은 초록 강조
+// 위에 내 상태 한 문장(게임 중이면 초록 코트 카드) + 내 게임 4명, 아래 지금 코트·다음 게임·대기 인원 목록
+// 디자인 시스템 규칙: 카드 구분은 테두리 대신 면(panel·panel2), 글자 크기는 text-display~text-caption 6단계
 
 import { GAME_SIZE, IAttendance, ICourt, IGame } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { GenderMarker, GradeBadge, MeChip, PlayerGrid, Toast } from '@/components/badges';
+import { gamePartnerPeople, GenderMarker, GradeBadge, MeChip, PartnerNote, Toast } from '@/components/badges';
 import { ConnectionError } from '@/components/connection-error';
 import { HomeLink } from '@/components/home-link';
 import { ExitGuard } from '@/components/exit-guard';
@@ -82,7 +83,7 @@ export default function MyStatusPage() {
         <Centered title="체크인이 필요해요" desc="셔틀콕 내고 코드 입력하셨나요?" />
         <Link
           href="/m/checkin"
-          className="flex h-14 items-center justify-center rounded-xl bg-court text-lg font-bold text-bg"
+          className="flex h-14 items-center justify-center rounded-xl bg-court text-body font-bold text-bg"
         >
           체크인하러 가기
         </Link>
@@ -116,21 +117,20 @@ export default function MyStatusPage() {
     [...overlapCounts].filter(([, count]) => count >= 2).map(([id]) => id),
   );
 
+  // 내 게임 — 게임 중이면 그 코트, 조합에 들었으면 가장 앞의 조합(겹쳐 들어간 경우)
+  const includesMe = (game: IGame) => (game.players ?? []).some((p) => p.attendanceId === me.id);
+  const myGame =
+    games.find((g) => g.status === 'PLAYING' && includesMe(g)) ?? queuedGames.find(includesMe) ?? null;
+
   return (
     <Shell>
-      {/* 로고 = 홈 링크 (스크롤하면 아래 sticky 배너가 상단을 대체) */}
-      <HomeLink className="self-center text-[11px] font-medium tracking-[0.3em] text-court/70 transition-opacity hover:opacity-70">
+      {/* 로고 = 홈 링크 */}
+      <HomeLink className="flex h-11 items-center self-start text-caption font-bold tracking-[0.3em] text-court transition-opacity hover:opacity-70">
         LETSCOK
       </HomeLink>
-      <MyBanner me={me} waiting={waiting} queuedGames={queuedGames} games={games} courts={courts} now={now} />
-      <PushToggle memberId={me.memberId} />
+      <MyStatus me={me} myGame={myGame} waiting={waiting} queuedGames={queuedGames} courts={courts} now={now} />
 
-      {/* 콕 미확인 안내 — 이게 없으면 "왜 나만 게임에 안 넣어주지" 오해로 운영진 문의가 늘어난다 */}
-      {!me.shuttleConfirmedAt && me.status !== 'LEFT' && (
-        <p className="rounded-xl border border-amber/40 bg-amber/10 p-3 text-sm text-amber">
-          콕 제출 확인을 기다리고 있어요 — 확인되면 게임에 들어갈 수 있어요
-        </p>
-      )}
+      {myGame && <MyGameCard game={myGame} playing={myGame.status === 'PLAYING'} memberId={memberId} />}
 
       {/* 타임 버튼 — 대기·조합 대기 중에만. 게임 중·퇴장엔 의미 없어 숨김
           (MATCHED는 눌러도 서버가 409로 막고 "운영진에게 말씀해주세요" 안내) */}
@@ -138,236 +138,331 @@ export default function MyStatusPage() {
         <button
           onClick={() => void toggleRest()}
           disabled={busy}
-          className="min-h-12 rounded-xl border border-sky/40 px-3 text-sm font-medium whitespace-normal text-sky disabled:opacity-50"
+          className="h-13 rounded-xl bg-panel text-body font-bold text-sky disabled:opacity-50"
         >
-          잠깐 쉴래요 — 게임 조합에서 빼주세요
+          잠깐 쉴래요
         </button>
       )}
       {me.status === 'RESTING' && (
         <button
           onClick={() => void toggleRest()}
           disabled={busy}
-          className="min-h-12 rounded-xl bg-court px-3 text-sm font-bold whitespace-normal text-bg disabled:opacity-50"
+          className="h-14 rounded-xl bg-court text-body font-bold text-bg disabled:opacity-50"
         >
-          다시 뛸래요 — 대기로 복귀
+          다시 뛸래요
         </button>
       )}
+      <PushToggle memberId={me.memberId} />
 
-      {/* 게임 중 — 관제판과 동일 정보, 버튼만 없음 */}
-      <SectionTitle accent="text-court" title="게임 중" count={playingByCourt.size} />
-      {courts.length === 0 && <Empty>등록된 코트가 없어요</Empty>}
-      <AnimatePresence initial={false}>
-        {courts.map((court) => {
-          const game = playingByCourt.get(court.id);
-          return game ? (
-            <MotionCard key={court.id} className="rounded-xl border border-court/40 bg-panel2 p-4">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-court">{court.courtNo}번 코트</span>
-                <span className="tabular font-mono text-xl font-semibold text-court">
-                  {game.startedAt ? formatElapsed(game.startedAt, now) : '--:--'}
-                </span>
-              </div>
-              <PlayerGrid game={game} highlightMemberId={memberId} />
-            </MotionCard>
-          ) : court.isShared && !court.ourTurn ? (
-            // 다른 모임 차례인 공유 코트 — "왜 비었는데 게임을 안 넣지" 오해 방지
-            <MotionCard key={court.id} className="rounded-xl border border-sky/40 bg-sky/5 p-4">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-sky">{court.courtNo}번 코트</span>
-                <span className="text-xs text-sky">다른 모임 차례</span>
-              </div>
-            </MotionCard>
-          ) : (
-            <MotionCard key={court.id} className="rounded-xl border border-dashed border-line p-4">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-dim">{court.courtNo}번 코트</span>
-                <span className="text-xs text-faint">비어 있음</span>
-              </div>
-            </MotionCard>
-          );
-        })}
-      </AnimatePresence>
+      {/* 지금 코트 — 한 덩어리 카드에 줄로(테두리 대신 면) */}
+      <Section title="지금 코트" count={`${playingByCourt.size}/${courts.length}`}>
+        {courts.length === 0 ? (
+          <Empty>등록된 코트가 없어요</Empty>
+        ) : (
+          <ListCard>
+            {courts.map((court) => {
+              const game = playingByCourt.get(court.id);
+              const otherTurn = !game && court.isShared && !court.ourTurn;
+              return (
+                <Row
+                  key={court.id}
+                  badge={court.courtNo}
+                  badgeCls={game ? 'bg-court/15 text-court' : otherTurn ? 'bg-sky/15 text-sky' : 'bg-panel2 text-dim'}
+                  title={game ? playerNames(game) : otherTurn ? '다른 모임 차례' : '비어 있음'}
+                  titleCls={game ? '' : 'text-dim'}
+                  sub={game ? (includesMe(game) ? '내 게임' : '게임 중') : otherTurn ? '공유 코트' : '곧 다음 게임이 들어가요'}
+                  right={
+                    game?.startedAt ? (
+                      <span className="tabular font-mono text-body font-semibold text-court">
+                        {formatElapsed(game.startedAt, now)}
+                      </span>
+                    ) : null
+                  }
+                />
+              );
+            })}
+          </ListCard>
+        )}
+      </Section>
 
-      <SectionTitle accent="text-amber" title="대기 조합" count={queuedGames.length} />
-      {queuedGames.length === 0 && <Empty>아직 짜인 게임이 없어요</Empty>}
-      <AnimatePresence initial={false}>
-        {queuedGames.map((game, index) => (
-          <MotionCard key={game.id} className="rounded-xl border border-amber/30 bg-panel2 p-4">
-            <span className="font-bold text-amber">다음 게임 {index + 1}</span>
-            <PlayerGrid game={game} highlightMemberId={memberId} overlapIds={overlapIds} />
-          </MotionCard>
-        ))}
-      </AnimatePresence>
+      <Section title="다음 게임" count={String(queuedGames.length)}>
+        {queuedGames.length === 0 ? (
+          <Empty>아직 짜인 게임이 없어요</Empty>
+        ) : (
+          <ListCard>
+            {queuedGames.map((game, index) => (
+              <Row
+                key={game.id}
+                badge={index + 1}
+                badgeCls="bg-amber/20 text-amber"
+                title={playerNames(game)}
+                sub={
+                  includesMe(game)
+                    ? '내 게임'
+                    : (game.players ?? []).some((p) => overlapIds.has(p.attendanceId))
+                      ? '다른 조합과 겹친 사람 있음'
+                      : null
+                }
+                subCls={includesMe(game) ? 'text-amber font-bold' : undefined}
+              />
+            ))}
+          </ListCard>
+        )}
+      </Section>
 
-      <SectionTitle accent="text-ink" title="대기 인원" count={waiting.length} />
-      {waiting.length === 0 && <Empty>대기 인원이 없어요</Empty>}
-      <AnimatePresence initial={false}>
-        {waiting.map((attendance) => {
-          const member = attendance.member;
-          if (!member) return null;
-          const isMe = member.id === memberId;
-          return (
-            <MotionCard
-              key={attendance.id}
-              className={`flex items-center gap-2 rounded-xl border p-3 ${
-                isMe ? 'border-court bg-court/10' : 'border-line bg-panel2'
-              }`}
-            >
-              <GradeBadge grade={member.grade} />
-              <span className={`font-medium ${isMe ? 'font-bold text-court' : ''}`}>
-                {member.name}
-              </span>
-              <GenderMarker gender={member.gender} />
-              {isMe && <MeChip />}
-              {member.isGuest && <span className="text-[10px] text-sky">게스트</span>}
-              <span className="tabular ml-auto font-mono text-xs text-dim">
-                {attendance.gamesPlayed}게임 · {formatWaitingMinutes(attendance.waitingSince, now)}
-              </span>
-            </MotionCard>
-          );
-        })}
-      </AnimatePresence>
-      <AnimatePresence initial={false}>
-        {resting.map((attendance) => {
-          const member = attendance.member;
-          if (!member) return null;
-          const isMe = member.id === memberId;
-          return (
-            <MotionCard
-              key={attendance.id}
-              className={`flex items-center gap-2 rounded-xl border p-3 ${
-                isMe ? 'border-sky bg-sky/10' : 'border-line bg-panel2 opacity-60'
-              }`}
-            >
-              <GradeBadge grade={member.grade} />
-              <span className={`font-medium ${isMe ? 'font-bold text-sky' : ''}`}>
-                {member.name}
-              </span>
-              <GenderMarker gender={member.gender} />
-              {isMe && <MeChip />}
-              <span className="shrink-0 rounded bg-sky/15 px-1.5 py-0.5 text-[10px] font-medium text-sky">
-                휴식
-              </span>
-              <span className="tabular ml-auto font-mono text-xs text-dim">
-                {attendance.gamesPlayed}게임
-              </span>
-            </MotionCard>
-          );
-        })}
-      </AnimatePresence>
+      <Section title="대기 인원" count={String(waiting.length)}>
+        {waiting.length === 0 && resting.length === 0 ? (
+          <Empty>대기 인원이 없어요</Empty>
+        ) : (
+          <ListCard>
+            <AnimatePresence initial={false}>
+              {waiting.map((attendance) => (
+                <PersonRow
+                  key={attendance.id}
+                  attendance={attendance}
+                  isMe={attendance.memberId === memberId}
+                  right={`${attendance.gamesPlayed}게임 · ${formatWaitingMinutes(attendance.waitingSince, now)}`}
+                />
+              ))}
+              {resting.map((attendance) => (
+                <PersonRow
+                  key={attendance.id}
+                  attendance={attendance}
+                  isMe={attendance.memberId === memberId}
+                  resting
+                  right={`${attendance.gamesPlayed}게임`}
+                />
+              ))}
+            </AnimatePresence>
+          </ListCard>
+        )}
+      </Section>
       {toast && <Toast toast={toast} />}
     </Shell>
   );
 }
 
-// 내 상태 한 줄 배너 — 지금 뭘 해야 하는지만 크게 (스크롤해도 상단 고정)
-// 내 상태 카드 — 모임원이 이 앱을 여는 이유("어디로 가요? 언제예요?")를 가장 크게 보여 준다
+// 게임 4명 이름 — 목록 한 줄용
+function playerNames(game: IGame): string {
+  return (game.players ?? []).map((p) => p.attendance?.member?.name ?? '').filter(Boolean).join(', ');
+}
+
+// 내 상태 — 모임원이 이 앱을 여는 이유("어디로 가요? 언제예요?")를 가장 크게 한 문장으로 보여 준다(스크롤해도 위에 고정)
 // 숫자는 전부 지금 스냅샷에서 정확히 나오는 것만(코트 번호·경과·순번). 예상 시간은 [게임 종료]를 늦게 누르면 틀어져 넣지 않는다
-function MyBanner({
+// 게임 중이면 초록 큰 카드("N번 코트로 오세요"), 그 밖에는 큰 문장
+function MyStatus({
   me,
+  myGame,
   waiting,
   queuedGames,
-  games,
   courts,
   now,
 }: {
   me: IAttendance;
+  myGame: IGame | null;
   waiting: IAttendance[];
   queuedGames: IGame[]; // queueOrder 순(서버 정렬)
-  games: IGame[];
   courts: ICourt[];
   now: number;
 }) {
-  const member = me.member;
-  const includesMe = (game: IGame) => (game.players ?? []).some((p) => p.attendanceId === me.id);
+  const name = me.member?.name ?? '';
+  const greeting = `${name}님, 오늘 ${me.gamesPlayed}게임 했어요`;
+
+  if (me.status === 'PLAYING') {
+    const court = courts.find((c) => c.id === myGame?.courtId);
+    return (
+      <header className="sticky top-[var(--safe-top)] z-10 overflow-hidden rounded-2xl bg-court px-5 py-6 text-bg">
+        <CourtLines />
+        <p className="text-body-sm font-bold">지금 게임이에요</p>
+        {court ? (
+          <p className="flex items-baseline gap-1.5">
+            <span className="tabular text-[4.5rem] leading-[4.75rem] font-bold tracking-tight">{court.courtNo}</span>
+            <span className="text-display font-bold">번 코트로 오세요</span>
+          </p>
+        ) : (
+          <p className="text-display font-bold">코트로 오세요</p>
+        )}
+        {myGame?.startedAt && (
+          <p className="tabular font-mono text-body font-semibold opacity-80">
+            시작한 지 {formatElapsed(myGame.startedAt, now)}
+          </p>
+        )}
+      </header>
+    );
+  }
 
   let title: string;
-  let right: string | null = null;
   let sub: string;
-  let tone = 'border-line bg-panel';
-  if (me.status === 'CHECKED_IN' && !me.shuttleConfirmedAt) {
+  let tone = 'text-ink';
+  if (me.status === 'LEFT') {
+    title = '퇴장했어요';
+    sub = '다시 오면 코드로 다시 체크인해 주세요';
+    tone = 'text-dim';
+  } else if (!me.shuttleConfirmedAt) {
     // 콕 확인 전엔 대기 목록에 없어 순번이 안 잡힌다 — 순번 대신 할 일을 보여준다
-    tone = 'border-amber bg-amber/10 text-amber';
-    title = '콕 확인 대기 중';
-    sub = '콕을 내고 운영진 확인을 받아주세요';
-  } else if (me.status === 'CHECKED_IN') {
-    title = `대기 ${waiting.findIndex((a) => a.id === me.id) + 1}번째`;
-    right = formatWaitingMinutes(me.waitingSince, now);
-    sub = '조합을 기다리는 중';
-  } else if (me.status === 'MATCHED') {
-    tone = 'border-amber bg-amber/10 text-amber';
-    // 겹쳐 들어간 조합이 여럿이면 가장 앞의 것 기준
-    const order = queuedGames.findIndex(includesMe) + 1;
-    if (order === 1) {
-      title = '바로 다음 게임';
-      sub = '코트가 비면 불러요';
-    } else if (order > 1) {
-      title = `다음 게임 ${order}번째`;
-      sub = `앞에 ${order - 1}조합`;
-    } else {
-      // 운영진이 짜는 중인 빈칸 조합에만 들어 있다 — 아직 정해진 게 아니라 대기로 보여 준다
-      title = `대기 ${waiting.findIndex((a) => a.id === me.id) + 1}번째`;
-      right = formatWaitingMinutes(me.waitingSince, now);
-      sub = '조합을 기다리는 중';
-    }
-  } else if (me.status === 'PLAYING') {
-    tone = 'border-court bg-court/10 text-court';
-    const game = games.find((g) => g.status === 'PLAYING' && includesMe(g));
-    const court = courts.find((c) => c.id === game?.courtId);
-    title = court ? `${court.courtNo}번 코트` : '게임 중';
-    right = game?.startedAt ? formatElapsed(game.startedAt, now) : null;
-    sub = '게임 중';
+    title = '콕 확인을 기다려요';
+    sub = '콕을 내고 운영진 확인을 받으면 게임에 들어갈 수 있어요';
+    tone = 'text-amber';
   } else if (me.status === 'RESTING') {
-    tone = 'border-sky bg-sky/10 text-sky';
-    title = '휴식 중';
-    right = formatWaitingMinutes(me.waitingSince, now);
-    sub = '다시 뛰려면 아래 [다시 뛸래요]';
+    title = '쉬는 중이에요';
+    sub = `쉰 지 ${formatWaitingMinutes(me.waitingSince, now)} · 다시 뛰려면 아래 버튼을 눌러 주세요`;
+    tone = 'text-sky';
   } else {
-    title = '퇴장';
-    sub = '다시 오면 코드로 재체크인';
+    // 겹쳐 들어간 조합이 여럿이면 가장 앞의 것 기준. 빈칸 조합에만 든 경우(order 0)는 아직 대기로
+    const order = me.status === 'MATCHED' ? queuedGames.findIndex((g) => g.id === myGame?.id) + 1 : 0;
+    if (order === 1) {
+      title = '바로 다음 게임이에요';
+      sub = '코트가 비면 불러 드릴게요';
+      tone = 'text-amber';
+    } else if (order > 1) {
+      title = `다음 게임 ${order}번째예요`;
+      sub = `앞에 ${order - 1}조합이 있어요`;
+      tone = 'text-amber';
+    } else {
+      title = `대기 ${waiting.findIndex((a) => a.id === me.id) + 1}번째예요`;
+      sub = `기다린 지 ${formatWaitingMinutes(me.waitingSince, now)} · 조합을 기다리는 중`;
+    }
   }
 
   return (
-    <header
-      className={`sticky top-[var(--safe-top)] z-10 rounded-2xl border p-4 backdrop-blur transition-colors duration-300 ${tone}`}
-    >
-      <div className="flex items-baseline gap-3">
-        <p className="min-w-0 flex-1 text-2xl font-bold">{title}</p>
-        {right && <span className="tabular shrink-0 font-mono text-2xl font-semibold">{right}</span>}
-      </div>
-      <p className="mt-1.5 flex items-center gap-1.5 text-sm opacity-90">
-        {member && <GradeBadge grade={member.grade} />}
-        <span className="font-medium">{member?.name}</span>
-        <span className="opacity-70">· {sub} · 오늘 {me.gamesPlayed}게임</span>
-      </p>
+    <header className="sticky top-[var(--safe-top)] z-10 -mx-5 flex flex-col gap-1.5 bg-bg/95 px-5 py-3 backdrop-blur">
+      <p className="text-body-sm font-medium text-dim">{greeting}</p>
+      <h1 className={`text-display font-bold transition-colors duration-300 ${tone}`}>{title}</h1>
+      <p className="text-body text-dim">{sub}</p>
     </header>
   );
 }
 
-function SectionTitle({
-  accent,
+// 게임 중 카드 배경의 코트 라인 무늬(앱 아이콘과 같은 그림)
+function CourtLines() {
+  return (
+    <svg
+      viewBox="0 0 100 100"
+      width="150"
+      height="190"
+      fill="none"
+      aria-hidden
+      className="pointer-events-none absolute -top-5 -right-6 opacity-20"
+    >
+      <rect x="24" y="14" width="52" height="72" rx="3" stroke="currentColor" strokeWidth="3" />
+      <path d="M24 36 H76 M24 64 H76 M50 14 V36 M50 64 V86" stroke="currentColor" strokeWidth="2" />
+      <path d="M17 50 H83" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// 내 게임 4명 — 게임 중이면 "같은 코트", 조합 대기면 "함께 칠 사람"
+function MyGameCard({ game, playing, memberId }: { game: IGame; playing: boolean; memberId: string | null }) {
+  return (
+    <section className="flex flex-col gap-3 rounded-2xl bg-panel p-4">
+      <h2 className="text-body-sm font-bold text-dim">{playing ? '같은 코트' : '함께 칠 사람'}</h2>
+      <div className="grid grid-cols-2 gap-2">
+        {(game.players ?? []).map((player) => {
+          const member = player.attendance?.member;
+          if (!member) return null;
+          const isMe = member.id === memberId;
+          return (
+            <div key={player.id} className="flex h-13 min-w-0 items-center gap-2 rounded-xl bg-panel2 px-3">
+              <GradeBadge grade={member.grade} />
+              <span className={`min-w-0 truncate text-body ${isMe ? 'font-bold text-court' : 'font-medium'}`}>
+                {member.name}
+              </span>
+              <GenderMarker gender={member.gender} />
+              {isMe && <span className="ml-auto"><MeChip /></span>}
+            </div>
+          );
+        })}
+      </div>
+      <PartnerNote people={gamePartnerPeople(game)} className="" />
+    </section>
+  );
+}
+
+function Section({ title, count, children }: { title: string; count: string; children: React.ReactNode }) {
+  return (
+    <section className="mt-2 flex flex-col gap-3">
+      <h2 className="flex items-baseline gap-2 text-heading font-bold">
+        {title}
+        <span className="tabular font-mono text-body-sm font-medium text-faint">{count}</span>
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+// 줄 목록 카드 — 한 덩어리 면 위에 줄을 쌓고 사이만 옅은 선(카드마다 테두리를 두르지 않는다)
+function ListCard({ children }: { children: React.ReactNode }) {
+  return <div className="flex flex-col divide-y divide-panel2 overflow-hidden rounded-2xl bg-panel">{children}</div>;
+}
+
+function Row({
+  badge,
+  badgeCls,
   title,
-  count,
+  titleCls = '',
+  sub,
+  subCls,
+  right,
 }: {
-  accent: string;
+  badge: number;
+  badgeCls: string;
   title: string;
-  count: number;
+  titleCls?: string;
+  sub?: string | null;
+  subCls?: string;
+  right?: React.ReactNode;
 }) {
   return (
-    <h2 className={`mt-2 flex items-baseline gap-2 text-sm font-bold ${accent}`}>
-      {title}
-      <span className="tabular font-mono text-xs text-faint">{count}</span>
-    </h2>
+    <div className="flex items-center gap-3 px-4 py-3.5">
+      <span className={`tabular flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] text-body font-bold ${badgeCls}`}>
+        {badge}
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className={`truncate text-body font-medium ${titleCls}`}>{title}</span>
+        {sub && <span className={`text-caption ${subCls ?? 'text-dim'}`}>{sub}</span>}
+      </div>
+      {right}
+    </div>
+  );
+}
+
+function PersonRow({
+  attendance,
+  isMe,
+  resting,
+  right,
+}: {
+  attendance: IAttendance;
+  isMe: boolean;
+  resting?: boolean;
+  right: string;
+}) {
+  const member = attendance.member;
+  if (!member) return null;
+  return (
+    <MotionCard
+      className={`flex items-center gap-2 px-4 py-3 ${isMe ? 'bg-court/10' : ''} ${resting && !isMe ? 'opacity-60' : ''}`}
+    >
+      <GradeBadge grade={member.grade} />
+      <span className={`min-w-0 truncate text-body ${isMe ? 'font-bold text-court' : 'font-medium'}`}>{member.name}</span>
+      <GenderMarker gender={member.gender} />
+      {isMe && <MeChip />}
+      {member.isGuest && <span className="shrink-0 text-caption text-sky">게스트</span>}
+      {resting && (
+        <span className="shrink-0 rounded-md bg-sky/15 px-1.5 py-0.5 text-caption font-medium text-sky">휴식</span>
+      )}
+      <span className="tabular ml-auto shrink-0 font-mono text-caption text-dim">{right}</span>
+    </MotionCard>
   );
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="rounded-xl border border-dashed border-line p-4 text-center text-sm text-faint">{children}</p>;
+  return <p className="rounded-2xl bg-panel p-5 text-center text-body-sm text-faint">{children}</p>;
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="fade-in mx-auto flex min-h-dvh w-full max-w-md flex-col gap-2 p-4">
+    <main className="fade-in mx-auto flex min-h-dvh w-full max-w-md flex-col gap-4 px-5 pt-2 pb-6">
       {/* 설치 배너는 /m의 모든 상태(로딩·모임 전·미체크인·참여 중)에서 같은 자리에 뜬다 */}
       <InstallPrompt />
       {children}
@@ -382,11 +477,11 @@ function Shell({ children }: { children: React.ReactNode }) {
 function Centered({ title, desc }: { title: string; desc: string }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
-      <HomeLink className="text-xs font-medium tracking-[0.3em] text-court transition-opacity hover:opacity-70">
+      <HomeLink className="text-caption font-bold tracking-[0.3em] text-court transition-opacity hover:opacity-70">
         LETSCOK
       </HomeLink>
-      <h1 className="text-2xl font-bold">{title}</h1>
-      <p className="text-dim">{desc}</p>
+      <h1 className="text-display font-bold">{title}</h1>
+      <p className="text-body text-dim">{desc}</p>
     </div>
   );
 }
