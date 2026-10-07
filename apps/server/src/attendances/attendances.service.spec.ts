@@ -252,31 +252,26 @@ describe('rest / resume (잠깐 휴식)', () => {
     return service.manualCheckIn(session.id, member.id);
   }
 
-  it('대기(CHECKED_IN) → 휴식, waitingSince가 휴식 시작 시각으로 갱신', async () => {
+  it('대기(CHECKED_IN) → 휴식, 대기 시각은 그대로(쉬는 동안도 대기 시간)', async () => {
     const checkedIn = await seedCheckedIn();
 
     const resting = await service.rest(checkedIn.id);
 
     expect(resting.status).toBe('RESTING');
-    expect(new Date(resting.waitingSince).getTime()).toBeGreaterThan(
-      new Date(checkedIn.waitingSince).getTime() - 1,
-    );
+    expect(resting.waitingSince).toBe(checkedIn.waitingSince);
   });
 
-  it('복귀하면 CHECKED_IN + 대기시간 리셋 (쉬는 동안은 기다린 게 아님)', async () => {
+  it('복귀하면 CHECKED_IN + 대기 시간 이어서(휴식 전 대기 + 쉰 시간)', async () => {
     const checkedIn = await seedCheckedIn();
-    await service.rest(checkedIn.id);
-    // 휴식 시작을 과거로 밀어 리셋 여부를 시간차로 검증
+    // 30분 전부터 기다리다 쉬었다고 가정
     const past = new Date(Date.now() - 30 * 60 * 1000);
-    await prisma.attendance.update({
-      where: { id: checkedIn.id },
-      data: { waitingSince: past },
-    });
+    await prisma.attendance.update({ where: { id: checkedIn.id }, data: { waitingSince: past } });
+    await service.rest(checkedIn.id);
 
     const resumed = await service.resume(checkedIn.id);
 
     expect(resumed.status).toBe('CHECKED_IN');
-    expect(new Date(resumed.waitingSince).getTime()).toBeGreaterThan(past.getTime());
+    expect(new Date(resumed.waitingSince).getTime()).toBe(past.getTime());
   });
 
   it('조합(MATCHED)·게임 중(PLAYING)엔 휴식 불가 — 운영진 안내 메시지 409', async () => {

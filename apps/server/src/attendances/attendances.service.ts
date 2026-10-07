@@ -213,7 +213,7 @@ export class AttendancesService {
   }
 
   // 잠깐 휴식 — 본인(/m)과 운영진 관제판이 같은 API를 쓴다
-  // waitingSince를 휴식 시작 시각으로 갱신해 "쉰 지 N분" 표시에 재사용
+  // 대기 시각(waitingSince)은 건드리지 않는다: 휴식은 잠깐 쉬는 것이지 나갔다 오는 게 아니라, 쉬는 동안도 대기 시간에 넣는다
   async rest(id: string): Promise<IAttendance> {
     const attendance = await this.findAttendanceOrThrow(id);
     if (attendance.status === 'RESTING') {
@@ -231,14 +231,14 @@ export class AttendancesService {
 
     const resting = await this.prisma.attendance.update({
       where: { id },
-      data: { status: 'RESTING', waitingSince: new Date() },
+      data: { status: 'RESTING' },
       include: { member: true },
     });
     this.realtime.broadcastSnapshot(attendance.sessionId);
     return toAttendanceResponse(resting);
   }
 
-  // 휴식 복귀 — 쉬는 동안은 기다린 게 아니므로 대기시간 리셋 (퇴장→재입장과 동일 규칙)
+  // 휴식 복귀 — 대기 시간은 이어서(휴식 전부터 기다린 시간 + 쉰 시간). 퇴장→재입장과 달리 리셋하지 않는다
   async resume(id: string): Promise<IAttendance> {
     const attendance = await this.findAttendanceOrThrow(id);
     if (attendance.status === 'CHECKED_IN') {
@@ -250,7 +250,7 @@ export class AttendancesService {
 
     const resumed = await this.prisma.attendance.update({
       where: { id },
-      data: { status: 'CHECKED_IN', waitingSince: new Date() },
+      data: { status: 'CHECKED_IN' },
       include: { member: true },
     });
     this.realtime.broadcastSnapshot(attendance.sessionId);

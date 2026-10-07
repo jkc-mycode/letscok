@@ -230,7 +230,7 @@ export default function MyStatusPage() {
                   attendance={attendance}
                   isMe={attendance.memberId === memberId}
                   resting
-                  right={`${attendance.gamesPlayed}게임`}
+                  right={`${attendance.gamesPlayed}게임 · ${formatWaitingMinutes(attendance.waitingSince, now)}`}
                 />
               ))}
             </AnimatePresence>
@@ -305,7 +305,8 @@ function MyStatus({
     tone = 'text-amber';
   } else if (me.status === 'RESTING') {
     title = '쉬는 중이에요';
-    sub = `쉰 지 ${formatWaitingMinutes(me.waitingSince, now)} · 다시 뛰려면 아래 버튼을 눌러 주세요`;
+    // 휴식도 대기 시간에 들어간다(잠깐 쉬는 것이지 나갔다 오는 게 아님) — 복귀하면 이어서
+    sub = `기다린 지 ${formatWaitingMinutes(me.waitingSince, now)} · 다시 뛰려면 아래 버튼을 눌러 주세요`;
     tone = 'text-sky';
   } else {
     // 겹쳐 들어간 조합이 여럿이면 가장 앞의 것 기준. 빈칸 조합에만 든 경우(order 0)는 아직 대기로
