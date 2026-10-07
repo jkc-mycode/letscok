@@ -2,6 +2,7 @@
 
 import { IAiCheckInStatus, IReceiptReadResult, ReceiptCategory } from '@letscok/shared-types';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ClearableInput } from '@/components/clearable-input';
 import { AiThinking } from '@/components/logo-loader';
 import { CameraIcon, ImageIcon } from '@/components/icons';
 import { Sheet } from '@/components/sheet';
@@ -135,12 +136,13 @@ function Counter({
           +
         </button>
       </div>
-      <input
+      <ClearableInput
         value={names}
         onChange={(e) => onNamesChange(e.target.value)}
         autoComplete="off"
         placeholder="이름 (선택, 쉼표나 띄어쓰기로 구분)"
         className="h-9 rounded-lg border-2 border-transparent bg-panel2 px-3 text-sm outline-none placeholder:text-faint focus:border-court"
+        onClear={() => onNamesChange('')}
       />
     </div>
   );
@@ -351,13 +353,15 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
                     >
                       {CATEGORY_LABEL[item.category]}
                     </button>
-                    <input
+                    <ClearableInput
                       value={item.name}
                       onChange={(e) => editItem(item.key, { name: e.target.value }, false)}
                       autoComplete="off"
                       maxLength={40}
                       placeholder="품목 이름"
-                      className="h-8 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 outline-none placeholder:text-faint focus:border-court"
+                      className="h-8 rounded-md border border-transparent bg-transparent px-1.5 outline-none placeholder:text-faint focus:border-court"
+                      onClear={() => editItem(item.key, { name: '' }, false)}
+                      wrapperClassName="min-w-0 flex-1"
                     />
                     <input
                       value={amountDisplay(item.amountText)}
@@ -482,13 +486,14 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
               />
             )}
           </div>
-          <input
+          <ClearableInput
             value={place}
             onChange={(e) => setPlace(e.target.value)}
             autoComplete="off"
             maxLength={30}
             placeholder="가게 이름 (선택)"
             className="h-10 rounded-lg border-2 border-transparent bg-panel2 px-3 text-sm outline-none placeholder:text-faint focus:border-court"
+            onClear={() => setPlace('')}
           />
         </div>
 

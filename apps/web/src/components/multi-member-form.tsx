@@ -3,6 +3,7 @@
 import { Gender, Grade } from '@letscok/shared-types';
 import { useRef, useState } from 'react';
 import { ApiError } from '@/lib/api';
+import { ClearableInput } from '@/components/clearable-input';
 import { formatBirthInput, parseBirthDate } from '@/lib/birth-input';
 
 // 여러 명 신규 등록 폼 — 한 줄에 한 사람, [+ 한 명 더]로 줄을 늘려 한 번에 등록한다
@@ -120,13 +121,15 @@ export function MultiMemberForm({
                   게스트
                 </button>
               </div>
-              <input
+              <ClearableInput
                 autoComplete="off"
                 value={row.name}
                 onChange={(e) => update(row.key, { name: e.target.value })}
                 maxLength={20}
                 placeholder="이름"
-                className="h-9 min-w-0 flex-1 rounded-lg border-2 border-transparent bg-panel2 px-3 text-sm outline-none focus:border-sky"
+                className="h-9 rounded-lg border-2 border-transparent bg-panel2 px-3 text-sm outline-none focus:border-sky"
+                onClear={() => update(row.key, { name: '' })}
+                wrapperClassName="min-w-0 flex-1"
               />
               {rows.length > 1 && (
                 <button
@@ -140,7 +143,7 @@ export function MultiMemberForm({
             </div>
 
             {!row.isGuest && (
-              <input
+              <ClearableInput
                 autoComplete="off"
                 type="text"
                 inputMode="numeric"
@@ -148,6 +151,7 @@ export function MultiMemberForm({
                 onChange={(e) => update(row.key, { birth: formatBirthInput(e.target.value) })}
                 placeholder="생년월일 8자리 (예: 19970312)"
                 className="h-9 rounded-lg border-2 border-transparent bg-panel2 px-3 text-sm outline-none focus:border-court"
+                onClear={() => update(row.key, { birth: '' })}
               />
             )}
             {!row.isGuest && birthDigits.length === 8 && !parseBirthDate(row.birth) && (

@@ -55,6 +55,7 @@ import { SettlementModal } from '@/components/settlement-modal';
 import { Sheet } from '@/components/sheet';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { ExitGuard } from '@/components/exit-guard';
+import { ClearableInput } from '@/components/clearable-input';
 import { gamePartnerPeople, GenderMarker, GradeBadge, PartnerNote, Toast } from '@/components/badges';
 import { HomeLink } from '@/components/home-link';
 import { MegaphoneIcon } from '@/components/icons';
@@ -1717,14 +1718,16 @@ function MemoPanel({
         </ul>
       )}
       <div className="flex gap-2 p-3">
-        <input
+        <ClearableInput
           autoComplete="off"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && add()}
           maxLength={200}
           placeholder="메모 — 모임 끝나도 유지돼요"
-          className="h-10 min-w-0 flex-1 rounded-lg border-2 border-transparent bg-panel2 px-3 text-sm outline-none focus:border-court"
+          className="h-10 rounded-lg border-2 border-transparent bg-panel2 px-3 text-sm outline-none focus:border-court"
+          onClear={() => setInput('')}
+          wrapperClassName="min-w-0 flex-1"
         />
         <button
           onClick={add}
@@ -1958,12 +1961,13 @@ function ManualCheckInModal({
         {/* AI 체크인 — 서버에 AI 키가 없으면 스스로 숨는다 */}
         <AiCheckInPanel sessionId={sessionId} attendances={attendances} run={run} />
 
-        <input
+        <ClearableInput
           autoComplete="off"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="모임원 이름을 검색하세요"
           className="h-12 rounded-xl border-2 border-transparent bg-panel2 px-4 outline-none focus:border-court"
+          onClear={() => setQuery('')}
         />
         <p className="pt-2 text-xs text-faint">
           탭해서 선택한 뒤 아래 [체크인] 버튼을 누르면 한 번에 처리돼요. 검색에 없으면 아래 [신규
@@ -2210,12 +2214,13 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
           </>
         }
       >
-        <input
+        <ClearableInput
           autoComplete="off"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="이름으로 검색"
           className="h-11 rounded-xl border-2 border-transparent bg-panel2 px-4 text-sm outline-none focus:border-court"
+          onClear={() => setQuery('')}
         />
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {FILTER_TABS.map((tab) => (
@@ -2442,13 +2447,14 @@ function MemberEditSheet({
 
       {!deleted && (
         <>
-          <input
+          <ClearableInput
             autoComplete="off"
             value={name}
             onChange={(e) => setName(e.target.value)}
             maxLength={20}
             placeholder="이름"
             className="h-11 rounded-xl border-2 border-transparent bg-panel2 px-4 text-sm outline-none focus:border-court"
+            onClear={() => setName('')}
           />
 
           {member.isGuest && (
@@ -2464,7 +2470,7 @@ function MemberEditSheet({
 
           {asRegular && (
             <div>
-              <input
+              <ClearableInput
                 autoComplete="off"
                 type="text"
                 inputMode="numeric"
@@ -2472,6 +2478,7 @@ function MemberEditSheet({
                 onChange={(e) => setBirth(formatBirthInput(e.target.value))}
                 placeholder="생년월일 8자리 (예: 19970312)"
                 className="h-11 w-full rounded-xl border-2 border-transparent bg-panel2 px-4 text-sm outline-none focus:border-court"
+                onClear={() => setBirth('')}
               />
               {birthDigits.length === 8 && !birthDate && (
                 <p className="mt-1 text-xs text-coral">날짜가 올바르지 않아요</p>
@@ -2765,12 +2772,14 @@ function TodayGamesModal({
         </>
       }
     >
-      <input
+      <ClearableInput
         autoComplete="off"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="이름으로 검색"
-        className="mb-3 h-11 rounded-lg border-2 border-transparent bg-panel2 px-3 text-sm outline-none focus:border-court"
+        className="h-11 rounded-lg border-2 border-transparent bg-panel2 px-3 text-sm outline-none focus:border-court"
+        onClear={() => setQuery('')}
+        wrapperClassName="mb-3"
       />
       {q && detail && (
         <p className="pb-2 text-xs text-dim">

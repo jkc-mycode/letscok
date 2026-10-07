@@ -17,6 +17,7 @@ import {
 } from '@letscok/shared-types';
 import { useMemo, useRef, useState } from 'react';
 import { GradeBadge, PartnerNote } from '@/components/badges';
+import { ClearableInput } from '@/components/clearable-input';
 import { AlertIcon, MicIcon, StopIcon } from '@/components/icons';
 import { AiThinking } from '@/components/logo-loader';
 import { GRADES } from '@/components/multi-member-form';
@@ -314,7 +315,7 @@ export function CommandSheet({
               {speech.listening ? <StopIcon size={20} /> : <MicIcon size={22} />}
             </button>
           )}
-          <input
+          <ClearableInput
             value={text}
             onChange={(e) => {
               setText(e.target.value);
@@ -327,7 +328,12 @@ export function CommandSheet({
             enterKeyHint="send"
             maxLength={200}
             placeholder="말하듯 적어 주세요"
-            className="h-12 min-w-0 flex-1 rounded-xl border-2 border-transparent bg-panel2 px-4 text-sm outline-none placeholder:text-faint focus:border-court"
+            className="h-12 rounded-xl border-2 border-transparent bg-panel2 px-4 text-sm outline-none placeholder:text-faint focus:border-court"
+            onClear={() => {
+              setText('');
+              setHeardRaw(null);
+            }}
+            wrapperClassName="min-w-0 flex-1"
           />
           <button
             onClick={() => void send()}

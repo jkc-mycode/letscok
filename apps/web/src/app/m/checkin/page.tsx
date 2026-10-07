@@ -11,6 +11,7 @@ import { IAttendance, IMember } from '@letscok/shared-types';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { GenderMarker, GradeBadge, Toast } from '@/components/badges';
+import { ClearableInput } from '@/components/clearable-input';
 import { ConnectionError } from '@/components/connection-error';
 import { HomeLink } from '@/components/home-link';
 import { InstallPrompt } from '@/components/install-prompt';
@@ -191,7 +192,7 @@ function SearchPanel({
         <label htmlFor="checkin-name" className="text-body-sm font-bold text-dim">
           이름
         </label>
-        <input
+        <ClearableInput
           id="checkin-name"
           autoComplete="off"
           enterKeyHint="search"
@@ -203,6 +204,11 @@ function SearchPanel({
           }}
           placeholder="이름을 입력하세요"
           className="h-14 rounded-xl border-2 border-transparent bg-panel px-4 text-heading font-medium outline-none placeholder:text-faint focus:border-court"
+          onClear={() => {
+            setQuery('');
+            setSelected(null);
+            setConsent(false);
+          }}
         />
 
         {results.length > 0 && (

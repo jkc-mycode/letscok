@@ -3,6 +3,7 @@
 import { IHistorySessionDetail } from '@letscok/shared-types';
 import { useEffect, useRef, useState } from 'react';
 import { Sheet } from '@/components/sheet';
+import { ClearableTextarea } from '@/components/clearable-input';
 import { api, ApiError } from '@/lib/api';
 import { sessionReportText } from '@/lib/session-report';
 
@@ -92,13 +93,14 @@ export function SessionReportModal({ sessionId, onClose }: { sessionId: string; 
               {toggle(showSummary, setShowSummary, '출석·게임 수')}
               {toggle(showTop, setShowTop, '많이 뛴 분')}
             </div>
-            <textarea
+            <ClearableTextarea
               value={closing}
               onChange={(e) => setClosing(e.target.value)}
               rows={2}
               maxLength={200}
               placeholder="끝인사 (비우면 넣지 않아요)"
               className="resize-none rounded-lg border-2 border-transparent bg-panel2 p-3 text-sm outline-none placeholder:text-faint focus:border-court"
+              onClear={() => setClosing('')}
             />
             <p className="text-xs text-dim">미리보기</p>
             <pre className="rounded-lg bg-panel2 p-3 font-sans text-sm leading-relaxed whitespace-pre-wrap select-text">

@@ -8,6 +8,7 @@ import {
 } from '@letscok/shared-types';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { GenderMarker, GradeBadge } from '@/components/badges';
+import { ClearableInput } from '@/components/clearable-input';
 import { SparkleIcon } from '@/components/icons';
 import { AiThinking } from '@/components/logo-loader';
 import { api, ApiError } from '@/lib/api';
@@ -162,14 +163,16 @@ export function AiCheckInPanel({
             참석 신청 목록 캡처 올리기 (최대 {MAX_IMAGES}장)
           </button>
           <div className="flex gap-2">
-            <input
+            <ClearableInput
               autoComplete="off"
               value={command}
               onChange={(e) => setCommand(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && void sendCommand()}
               maxLength={200}
               placeholder="예: 97년생 김민수 체크인해줘"
-              className="h-11 min-w-0 flex-1 rounded-xl border-2 border-transparent bg-panel2 px-3 text-sm outline-none focus:border-court"
+              className="h-11 rounded-xl border-2 border-transparent bg-panel2 px-3 text-sm outline-none focus:border-court"
+              onClear={() => setCommand('')}
+              wrapperClassName="min-w-0 flex-1"
             />
             <button
               onClick={() => void sendCommand()}
