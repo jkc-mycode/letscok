@@ -78,7 +78,7 @@ function HistoryDetail() {
                   <GradeBadge grade={attendee.grade} />
                   <span className="font-medium">{attendee.name}</span>
                   <GenderMarker gender={attendee.gender} />
-                  {attendee.isGuest && <span className="text-[10px] text-sky">게스트</span>}
+                  {attendee.isGuest && <span className="text-caption text-sky">게스트</span>}
                   <span className="tabular ml-auto font-mono text-xs text-dim">
                     {attendee.gamesPlayed}게임
                   </span>

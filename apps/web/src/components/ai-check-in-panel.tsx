@@ -178,7 +178,7 @@ export function AiCheckInPanel({
               실행
             </button>
           </div>
-          <p className="text-[11px] text-faint">
+          <p className="text-caption text-faint">
             성+이름이 명단의 한 명과 정확히 맞을 때만 자동으로 체크인해요. 동명이인·이름만 적힌 경우는
             아래 후보 버튼으로, 못 찾은 사람은 검색으로 직접 체크인해주세요.
           </p>
@@ -220,7 +220,7 @@ function ResultCard({
 
   return (
     <div className="rounded-xl border border-line bg-panel2 p-3 text-sm">
-      <p className="truncate text-[11px] text-faint">{input}</p>
+      <p className="truncate text-caption text-faint">{input}</p>
       <p className="mt-1 font-medium">{result.message}</p>
 
       {/* 이번에 체크인된 사람 — 잘못 잡혔으면 바로 취소(콕 확인 전·게임 기록 없을 때만 서버가 허용) */}
@@ -278,7 +278,7 @@ function ResultCard({
                   <GradeBadge grade={candidate.grade} />
                   <span className="font-medium">{candidate.name}</span>
                   <GenderMarker gender={candidate.gender} />
-                  {candidate.isGuest && <span className="text-[10px] text-sky">G</span>}
+                  {candidate.isGuest && <span className="text-caption text-sky">G</span>}
                   <span className="ml-auto text-dim">
                     {isPresent ? '출석 중' : (candidate.birthDate ?? '')}
                   </span>

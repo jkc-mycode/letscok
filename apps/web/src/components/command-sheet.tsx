@@ -382,7 +382,7 @@ export function CommandSheet({
               </button>
             ))}
           </div>
-          <p className="text-[11px] leading-relaxed text-faint">
+          <p className="text-caption leading-relaxed text-faint">
             게임 짜기·게임 종료·휴식·복귀·호출·게스트 추가는 미리보기를 보고 [확인]해야 실행돼요. 체크인은 이름이 정확히
             맞는 사람만 바로 처리돼요.
           </p>
@@ -520,9 +520,9 @@ function GamePreview({
             <span className="flex items-center gap-1.5">
               <GradeBadge grade={p.grade} />
               <span className="min-w-0 truncate font-medium">{p.name}</span>
-              {p.pinned && <span className="shrink-0 text-[11px] text-court">지정</span>}
+              {p.pinned && <span className="shrink-0 text-caption text-court">지정</span>}
             </span>
-            {changes[i] && <span className="text-[11px] text-coral">{changes[i]}</span>}
+            {changes[i] && <span className="text-caption text-coral">{changes[i]}</span>}
           </div>
         ))}
       </div>

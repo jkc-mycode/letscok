@@ -113,11 +113,11 @@ function Ranking() {
             <GradeBadge grade={entry.grade} />
             <span className="truncate font-medium">{entry.name}</span>
             <GenderMarker gender={entry.gender} />
-            {entry.isGuest && <span className="shrink-0 text-[10px] text-sky">게스트</span>}
+            {entry.isGuest && <span className="shrink-0 text-caption text-sky">게스트</span>}
             <span className="tabular ml-auto shrink-0 text-right font-mono text-xs text-dim">
               출석 {entry.totalSessions}회 · 게임 {entry.totalGames}판
               {entry.lastAttendedDate && (
-                <span className="block text-[10px] text-faint">
+                <span className="block text-caption text-faint">
                   최근 {entry.lastAttendedDate}
                 </span>
               )}

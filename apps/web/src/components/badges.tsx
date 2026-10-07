@@ -75,16 +75,16 @@ export function PlayerGrid({
             </span>
             <GenderMarker gender={member.gender} />
             {isMe && <MeChip />}
-            {member.isGuest && <span className="text-[10px] text-sky">G</span>}
+            {member.isGuest && <span className="text-caption text-sky">G</span>}
             {isBusy && (
-              <span className="shrink-0 rounded bg-court/15 px-1 py-0.5 text-[10px] font-medium text-court">
+              <span className="shrink-0 rounded bg-court/15 px-1 py-0.5 text-caption font-medium text-court">
                 게임 중
               </span>
             )}
             {!isBusy && overlapIds?.has(player.attendanceId) && (
               <span
                 title="다른 대기 조합에도 포함"
-                className="shrink-0 rounded bg-amber/15 px-1 py-0.5 text-[10px] font-medium text-amber"
+                className="shrink-0 rounded bg-amber/15 px-1 py-0.5 text-caption font-medium text-amber"
               >
                 겹침
               </span>

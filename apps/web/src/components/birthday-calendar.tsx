@@ -160,7 +160,7 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
               {WEEKDAYS.map((w, i) => (
                 <span
                   key={w}
-                  className={`pb-1 text-[11px] ${i === 0 ? 'text-coral' : i === 6 ? 'text-sky' : 'text-faint'}`}
+                  className={`pb-1 text-caption ${i === 0 ? 'text-coral' : i === 6 ? 'text-sky' : 'text-faint'}`}
                 >
                   {w}
                 </span>
@@ -185,6 +185,7 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
                             : 'border-transparent'
                     }`}
                   >
+                    {/* 날짜 칸은 7칸이라 좁다 — 디자인 시스템의 12px 하한에서 예외로 10·11px(생일자가 여럿이면 넘치지 않게) */}
                     <span className={`text-[11px] ${isToday ? 'font-bold text-amber' : 'text-dim'}`}>{day}</span>
                     {people.length > 0 && (
                       <span className="w-full truncate text-[10px] font-medium leading-tight text-court">
@@ -226,7 +227,7 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
                       }`}
                     />
                   ))}
-                  <p className="pt-1 text-[11px] text-faint">게스트는 생년월일을 받지 않아 표시되지 않아요.</p>
+                  <p className="pt-1 text-caption text-faint">게스트는 생년월일을 받지 않아 표시되지 않아요.</p>
                 </>
               )}
             </div>

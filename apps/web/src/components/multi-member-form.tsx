@@ -208,7 +208,7 @@ export function MultiMemberForm({
         {submitting ? '처리하는 중…' : `${rows.length}명 ${actionLabel}`}
       </button>
       {!ready && rows.length > 0 && (
-        <p className="text-center text-[11px] text-faint">
+        <p className="text-center text-caption text-faint">
           모든 줄에 이름·급수·성별(정회원은 생년월일까지)을 넣으면 등록할 수 있어요
         </p>
       )}

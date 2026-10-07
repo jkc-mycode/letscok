@@ -804,7 +804,7 @@ function BoardBody({
           headerExtra={
             <button
               onClick={() => setCourtsOpen(true)}
-              className="tap ml-auto h-7 rounded-lg border border-line px-2.5 text-xs font-medium text-dim"
+              className="tap ml-auto h-8 rounded-lg bg-panel2 px-3 text-caption font-medium text-dim"
             >
               코트 관리
             </button>
@@ -849,7 +849,7 @@ function BoardBody({
                 onClick={fillCourts}
                 disabled={busy}
                 title="빈 코트에 대기 조합을 순서대로 한 번에 배정해요"
-                className="ml-auto h-8 shrink-0 rounded-lg bg-amber px-3 text-xs font-bold text-bg disabled:opacity-50"
+                className="ml-auto h-8 shrink-0 rounded-lg bg-amber px-3 text-caption font-bold text-bg disabled:opacity-50"
               >
                 빈 코트 채우기 ({fillableCount})
               </button>
@@ -857,7 +857,7 @@ function BoardBody({
           }
         >
           {fillNotice && (
-            <p className="rounded-lg border border-amber/40 bg-amber/10 px-3 py-2 text-xs font-medium whitespace-normal text-amber">
+            <p className="rounded-[10px] bg-amber/10 px-3 py-2 text-caption font-medium whitespace-normal text-amber">
               {fillNotice}
             </p>
           )}
@@ -902,7 +902,7 @@ function BoardBody({
               />
               <button
                 onClick={() => setManualOpen(true)}
-                className="tap h-7 rounded-lg border border-line px-2.5 text-xs font-medium text-dim"
+                className="tap h-8 rounded-lg bg-panel2 px-3 text-caption font-medium text-dim"
               >
                 수동 체크인
               </button>
@@ -914,21 +914,25 @@ function BoardBody({
                 onClick={() => setCommandOpen(true)}
                 aria-label="AI 명령 — 말하듯 적어서 게임 짜기·종료·휴식·호출·체크인"
                 title="AI 명령"
-                className="h-14 w-14 shrink-0 rounded-xl border border-court/40 text-xl"
+                className="flex h-13 w-13 shrink-0 items-center justify-center rounded-xl bg-panel2 text-court"
               >
-                🎙
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <rect x="9" y="2" width="6" height="12" rx="3" />
+                  <path d="M5 10a7 7 0 0 0 14 0" />
+                  <path d="M12 17v4" />
+                </svg>
               </button>
               <button
                 onClick={() => setRecommendOpen(true)}
                 disabled={busy}
-                className="h-14 rounded-xl border border-court/40 px-4 text-base font-bold text-court disabled:opacity-50"
+                className="h-13 rounded-xl bg-panel2 px-4 text-body-sm font-bold text-court disabled:opacity-50"
               >
                 게임 추천
               </button>
               <button
                 onClick={() => void createGame()}
                 disabled={selected.size === 0 || busy}
-                className="h-14 flex-1 rounded-xl bg-amber text-base font-bold text-bg disabled:bg-panel2 disabled:text-faint"
+                className="h-13 flex-1 rounded-xl bg-amber text-body font-bold text-bg disabled:bg-panel2 disabled:text-faint"
               >
                 {selected.size > 0 && selected.size < GAME_SIZE ? '빈칸 조합' : '조합 만들기'} ({selected.size}/4)
               </button>
@@ -937,7 +941,7 @@ function BoardBody({
         >
           {pendingShuttle.length > 0 && (
             <>
-              <p className="pb-1 text-center text-[11px] font-medium text-amber">
+              <p className="pb-1 text-center text-caption font-medium text-amber">
                 콕 확인 대기 {pendingShuttle.length}명 — [콕 확인]을 누르면 명단으로 내려가요
               </p>
               <AnimatePresence initial={false}>
@@ -986,10 +990,10 @@ function BoardBody({
 
       {/* 구역 탭 — 폰에서만, 화면 맨 아래(엄지 자리). md 이상은 3열로 동시 표시.
           선택 표시(.board-tab-indicator)가 스와이프를 따라 미끄러진다 */}
-      <nav aria-label="구역" className="relative mt-2 flex shrink-0 rounded-2xl border border-line bg-panel p-1 md:hidden">
+      <nav aria-label="구역" className="relative mt-2 flex shrink-0 rounded-2xl bg-panel p-1 md:hidden">
         <span
           aria-hidden
-          className="board-tab-indicator absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/4)] rounded-xl border border-court bg-court/10"
+          className="board-tab-indicator absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/4)] rounded-xl bg-court/15"
         />
         {MOBILE_TABS.map((tab) => (
           <button
@@ -1003,7 +1007,7 @@ function BoardBody({
             {tab.label}
             {tab.count !== undefined && tab.count > 0 && (
               <span
-                className={`tabular min-w-5 rounded-full px-1.5 font-mono text-[11px] leading-5 ${
+                className={`tabular min-w-5 rounded-full px-1.5 font-mono text-caption leading-5 ${
                   mobileTab === tab.value ? 'bg-court text-bg' : 'bg-line text-ink'
                 }`}
               >
@@ -1312,11 +1316,11 @@ function RecommendModal({
                 {/* 종류 라벨 + 성별 구성(혼복/남복/여복/혼성 N:N)을 한 줄, 설명은 아래 줄 */}
                 <div className="flex items-center gap-2">
                   <span className={`shrink-0 font-bold ${meta.text}`}>{meta.label}</span>
-                  <span className="ml-auto shrink-0 rounded bg-panel px-1.5 py-0.5 text-[10px] font-medium text-dim">
+                  <span className="ml-auto shrink-0 rounded bg-panel px-1.5 py-0.5 text-caption font-medium text-dim">
                     {rec.genderLabel}
                   </span>
                 </div>
-                <span className="mt-0.5 text-[11px] text-faint">{meta.desc}</span>
+                <span className="mt-0.5 text-caption text-faint">{meta.desc}</span>
                 <div className="mt-3 flex flex-col gap-2">
                   {rec.players.map((player) => (
                     <div key={player.attendanceId} className="flex items-center gap-1.5 text-sm">
@@ -1324,13 +1328,13 @@ function RecommendModal({
                       {/* 이름이 핵심 정보 — 뱃지·통계에 밀려도 최소 한글 4자는 보장 */}
                       <span className="min-w-[4em] truncate font-medium">{player.name}</span>
                       <GenderMarker gender={player.gender} />
-                      {player.isGuest && <span className="text-[10px] text-sky">G</span>}
+                      {player.isGuest && <span className="text-caption text-sky">G</span>}
                       {player.borrowedFrom && (
-                        <span className="shrink-0 rounded bg-court/15 px-1 py-0.5 text-[10px] font-medium text-court">
+                        <span className="shrink-0 rounded bg-court/15 px-1 py-0.5 text-caption font-medium text-court">
                           {player.borrowedFrom === 'PLAYING' ? '게임 중' : '대기 조합'}
                         </span>
                       )}
-                      <span className="tabular ml-auto shrink-0 font-mono text-[11px] text-dim">
+                      <span className="tabular ml-auto shrink-0 font-mono text-caption text-dim">
                         {player.gamesPlayed}게임 · {player.waitingMinutes}분
                       </span>
                     </div>
@@ -1344,7 +1348,7 @@ function RecommendModal({
                   }))}
                 />
                 {rec.repeatPairCount > 0 && (
-                  <p className="mt-2 text-[11px] text-faint">
+                  <p className="mt-2 text-caption text-faint">
                     오늘 같이 뛴 쌍 {rec.repeatPairCount}개 포함
                   </p>
                 )}
@@ -1463,7 +1467,7 @@ function CodeEditor({
         autoComplete="off"
         className="tabular h-12 w-full rounded-lg border border-line bg-panel2 text-center font-mono text-lg tracking-[0.2em] outline-none placeholder:font-sans placeholder:text-xs placeholder:tracking-normal focus:border-court"
       />
-      <p className="text-[11px] leading-relaxed text-faint">
+      <p className="text-caption leading-relaxed text-faint">
         바꾼 코드는 다음 모임에도 그대로 이어져요 — 공지를 새로 올릴 때만 바꾸면 돼요
       </p>
       <div className="flex gap-2">
@@ -1583,10 +1587,10 @@ function ReplacePlayerModal({
                 <GradeBadge grade={member.grade} />
                 <span className="truncate font-medium">{member.name}</span>
                 <GenderMarker gender={member.gender} />
-                {member.isGuest && <span className="text-[10px] text-sky">G</span>}
+                {member.isGuest && <span className="text-caption text-sky">G</span>}
                 {attendance.status !== 'CHECKED_IN' && (
                   <span
-                    className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                    className={`shrink-0 rounded px-1.5 py-0.5 text-caption font-medium ${
                       attendance.status === 'PLAYING'
                         ? 'bg-court/15 text-court'
                         : 'bg-amber/15 text-amber'
@@ -1595,7 +1599,7 @@ function ReplacePlayerModal({
                     {attendance.status === 'PLAYING' ? '게임 중' : '대기 조합'}
                   </span>
                 )}
-                <span className="tabular ml-auto shrink-0 font-mono text-[11px] text-dim">
+                <span className="tabular ml-auto shrink-0 font-mono text-caption text-dim">
                   {attendance.gamesPlayed}게임
                 </span>
               </button>
@@ -1992,7 +1996,7 @@ function ManualCheckInModal({
                 }`}
               >
                 <span
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[11px] font-bold ${
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border text-caption font-bold ${
                     picked ? 'border-court bg-court text-bg' : 'border-line text-transparent'
                   }`}
                 >
@@ -2001,14 +2005,14 @@ function ManualCheckInModal({
                 <GradeBadge grade={member.grade} />
                 <span className="truncate font-medium">{member.name}</span>
                 <GenderMarker gender={member.gender} />
-                {member.isGuest && <span className="text-[10px] text-sky">G</span>}
+                {member.isGuest && <span className="text-caption text-sky">G</span>}
                 {present && (
-                  <span className="shrink-0 rounded bg-court/15 px-1.5 py-0.5 text-[10px] font-medium text-court">
+                  <span className="shrink-0 rounded bg-court/15 px-1.5 py-0.5 text-caption font-medium text-court">
                     출석 중
                   </span>
                 )}
                 {status === 'LEFT' && (
-                  <span className="shrink-0 rounded bg-amber/15 px-1.5 py-0.5 text-[10px] font-medium text-amber">
+                  <span className="shrink-0 rounded bg-amber/15 px-1.5 py-0.5 text-caption font-medium text-amber">
                     퇴장 — 재입장 처리
                   </span>
                 )}
@@ -2076,7 +2080,7 @@ function ManualCheckInModal({
                   if (remaining === 0) setRegOpen(false);
                 }}
               />
-              <p className="text-[11px] text-faint">
+              <p className="text-caption text-faint">
                 게스트는 생년월일을 받지 않아요. 정회원은 본인 폰으로 코드 체크인하면 이 계정으로
                 연결돼요. 등록은 본인에게 구두로 동의받아 주세요.
               </p>
@@ -2103,7 +2107,7 @@ function RoleBadge({ role }: { role: MemberRole }) {
   if (role === 'MEMBER') return null; // 대다수가 모임원 — 배지는 예외(모임장·운영진)만
   return (
     <span
-      className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+      className={`shrink-0 rounded px-1.5 py-0.5 text-caption font-medium ${
         role === 'LEADER' ? 'bg-amber/15 text-amber' : 'bg-court/15 text-court'
       }`}
     >
@@ -2254,9 +2258,9 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
               <GradeBadge grade={member.grade} />
               <span className="truncate font-medium">{member.name}</span>
               <GenderMarker gender={member.gender} />
-              {member.isGuest && <span className="shrink-0 text-[10px] text-sky">게스트</span>}
+              {member.isGuest && <span className="shrink-0 text-caption text-sky">게스트</span>}
               <RoleBadge role={member.role} />
-              <span className="ml-auto flex shrink-0 flex-col items-end text-[11px] leading-tight text-dim">
+              <span className="ml-auto flex shrink-0 flex-col items-end text-caption leading-tight text-dim">
                 <span>{formatLastAttended(member.lastAttendedAt)}</span>
                 <span className="text-faint">{member.totalGames}게임</span>
               </span>
@@ -2318,7 +2322,7 @@ function MemberRegisterSheet({
       header={
         <>
           <h3 className="shrink-0 font-bold whitespace-nowrap text-sky">신규 등록</h3>
-          <p className="min-w-0 text-[11px] text-faint">명단에만 추가 — 체크인 안 됨</p>
+          <p className="min-w-0 text-caption text-faint">명단에만 추가 — 체크인 안 됨</p>
         </>
       }
     >
@@ -2337,7 +2341,7 @@ function MemberRegisterSheet({
         }}
       />
       {notice && <p className="text-xs font-medium text-court">{notice}</p>}
-      <p className="text-[11px] leading-relaxed text-faint">
+      <p className="text-caption leading-relaxed text-faint">
         개인정보 동의는 본인이 처음 코드로 체크인할 때 받아요. 등록은 본인에게 구두로 동의받아
         주세요.
       </p>
@@ -2404,12 +2408,12 @@ function MemberEditSheet({
       header={
         <>
           <h3 className="min-w-0 truncate font-bold text-court">{member.name}</h3>
-          {member.isGuest && <span className="text-[10px] text-sky">게스트</span>}
-          {deleted && <span className="text-[10px] text-coral">삭제됨</span>}
+          {member.isGuest && <span className="text-caption text-sky">게스트</span>}
+          {deleted && <span className="text-caption text-coral">삭제됨</span>}
         </>
       }
     >
-      <p className="text-[11px] text-faint">
+      <p className="text-caption text-faint">
         출석 {member.totalSessions}회 · {member.totalGames}게임 · 최근{' '}
         {formatLastAttended(member.lastAttendedAt)}
       </p>
@@ -2569,7 +2573,7 @@ function MemberEditSheet({
         >
           {confirmAnon ? '한 번 더 누르면 개인정보가 지워져요 (복구 불가)' : '개인정보 삭제 (본인 요청 시)'}
         </button>
-        <p className="text-[11px] leading-relaxed text-faint">
+        <p className="text-caption leading-relaxed text-faint">
           삭제는 명단에서만 감춰요(기록 유지·복구 가능). 개인정보 삭제는 이름·생년월일·성별을
           지우고 출석·게임 기록만 남겨요 — 본인이 요청했을 때만 사용하세요.
         </p>
@@ -2653,7 +2657,7 @@ function StaleGuestCleanupSheet({
               }`}
             >
               <span
-                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[11px] font-bold ${
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border text-caption font-bold ${
                   picked ? 'border-amber bg-amber text-bg' : 'border-line text-transparent'
                 }`}
               >
@@ -2662,7 +2666,7 @@ function StaleGuestCleanupSheet({
               <GradeBadge grade={guest.grade} />
               <span className="truncate font-medium">{guest.name}</span>
               <GenderMarker gender={guest.gender} />
-              <span className="ml-auto shrink-0 text-[11px] text-dim">
+              <span className="ml-auto shrink-0 text-caption text-dim">
                 {formatLastAttended(guest.lastAttendedAt)}
               </span>
             </button>
@@ -2811,7 +2815,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
       '명단에서 4명 선택 → [조합 만들기] → 대기 조합에서 [코트 배정] → 끝나면 [게임 종료].',
       '[게임 종료]만 게임 수 +1 · 대기시간 리셋. [대기로]는 조합을 유지한 채 뒤로. 카드의 [⋯]에 있는 게임 취소·해체는 없던 일로 (둘 다 미집계).',
       '부상·급한 일로 한 명만 바꿀 땐 카드 [⋯] → 교체 — 게임을 갈아엎지 않아 타이머·순서가 유지돼요. 빠진 사람은 대기로 돌아와요.',
-      '대회 연습 파트너는 [🎙]에 "민수랑 준호 대회 연습한대"라고 말하면 돼요. 그날 게임 추천이 두 사람을 같은 게임에 넣는 쪽으로 기울고(둘 다 비어 있을 때만, 강제 아님) 카드에 "대회 연습: ○○·○○ 한 팀"이 보여요. 명단 이름 옆 "파트너 ○○"를 두 번 누르면 해제. 운영 메모에도 한 줄 남아요.',
+      '대회 연습 파트너는 [마이크]에 "민수랑 준호 대회 연습한대"라고 말하면 돼요. 그날 게임 추천이 두 사람을 같은 게임에 넣는 쪽으로 기울고(둘 다 비어 있을 때만, 강제 아님) 카드에 "대회 연습: ○○·○○ 한 팀"이 보여요. 명단 이름 옆 "파트너 ○○"를 두 번 누르면 해제. 운영 메모에도 한 줄 남아요.',
       '구두 요청("무릎 조심" 등)은 메모에 적어두세요. 모임이 끝나도 남아 다음 모임에 이어지고, 처리했으면 ✕로 지워요.',
       '오늘 끝난 게임은 상단 [게임 기록]에서 확인해요 — 이름으로 검색하면 그 사람이 뛴 게임만 모아 볼 수 있어요.',
       '모임원이 폰에서 [잠깐 쉴래요]를 누르면 휴식으로 빠져요 — 조합 선택·게임 추천에서 제외되고, 복귀하면 대기시간이 새로 시작돼요. 명단 줄의 [⋯] → 휴식·복귀로 운영진이 대신 처리할 수도 있어요.',
@@ -2855,10 +2859,10 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
     title: '게임 추천',
     items: [
       '[게임 추천]은 참고용 초안 3종 — 공정성(오래 기다린 순) / 새 조합(오늘 안 만난 사람) / 믹스.',
-      '[🎙] AI 명령 — "민수랑 준호 넣어서 남복 짜줘", "3번 코트 끝났어", "민수 휴식", "홍길동 체크인"처럼 적으면 미리보기를 보여 주고, [확인]해야 실행돼요(체크인은 이름이 정확히 맞는 사람만 바로). 성 없이 이름만 말해도 오늘 출석자 중 한 명이면 알아들어요. 시트의 [🎙 눌러서 말하기]로 말해도 되고, 말이 끝나면 저절로 멈추거나 [말 끝]으로 멈춰요.',
+      '[마이크] AI 명령 — "민수랑 준호 넣어서 남복 짜줘", "3번 코트 끝났어", "민수 휴식", "홍길동 체크인"처럼 적으면 미리보기를 보여 주고, [확인]해야 실행돼요(체크인은 이름이 정확히 맞는 사람만 바로). 성 없이 이름만 말해도 오늘 출석자 중 한 명이면 알아들어요. 시트의 [🎙 눌러서 말하기]로 말해도 되고, 말이 끝나면 저절로 멈추거나 [말 끝]으로 멈춰요.',
       '한 번에 여러 개를 말해도 돼요 — "3번 코트 끝났고 남복 하나 짜줘"처럼 말하면 미리보기가 차례로 나와요(최대 3개). 하나를 [확인]하면 다음 것으로 넘어가고, 원치 않으면 [건너뛰기].',
-      '[🎙]에 상황을 물어봐도 돼요 — "누가 제일 오래 기다렸어?", "민수 오늘 몇 게임 했어?", "아직 0게임인 사람?", "빈 코트 있어?", "몇 명 왔어?", "다음 게임 누구야?". 숫자는 지금 현황에서 바로 계산해요.',
-      '[🎙] "게스트 홍길동 남자 C급 추가해줘" — 미리보기에서 빠진 성별·급수를 눌러 채우고 [체크인]. 같은 이름 게스트가 있으면 새로 만들지 않고 그 사람으로 체크인해요. 콕 확인은 명단 맨 위에서 따로 해요.',
+      '[마이크]에 상황을 물어봐도 돼요 — "누가 제일 오래 기다렸어?", "민수 오늘 몇 게임 했어?", "아직 0게임인 사람?", "빈 코트 있어?", "몇 명 왔어?", "다음 게임 누구야?". 숫자는 지금 현황에서 바로 계산해요.',
+      '[마이크] "게스트 홍길동 남자 C급 추가해줘" — 미리보기에서 빠진 성별·급수를 눌러 채우고 [체크인]. 같은 이름 게스트가 있으면 새로 만들지 않고 그 사람으로 체크인해요. 콕 확인은 명단 맨 위에서 따로 해요.',
       '게임 수는 "온 시간 대비"로 따져요 — 늦게 온 사람이 먼저 온 사람의 판수를 따라잡으려 연달아 추천되지 않고, 온 뒤부터 같은 속도로 돌아가요.',
       '대기시간·게임 수·함께 뛴 조합·성별 구성(남복/여복/혼복)을 점수로 계산해요. 넣을지는 운영진 마음!',
       '종목 탭(남복/여복/혼복/기타 3:1)을 누르면 그 구성으로만 추천해요. 성별 미지정 멤버는 [전체] 탭에서만 나와요.',
@@ -2951,10 +2955,10 @@ function Zone({
   className?: string; // 컬럼 분할 시 flex-1 부여용
 }) {
   return (
-    <section className={`flex min-h-0 flex-col rounded-2xl border border-line bg-panel/70 ${className}`}>
-      <h2 className={`flex items-center gap-2 px-4 pt-3 pb-2 text-sm font-bold ${accent}`}>
+    <section className={`flex min-h-0 flex-col rounded-2xl bg-panel ${className}`}>
+      <h2 className={`flex items-center gap-2 px-3.5 pt-3 pb-2 text-body-sm font-bold ${accent}`}>
         {title}
-        <span className="tabular font-mono text-xs text-faint">{count}</span>
+        <span className="tabular font-mono text-caption text-faint">{count}</span>
         {headerExtra}
       </h2>
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3">
@@ -2967,7 +2971,7 @@ function Zone({
 
 function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <p className="flex flex-1 items-center justify-center p-6 text-center text-sm text-faint">
+    <p className="flex flex-1 items-center justify-center p-6 text-center text-body-sm text-faint">
       {children}
     </p>
   );
@@ -3111,7 +3115,7 @@ function CourtPickSheet({
               className="flex h-16 flex-col items-center justify-center rounded-xl bg-amber text-lg font-bold text-bg disabled:bg-panel2 disabled:text-faint"
             >
               {court.courtNo}번 코트
-              {theirTurn && <span className="text-[11px] font-medium">다른 모임 차례</span>}
+              {theirTurn && <span className="text-caption font-medium">다른 모임 차례</span>}
             </button>
           );
         })}
@@ -3125,7 +3129,7 @@ function CourtPickSheet({
 // 공유 코트 표시 — 다른 모임과 번갈아 쓰는 코트임을 카드 제목 옆에 알린다
 function SharedBadge() {
   return (
-    <span className="rounded bg-sky/15 px-1.5 py-0.5 text-[10px] font-medium text-sky">공유</span>
+    <span className="rounded bg-sky/15 px-1.5 py-0.5 text-caption font-medium text-sky">공유</span>
   );
 }
 
@@ -3166,17 +3170,17 @@ function CourtCard({
     // 상대 차례인 공유 코트 — 배정이 막히는 이유가 보이게 빈 코트와 구분해 크게 표시
     if (court.isShared && !court.ourTurn) {
       return (
-        <MotionCard className="rounded-xl border border-sky/40 bg-sky/5 p-4">
+        <MotionCard className="rounded-xl bg-sky/8 p-3">
           <div className="flex items-center justify-between gap-2">
-            <span className="font-bold text-sky">
+            <span className="text-body font-bold text-sky">
               {court.courtNo}번 코트 <SharedBadge />
             </span>
-            <span className="text-xs text-sky">다른 모임 차례</span>
+            <span className="text-caption text-sky">다른 모임 차례</span>
           </div>
           <button
             onClick={() => void setTurn(true)}
             title="상대 게임이 끝났으면 눌러주세요 — 배정이 다시 열려요"
-            className="mt-3 h-11 w-full rounded-lg border border-sky/40 text-sm font-bold text-sky"
+            className="mt-3 h-10 w-full rounded-[10px] bg-sky/15 text-body-sm font-bold text-sky"
           >
             우리 차례로
           </button>
@@ -3186,15 +3190,15 @@ function CourtCard({
     return (
       <MotionCard
         ref={courtDrop.ref}
-        className={`rounded-xl border border-dashed p-4 ${
-          courtDrop.dragging ? 'border-court bg-court/5' : 'border-line'
+        className={`rounded-xl p-3 ${
+          courtDrop.dragging ? 'bg-court/10 ring-[1.5px] ring-court/60 ring-inset' : 'bg-panel2/50'
         } ${courtDrop.overCls}`}
       >
         <div className="flex items-center justify-between gap-2">
-          <span className="font-bold text-dim">
+          <span className="text-body font-bold text-dim">
             {court.courtNo}번 코트 {court.isShared && <SharedBadge />}
           </span>
-          <span className="text-xs text-faint">
+          <span className="text-caption text-faint">
             {courtDrop.dragging
               ? '여기에 놓으면 배정'
               : court.isShared
@@ -3387,14 +3391,14 @@ function SlotPerson({
       <GradeBadge grade={member.grade} />
       <span className="min-w-0 truncate font-medium">{member.name}</span>
       <GenderMarker gender={member.gender} />
-      {member.isGuest && <span className="text-[10px] text-sky">G</span>}
+      {member.isGuest && <span className="text-caption text-sky">G</span>}
       {busyElsewhere && (
-        <span className="shrink-0 rounded bg-court/15 px-1 py-0.5 text-[10px] font-medium text-court">게임 중</span>
+        <span className="shrink-0 rounded bg-court/15 px-1 py-0.5 text-caption font-medium text-court">게임 중</span>
       )}
       {!busyElsewhere && overlap && (
         <span
           title="다른 대기 조합에도 포함"
-          className="shrink-0 rounded bg-amber/15 px-1 py-0.5 text-[10px] font-medium text-amber"
+          className="shrink-0 rounded bg-amber/15 px-1 py-0.5 text-caption font-medium text-amber"
         >
           겹침
         </span>
@@ -3544,17 +3548,17 @@ function SlotFillSheet({
             <GradeBadge grade={member.grade} />
             <span className="min-w-0 truncate font-medium">{member.name}</span>
             <GenderMarker gender={member.gender} />
-            {member.isGuest && <span className="text-[10px] text-sky">G</span>}
+            {member.isGuest && <span className="text-caption text-sky">G</span>}
             {place && (
               <span
-                className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                className={`shrink-0 rounded px-1.5 py-0.5 text-caption font-medium ${
                   attendance.status === 'PLAYING' ? 'bg-court/15 text-court' : 'bg-amber/15 text-amber'
                 }`}
               >
                 {place}
               </span>
             )}
-            <span className="tabular ml-auto shrink-0 font-mono text-[11px] text-dim">
+            <span className="tabular ml-auto shrink-0 font-mono text-caption text-dim">
               {attendance.gamesPlayed}게임
             </span>
           </button>
@@ -3745,19 +3749,19 @@ function ShuttleRow({
   const member = attendance.member;
   if (!member) return null;
   return (
-    <MotionCard className="flex items-center gap-2 rounded-xl border border-amber/40 bg-amber/5 p-3 transition-colors">
+    <MotionCard className="flex min-h-11 items-center gap-2 rounded-[10px] bg-amber/10 py-1.5 pr-1.5 pl-2.5 text-body-sm transition-colors">
       <GradeBadge grade={member.grade} />
       <span className="truncate font-medium">{member.name}</span>
       <GenderMarker gender={member.gender} />
-      {member.isGuest && <span className="text-[10px] text-sky">게스트</span>}
+      {member.isGuest && <span className="text-caption text-sky">게스트</span>}
       {/* 사전 체크인 취소 — 개인 사정·노쇼 등으로 못 오게 된 사람을 출석 기록 없이 제거 (퇴장과 다름) */}
       {/* 출석 취소(노쇼) 2탭 확인 — 콕 확인 바로 옆이라 오탭 한 번에 지워지면 안 된다 */}
       <ConfirmButton
         label="취소"
         title="체크인 취소 — 못 오게 된 사람을 출석 기록 없이 제거"
         onConfirm={() => void run(() => api(`/attendances/${attendance.id}`, { method: 'DELETE', admin: true }))}
-        className="tap ml-auto h-8 shrink-0 rounded-lg px-2 text-xs font-medium"
-        idleCls="border border-line text-dim"
+        className="tap ml-auto h-8 shrink-0 rounded-lg px-2.5 text-caption font-medium"
+        idleCls="text-dim"
       />
       <button
         onClick={() =>
@@ -3765,7 +3769,7 @@ function ShuttleRow({
             api(`/attendances/${attendance.id}/shuttle`, { method: 'PATCH', admin: true }),
           )
         }
-        className="h-9 shrink-0 rounded-lg bg-amber px-3 text-xs font-bold text-bg"
+        className="h-8 shrink-0 rounded-lg bg-amber px-3 text-caption font-bold text-bg"
       >
         콕 확인
       </button>
