@@ -18,7 +18,8 @@ import { MotionCard } from '@/components/motion-card';
 import { PushToggle } from '@/components/push-toggle';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { api, ApiError } from '@/lib/api';
-import { getMemberId } from '@/lib/member';
+import { clearMemberId, getMemberId } from '@/lib/member';
+import { disablePush } from '@/lib/push';
 import {
   formatElapsed,
   formatWaitingMinutes,
@@ -60,6 +61,11 @@ export default function MyStatusPage() {
     }
   };
 
+  // 이 폰과 본인의 연결 끊기 — 잘못 골랐거나 빌린 폰일 때. 연결된 상태에서만 맨 아래에 보인다
+  const disconnect = memberId ? (
+    <DisconnectButton name={me?.member?.name ?? null} onDone={() => setMemberId(null)} />
+  ) : null;
+
   if (!mounted || loading) {
     return <Shell><LogoLoader className="py-20" /></Shell>;
   }
@@ -72,7 +78,7 @@ export default function MyStatusPage() {
   }
   if (noSession || !snapshot) {
     return (
-      <Shell>
+      <Shell bottom={disconnect}>
         <Centered title="아직 모임 전이에요" desc="모임이 시작되면 이 화면에서 코트 현황을 볼 수 있어요" />
       </Shell>
     );
@@ -81,7 +87,7 @@ export default function MyStatusPage() {
     // 체크인은 보통 운영진이 미리 해 둔다(소모임 투표 기준) — 코드 입력의 주된 쓰임은 이 폰을 본인과 잇는 것
     // 연결 전(memberId 없음)과 연결은 됐는데 오늘 명단에 없는 경우를 문구로 가른다
     return (
-      <Shell>
+      <Shell bottom={disconnect}>
         {memberId ? (
           <Centered title="아직 오늘 명단에 없어요" desc="운영진에게 말하거나 코드로 직접 출석할 수 있어요" />
         ) : (
@@ -132,7 +138,7 @@ export default function MyStatusPage() {
     games.find((g) => g.status === 'PLAYING' && includesMe(g)) ?? queuedGames.find(includesMe) ?? null;
 
   return (
-    <Shell>
+    <Shell bottom={disconnect}>
       {/* 로고 = 홈 링크 */}
       <HomeLink className="flex h-11 items-center self-start text-caption font-bold tracking-[0.3em] text-court transition-opacity hover:opacity-70">
         LETSCOK
@@ -470,7 +476,7 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <p className="rounded-2xl bg-panel p-5 text-center text-body-sm text-faint">{children}</p>;
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({ children, bottom }: { children: React.ReactNode; bottom?: React.ReactNode }) {
   return (
     <main className="fade-in mx-auto flex min-h-dvh w-full max-w-md flex-col gap-4 px-5 pt-2 pb-6">
       {/* 설치 배너는 /m의 모든 상태(로딩·모임 전·미체크인·참여 중)에서 같은 자리에 뜬다 */}
@@ -478,9 +484,52 @@ function Shell({ children }: { children: React.ReactNode }) {
       {children}
       {/* 화면 테마 — 모든 상태(모임 전·미체크인·참여 중)에서 맨 아래 같은 자리 */}
       <ThemeToggle className="mt-auto" />
+      {bottom}
       {/* 설치 앱에서 첫 화면 뒤로가기 = "한 번 더 누르면 종료" */}
       <ExitGuard />
     </main>
+  );
+}
+
+// 두 번 눌러야 끊긴다(운영진 [모임 종료]와 같은 방식) — 알림 구독도 함께 지워야
+// 앞사람의 코트 알림이 이 폰으로 계속 오지 않는다. 오늘 출석은 그대로(출석 취소는 운영진 몫)
+function DisconnectButton({ name, onDone }: { name: string | null; onDone: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!confirming) return;
+    const timer = setTimeout(() => setConfirming(false), 4000);
+    return () => clearTimeout(timer);
+  }, [confirming]);
+
+  const run = async () => {
+    if (busy) return;
+    if (!confirming) {
+      setConfirming(true);
+      return;
+    }
+    setBusy(true);
+    await disablePush().catch(() => undefined); // 알림 해제가 실패해도 연결은 끊는다
+    clearMemberId();
+    setBusy(false);
+    onDone();
+  };
+
+  return (
+    <button
+      onClick={() => void run()}
+      disabled={busy}
+      className={`tap mx-auto min-h-11 px-3 text-caption ${confirming ? 'font-bold text-coral' : 'text-faint'}`}
+    >
+      {busy
+        ? '연결을 끊는 중…'
+        : confirming
+          ? '한 번 더 누르면 이 폰의 연결과 알림이 해제돼요'
+          : name
+            ? `${name}님이 아니에요? 연결 해제`
+            : '이 폰의 연결 해제'}
+    </button>
   );
 }
 
