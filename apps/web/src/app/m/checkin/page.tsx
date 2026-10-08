@@ -231,8 +231,10 @@ function SearchPanel({
                   </span>
                   <GenderMarker gender={member.gender} />
                   {member.isGuest && <span className="shrink-0 text-caption text-sky">게스트</span>}
-                  {/* 동명이인 구분용 생년월일 노출 */}
-                  <span className="tabular ml-auto font-mono text-body-sm text-dim">{member.birthDate}</span>
+                  {/* 동명이인 구분용 출생 연도 — 공개 응답엔 생년월일 전체가 오지 않는다 */}
+                  <span className="tabular ml-auto font-mono text-body-sm text-dim">
+                    {member.birthYear ? `${String(member.birthYear).slice(2)}년생` : ''}
+                  </span>
                   <CheckIcon className={isSelected ? 'text-court' : 'text-transparent'} />
                 </button>
               );

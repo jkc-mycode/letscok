@@ -11,7 +11,7 @@ import {
   MemberListFilter,
   MemberListSort,
 } from '@letscok/shared-types';
-import { toMemberResponse } from '../common/mappers/entity.mappers';
+import { toMemberResponse, toPublicMemberResponse } from '../common/mappers/entity.mappers';
 import { toDateString } from '../common/utils/date.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -50,7 +50,7 @@ export class MembersService {
     return toMemberResponse(member);
   }
 
-  async search(name: string): Promise<IMember[]> {
+  async search(name: string, full = false): Promise<IMember[]> {
     // 부분 일치 검색 — 목록에 생년월일·급수를 함께 내려 동명이인을 본인이 구분하게 한다
     const members = await this.prisma.member.findMany({
       where: { name: { contains: name }, deletedAt: null },
@@ -65,7 +65,7 @@ export class MembersService {
         if (dateA !== dateB) return dateB - dateA;
         return a.name.localeCompare(b.name, 'ko');
       })
-      .map(toMemberResponse);
+      .map(full ? toMemberResponse : toPublicMemberResponse);
   }
 
   // 명단 목록 (운영진 전용) — 삭제된 회원 포함(복구 지원), 출석 집계 동봉. 생일 캘린더가 전체를 쓴다

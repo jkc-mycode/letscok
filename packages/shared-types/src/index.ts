@@ -61,7 +61,8 @@ export type GameStatus = (typeof GameStatus)[keyof typeof GameStatus];
 export interface IMember {
   id: string;
   name: string;
-  birthDate: string | null; // YYYY-MM-DD (동명이인 구분용 노출) — 게스트는 null
+  birthDate: string | null; // YYYY-MM-DD — 운영진 응답에만 실린다. 공개 응답(이름 검색·보드)과 게스트·모름은 null
+  birthYear: number | null; // 출생 연도 — 공개 응답에서 동명이인 구분용("97년생"). 생년월일이 없으면 null
   grade: Grade;
   gender: Gender | null; // null = 미지정 (도입 전 기존 회원)
   isGuest: boolean;

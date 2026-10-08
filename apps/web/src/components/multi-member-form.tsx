@@ -367,7 +367,7 @@ function useSimilarMembers(name: string): IMember[] {
     }
     let alive = true;
     const timer = setTimeout(() => {
-      api<IMember[]>(`/members/search?name=${encodeURIComponent(trimmed)}`)
+      api<IMember[]>(`/members/search?name=${encodeURIComponent(trimmed)}`, { admin: true }) // 운영진 화면 전용 폼 — 전체 생년월일
         .then((list) => alive && setMatches(list))
         .catch(() => alive && setMatches([]));
     }, 300);

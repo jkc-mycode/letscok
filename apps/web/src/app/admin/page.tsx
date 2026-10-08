@@ -1887,7 +1887,7 @@ function ManualCheckInModal({
       return;
     }
     const timer = setTimeout(() => {
-      void api<IMember[]>(`/members/search?name=${encodeURIComponent(trimmed)}`)
+      void api<IMember[]>(`/members/search?name=${encodeURIComponent(trimmed)}`, { admin: true })
         .then(setResults)
         .catch(() => setResults([]));
     }, 300);

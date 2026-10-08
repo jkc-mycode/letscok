@@ -25,6 +25,7 @@ export function toMemberResponse(member: Member): IMember {
     id: member.id,
     name: member.name,
     birthDate: member.birthDate ? toDateString(member.birthDate) : null, // 게스트는 null
+    birthYear: member.birthDate ? member.birthDate.getUTCFullYear() : null,
     grade: member.grade,
     gender: member.gender,
     isGuest: member.isGuest,
@@ -35,6 +36,12 @@ export function toMemberResponse(member: Member): IMember {
 }
 
 // 세션 → 응답. date는 날짜만(YYYY-MM-DD), opened/closedAt은 시각까지 ISO로
+// 패스코드 없이 나가는 응답용 — 생년월일은 개인정보라 연도만 남긴다(동명이인 구분엔 충분)
+// 보드(스냅샷·소켓)는 누구나 받으므로 출석·게임 안의 회원은 항상 이 모양
+export function toPublicMemberResponse(member: Member): IMember {
+  return { ...toMemberResponse(member), birthDate: null };
+}
+
 export function toSessionResponse(session: Session): ISession {
   return {
     id: session.id,
@@ -72,7 +79,7 @@ export function toAttendanceResponse(
     leftAt: attendance.leftAt?.toISOString() ?? null,
     shuttleConfirmedAt: attendance.shuttleConfirmedAt?.toISOString() ?? null,
     partnerAttendanceId: attendance.partnerAttendanceId,
-    ...(attendance.member && { member: toMemberResponse(attendance.member) }),
+    ...(attendance.member && { member: toPublicMemberResponse(attendance.member) }),
   };
 }
 

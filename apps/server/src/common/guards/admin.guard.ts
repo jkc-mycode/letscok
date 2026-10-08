@@ -16,6 +16,12 @@ function safeCompare(a: string, b: string): boolean {
   return timingSafeEqual(hashA, hashB);
 }
 
+// 공개 API가 운영진에게만 더 많이 보여 줄 때 — 막지 않고 운영진인지 여부만 판단
+export function isAdminPasscode(passcode: unknown): boolean {
+  const expected = process.env.ADMIN_PASSCODE;
+  return !!expected && typeof passcode === 'string' && safeCompare(passcode, expected);
+}
+
 // 운영진 전용 API 보호 — 요청 헤더의 패스코드를 환경변수와 대조하는 단순 방식
 // (개인 소모임 규모라 토큰 발급 없이 태블릿이 매 요청에 헤더를 실어 보내는 걸로 충분.
 //  운영진 계정 개별화가 필요해지면 v2에서 JWT로 교체)
