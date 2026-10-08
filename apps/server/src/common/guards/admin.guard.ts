@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
+import { verifyAdminToken } from '../auth/admin-token';
 
 // 두 문자열을 길이 정보 노출 없이 상수 시간에 비교 —
 // 단순 !== 비교는 일치 길이에 따라 응답 시간이 미세하게 달라져 타이밍 공격 여지가 있다
@@ -88,16 +89,25 @@ function checkPasscode(passcode: unknown, ip: string): PasscodeResult {
   return passcodeLockout.fail(ip) ? 'locked' : 'wrong';
 }
 
-// 공개 API가 운영진에게만 더 많이 보여 줄 때 — 막지 않고 운영진인지 여부만 판단
-// 틀린 패스코드도 실패로 센다(이 응답 차이로 패스코드를 맞혀 보는 통로가 되지 않게). 헤더가 없으면 세지 않는다
-export function isAdminPasscode(passcode: unknown, ip: string): boolean {
-  if (!process.env.ADMIN_PASSCODE || passcode === undefined) return false;
-  return checkPasscode(passcode, ip) === 'ok';
+// Authorization: Bearer <토큰> 에서 토큰만
+function bearerToken(authorization: unknown): string | null {
+  if (typeof authorization !== 'string' || !authorization.startsWith('Bearer ')) return null;
+  return authorization.slice(7).trim() || null;
 }
 
-// 운영진 전용 API 보호 — 요청 헤더의 패스코드를 환경변수와 대조하는 단순 방식
-// (개인 소모임 규모라 토큰 발급 없이 태블릿이 매 요청에 헤더를 실어 보내는 걸로 충분.
-//  운영진 계정 개별화가 필요해지면 v2에서 JWT로 교체)
+// 공개 API가 운영진에게만 더 많이 보여 줄 때 — 막지 않고 운영진인지 여부만 판단
+// 틀린 패스코드도 실패로 센다(이 응답 차이로 패스코드를 맞혀 보는 통로가 되지 않게). 헤더가 없으면 세지 않는다
+// 토큰은 서명이라 맞혀 볼 수 없어 세지 않는다(만료된 토큰을 든 태블릿이 잠기지 않게)
+export function isAdminRequest(headers: { authorization?: unknown; passcode?: unknown }, ip: string): boolean {
+  if (!process.env.ADMIN_PASSCODE) return false;
+  const token = bearerToken(headers.authorization);
+  if (token) return verifyAdminToken(token);
+  if (headers.passcode === undefined) return false;
+  return checkPasscode(headers.passcode, ip) === 'ok';
+}
+
+// 운영진 전용 API 보호 — 출입증(Bearer 토큰)이 있으면 그것으로, 없으면 패스코드 헤더로
+// 패스코드 헤더는 로그인(토큰 발급)과, 비밀값이 아직 없는 서버·토큰으로 바꾸기 전 기기를 위해 남긴다
 @Injectable()
 export class AdminGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
@@ -107,6 +117,12 @@ export class AdminGuard implements CanActivate {
     if (!process.env.ADMIN_PASSCODE) {
       // 환경변수 누락 시 전부 거부 — 빈 패스코드로 통과되는 사고 방지
       throw new UnauthorizedException('서버에 운영진 패스코드가 설정되지 않았습니다.');
+    }
+    const token = bearerToken(request.headers.authorization);
+    if (token) {
+      // 만료·패스코드 변경·위조 모두 401 — 웹은 로그인 화면으로 돌아간다
+      if (!verifyAdminToken(token)) throw new UnauthorizedException('로그인이 만료됐어요. 패스코드를 다시 입력해 주세요.');
+      return true;
     }
     const result = checkPasscode(passcode, request.ip ?? 'unknown');
     if (result === 'locked') throw new HttpException(LOCKED_MESSAGE, HttpStatus.TOO_MANY_REQUESTS);

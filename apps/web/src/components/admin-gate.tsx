@@ -6,16 +6,17 @@ import { InstallPrompt } from '@/components/install-prompt';
 import { NetHop } from '@/components/logo-loader';
 import {
   ADMIN_UNAUTHORIZED_EVENT,
-  api,
   ApiError,
   API_URL,
-  clearPasscode,
-  getPasscode,
-  savePasscode,
+  clearAdminLogin,
+  hasAdminLogin,
+  loginWithPasscode,
+  saveAdminLogin,
+  upgradeStoredPasscode,
 } from '@/lib/api';
 
 // 운영진 패스코드 게이트 — /admin과 /history 계열이 공유
-// 저장된 패스코드(localStorage)가 있으면 바로 통과, 없으면 입력 화면
+// 저장된 출입증(또는 예전 방식의 패스코드)이 있으면 바로 통과, 없으면 입력 화면
 
 // 게이트 판정 상태 — /admin과 AdminGate가 공유
 // 저장값이 있다는 것만으로 통과시키므로, 서버가 그 값을 거부하면(api()가 401 이벤트를 쏨) 입력 화면으로 되돌린다
@@ -25,11 +26,13 @@ export function useAdminAuth() {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [rejected, setRejected] = useState(false);
   useEffect(() => {
-    setAuthed(Boolean(getPasscode()));
+    setAuthed(hasAdminLogin());
     const onUnauthorized = () => {
       setRejected(true);
       setAuthed(false);
     };
+    // 패스코드 원문이 저장된 예전 기기는 출입증으로 바꾼다(다시 입력할 필요 없음)
+    void upgradeStoredPasscode().then((result) => result === 'rejected' && onUnauthorized());
     window.addEventListener(ADMIN_UNAUTHORIZED_EVENT, onUnauthorized);
     return () => window.removeEventListener(ADMIN_UNAUTHORIZED_EVENT, onUnauthorized);
   }, []);
@@ -37,14 +40,14 @@ export function useAdminAuth() {
   return {
     authed,
     // 저장값이 거부돼 돌아온 경우 입력 화면에 띄울 안내
-    notice: rejected ? '저장된 패스코드가 맞지 않아요. 다시 입력해주세요.' : undefined,
+    notice: rejected ? '로그인이 만료됐거나 패스코드가 바뀌었어요. 다시 입력해 주세요.' : undefined,
     login: () => {
       setRejected(false);
       setAuthed(true);
     },
-    // 잠금 = 저장된 패스코드까지 삭제해야 새로고침으로 재입장되지 않는 진짜 로그아웃
+    // 잠금 = 저장된 출입증까지 삭제해야 새로고침으로 재입장되지 않는 진짜 로그아웃
     logout: () => {
-      clearPasscode();
+      clearAdminLogin();
       setAuthed(false);
     },
   };
@@ -88,11 +91,11 @@ export function LoginGate({
     setError(null);
     try {
       // 검증이 끝나기 전에 저장하면, 대기 중 새로고침 시 틀린 패스코드로 게이트를 통과한다
-      await api('/auth/admin/verify', { method: 'POST', passcode });
-      savePasscode(passcode);
+      // 출입증을 받으면 그것만 저장하고 패스코드 원문은 남기지 않는다
+      saveAdminLogin(await loginWithPasscode(passcode), passcode);
       onSuccess();
     } catch (e) {
-      clearPasscode();
+      clearAdminLogin();
       setError(e instanceof ApiError ? e.message : '연결에 실패했습니다.');
     } finally {
       setBusy(false);

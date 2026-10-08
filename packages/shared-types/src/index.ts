@@ -161,6 +161,12 @@ export interface IGamePlayer {
 
 // ===== DTOs =====
 
+// 운영진 로그인 응답 — token=null이면 서버에 토큰 비밀값이 없어 패스코드 헤더 방식으로 계속
+export interface IAdminTokenResponse {
+  token: string | null;
+  expiresAt: string | null; // ISO
+}
+
 export interface ICreateMemberDto {
   name: string;
   birthDate?: string; // YYYY-MM-DD — 생략 가능(모르면 비워 두고 나중에 채움, 게스트는 늘 null). 비우면 같은 이름이 있을 때 409

@@ -14,7 +14,7 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { IApiResponse, IMember, IMemberPage, IMemberSummary } from '@letscok/shared-types';
-import { AdminGuard, isAdminPasscode } from '../common/guards/admin.guard';
+import { AdminGuard, isAdminRequest } from '../common/guards/admin.guard';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { MemberPageQueryDto } from './dto/member-page-query.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
@@ -34,17 +34,18 @@ export class MembersController {
     return { success: true, data: await this.membersService.create(dto) };
   }
 
-  // 공개 — 모임원 출석 화면이 쓴다. 생년월일은 운영진 패스코드가 맞을 때만 전체, 아니면 출생 연도만
+  // 공개 — 모임원 출석 화면이 쓴다. 생년월일은 운영진(토큰·패스코드)일 때만 전체, 아니면 출생 연도만
   @Get('search')
   async search(
     @Query('name') name: string | undefined,
     @Headers('x-admin-passcode') passcode: string | undefined,
+    @Headers('authorization') authorization: string | undefined,
     @Ip() ip: string,
   ): Promise<IApiResponse<IMember[]>> {
     if (!name?.trim()) {
       throw new BadRequestException('검색할 이름을 입력해주세요.');
     }
-    return { success: true, data: await this.membersService.search(name.trim(), isAdminPasscode(passcode, ip)) };
+    return { success: true, data: await this.membersService.search(name.trim(), isAdminRequest({ authorization, passcode }, ip)) };
   }
 
   // 명단 목록 — [모임원 관리] 화면 전용, 삭제 회원·출석 집계 포함
