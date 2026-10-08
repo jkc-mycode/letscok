@@ -169,7 +169,7 @@ export class AiCheckInService {
       // 불명 — 확신이 없으니 자동은 안 하고, 이름이 정확히 같은 회원만 후보로
       if (item.kind === 'unclear') {
         if (sameName.length === 0) notFound.push(label);
-        else ambiguous.push({ name: label, candidates: sameName.map(toMemberResponse) });
+        else ambiguous.push({ name: label, reason: 'UNCLEAR', candidates: sameName.map(toMemberResponse) });
         continue;
       }
 
@@ -188,7 +188,7 @@ export class AiCheckInService {
         }
         const candidates = [...sameName, ...bySurname];
         if (candidates.length === 0) notFound.push(label);
-        else ambiguous.push({ name: label, candidates: candidates.map(toMemberResponse) });
+        else ambiguous.push({ name: label, reason: 'GIVEN_ONLY', candidates: candidates.map(toMemberResponse) });
         continue;
       }
 
@@ -205,7 +205,8 @@ export class AiCheckInService {
       } else {
         // 여러 명이 남았거나, 표기(생년·게스트)가 회원 정보와 어긋나 0명이 됐다 — 확실하지 않으니 후보로
         const candidates = narrowed.length > 0 ? narrowed : exact;
-        ambiguous.push({ name: label, candidates: candidates.map(toMemberResponse) });
+        const reason = narrowed.length > 0 ? 'SAME_NAME' : 'HINT_MISMATCH';
+        ambiguous.push({ name: label, reason, candidates: candidates.map(toMemberResponse) });
       }
     }
 

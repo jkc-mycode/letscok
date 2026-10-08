@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  AiCheckInAmbiguousReason,
   IAiCheckInResult,
   IAiCheckInStatus,
   IAttendance,
@@ -118,14 +119,19 @@ export function AiCheckInPanel({
   };
 
   // 후보 버튼 = 기존 수동 체크인 / 취소 버튼 = 기존 사전 체크인 취소(콕 확인 전만)
-  const checkIn = (memberId: string) =>
-    run(() =>
-      api(`/sessions/${sessionId}/attendances/manual`, {
+  // run()은 실패를 알림으로만 띄우고 넘어간다 — 질문 카드가 성공했을 때만 접히도록 결과를 돌려준다
+  const checkIn = async (memberId: string) => {
+    let ok = false;
+    await run(async () => {
+      await api(`/sessions/${sessionId}/attendances/manual`, {
         method: 'POST',
         admin: true,
         body: { memberId },
-      }),
-    );
+      });
+      ok = true;
+    });
+    return ok;
+  };
   const cancel = (attendanceId: string) =>
     run(() => api(`/attendances/${attendanceId}`, { method: 'DELETE', admin: true }));
 
@@ -213,7 +219,7 @@ function ResultCard({
 }: {
   entry: LogEntry;
   attendanceByMemberId: Map<string, IAttendance>;
-  onCheckIn: (memberId: string) => Promise<void>;
+  onCheckIn: (memberId: string) => Promise<boolean>;
   onCancel: (attendanceId: string) => Promise<void>;
 }) {
   const { input, result } = entry;
@@ -263,35 +269,89 @@ function ResultCard({
         <p className="mt-2 text-xs text-amber">못 찾음: {result.notFound.join(', ')}</p>
       )}
 
-      {/* 확실하지 않은 사람 — 후보를 보고 운영진이 탭 한 번으로 체크인 */}
+      {/* 확실하지 않은 사람 — "이 모임원인가요?" 질문 카드로 운영진이 탭 한 번에 고른다 */}
       {result.ambiguous.map((item) => (
-        <div key={item.name} className="mt-2">
-          <p className="text-xs text-amber">{item.name} — 누구인가요?</p>
-          <div className="mt-1 flex flex-col gap-1">
-            {item.candidates.map((candidate: IMember) => {
-              const isPresent = present(candidate.id);
-              return (
-                <button
-                  key={candidate.id}
-                  onClick={() => !isPresent && void onCheckIn(candidate.id)}
-                  disabled={isPresent}
-                  className={`flex items-center gap-2 rounded-lg border p-2 text-left text-xs ${
-                    isPresent ? 'border-line opacity-50' : 'border-amber/40 bg-amber/5'
-                  }`}
-                >
-                  <GradeBadge grade={candidate.grade} />
-                  <span className="font-medium">{candidate.name}</span>
-                  <GenderMarker gender={candidate.gender} />
-                  {candidate.isGuest && <span className="text-caption text-sky">G</span>}
-                  <span className="ml-auto text-dim">
-                    {isPresent ? '출석 중' : (candidate.birthDate ?? '')}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <AmbiguousCard key={item.name} item={item} present={present} onCheckIn={onCheckIn} />
       ))}
+    </div>
+  );
+}
+
+const REASON_TEXT: Record<AiCheckInAmbiguousReason, string> = {
+  GIVEN_ONLY: '소모임에 성 없이 이름만 적혀 있어요',
+  SAME_NAME: '같은 이름이 여러 명이에요 — 생년월일로 골라 주세요',
+  HINT_MISMATCH: '적힌 생년이나 게스트 표시가 명단과 달라요',
+  UNCLEAR: '이름인지 확실하지 않아요',
+};
+
+// 질문 하나 — 고르면 "→ 김강민 출석"으로 접히고, [아니에요]면 직접 찾으라는 한 줄로 접힌다
+function AmbiguousCard({
+  item,
+  present,
+  onCheckIn,
+}: {
+  item: IAiCheckInResult['ambiguous'][number];
+  present: (memberId: string) => boolean;
+  onCheckIn: (memberId: string) => Promise<boolean>;
+}) {
+  const [picked, setPicked] = useState<IMember | null>(null);
+  const [dismissed, setDismissed] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  if (picked) {
+    return (
+      <p className="mt-2 rounded-xl bg-court/10 px-3 py-2.5 text-body-sm text-court">
+        '{item.name}' → <b>{picked.name}</b> 출석
+      </p>
+    );
+  }
+  if (dismissed) {
+    return (
+      <p className="mt-2 rounded-xl bg-panel px-3 py-2.5 text-body-sm text-dim">
+        '{item.name}' — 해당 없음. 아래 검색으로 직접 찾아 주세요
+      </p>
+    );
+  }
+
+  const pick = async (member: IMember) => {
+    if (busyId) return;
+    setBusyId(member.id);
+    try {
+      if (await onCheckIn(member.id)) setPicked(member);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div className="mt-2 flex flex-col gap-1.5 rounded-xl bg-amber/10 p-3">
+      <p className="text-body-sm font-bold text-amber">
+        '{item.name}' — {item.candidates.length === 1 ? '이 모임원인가요?' : '어느 모임원인가요?'}
+      </p>
+      <p className="text-caption text-dim">{REASON_TEXT[item.reason]}</p>
+      {item.candidates.map((candidate) => {
+        const isPresent = present(candidate.id);
+        return (
+          <button
+            key={candidate.id}
+            onClick={() => !isPresent && void pick(candidate)}
+            disabled={isPresent || busyId !== null}
+            className="flex min-h-11 items-center gap-2 rounded-lg bg-panel px-3 text-left text-body-sm disabled:opacity-60"
+          >
+            <GradeBadge grade={candidate.grade} />
+            <span className="font-medium">{candidate.name}</span>
+            <GenderMarker gender={candidate.gender} />
+            {candidate.isGuest && <span className="text-caption text-sky">게스트</span>}
+            <span className="tabular font-mono text-caption text-faint">{candidate.birthDate ?? ''}</span>
+            <span className={`ml-auto shrink-0 text-caption font-bold ${isPresent ? 'text-dim' : 'text-court'}`}>
+              {isPresent ? '출석 중' : busyId === candidate.id ? '처리 중…' : '출석'}
+            </span>
+          </button>
+        );
+      })}
+      <button onClick={() => setDismissed(true)} className="tap h-10 self-start px-1 text-caption text-dim">
+        아니에요, 여기 없어요
+      </button>
     </div>
   );
 }

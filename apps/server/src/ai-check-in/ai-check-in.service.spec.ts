@@ -94,6 +94,7 @@ describe('성+이름 (full)', () => {
     expect(result.checkedIn).toEqual([]);
     expect(result.ambiguous).toHaveLength(1);
     expect(result.ambiguous[0].candidates).toHaveLength(2);
+    expect(result.ambiguous[0].reason).toBe('SAME_NAME');
     expect(await attendedIds(session.id)).toEqual([]);
   });
 
@@ -125,6 +126,7 @@ describe('성+이름 (full)', () => {
 
     expect(result.checkedIn).toEqual([]);
     expect(result.ambiguous[0].candidates).toHaveLength(1);
+    expect(result.ambiguous[0].reason).toBe('HINT_MISMATCH');
   });
 
   it('없는 이름·삭제된 회원은 못 찾음(원문 표기로)', async () => {
@@ -168,6 +170,7 @@ describe('이름만·별명·불명', () => {
 
     expect(result.checkedIn).toEqual([]);
     expect(result.ambiguous[0].candidates.map((c) => c.name).sort()).toEqual(['강민', '김강민', '남궁강민']);
+    expect(result.ambiguous[0].reason).toBe('GIVEN_ONLY');
   });
 
   it('외자 이름을 AI가 이름만(given)으로 읽어도, 정확히 같은 회원이 1명뿐이면 바로 출석', async () => {
@@ -192,6 +195,7 @@ describe('이름만·별명·불명', () => {
 
     expect(result.checkedIn).toEqual([]);
     expect(result.ambiguous[0].candidates.map((c) => c.name)).toEqual(['오석']);
+    expect(result.ambiguous[0].reason).toBe('UNCLEAR');
   });
 
   it('별명·판단 불가는 원문으로 못 찾음', async () => {

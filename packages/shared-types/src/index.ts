@@ -448,11 +448,16 @@ export interface IAiCheckInCommandDto {
 }
 
 // 캡처·명령 처리 결과 — 확실한 사람만 체크인하고 나머지는 운영진이 직접 처리하도록 나눠서 돌려준다
+// 왜 묻는지 — 화면 질문 카드의 설명 한 줄
+// GIVEN_ONLY 성 없이 이름만(소모임 이름을 이름만 적은 사람) · SAME_NAME 동명이인
+// HINT_MISMATCH 적힌 생년·게스트 표시가 명단과 다름 · UNCLEAR AI가 이름인지 확신 못함
+export type AiCheckInAmbiguousReason = 'GIVEN_ONLY' | 'SAME_NAME' | 'HINT_MISMATCH' | 'UNCLEAR';
+
 export interface IAiCheckInResult {
   checkedIn: IAiCheckInMember[]; // 이번에 체크인됨
   alreadyIn: IAiCheckInMember[]; // 이미 출석 중 — 실패가 아니라 정보
   notFound: string[]; // 명단에서 못 찾은 표기(캡처 원문 그대로)
-  ambiguous: { name: string; candidates: IMember[] }[]; // 동명이인·이름만 표기 — 후보 버튼으로 운영진이 고른다
+  ambiguous: { name: string; reason: AiCheckInAmbiguousReason; candidates: IMember[] }[]; // 동명이인·이름만 표기 — 운영진이 고른다
   message: string; // 서버가 정해진 틀로 조립한 안내 문장 (AI가 쓴 문장이 아님)
 }
 
