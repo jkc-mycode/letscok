@@ -49,7 +49,7 @@ export default function HomePage() {
             href="/m/checkin"
             className="flex h-14 items-center rounded-xl border border-court px-8 font-bold text-court"
           >
-            모임원 체크인
+            내 폰 연결
           </Link>
         </div>
         <Link

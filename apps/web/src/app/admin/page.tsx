@@ -187,7 +187,7 @@ function StartScreen({
       <header className="flex flex-col gap-1.5">
         <p className="text-body-sm text-dim">{todayLabel()}</p>
         <h1 className="text-display font-bold">아직 모임 전이에요</h1>
-        <p className="text-body text-dim">모임을 시작하면 체크인을 받을 수 있어요</p>
+        <p className="text-body text-dim">모임을 시작하면 출석을 받을 수 있어요</p>
       </header>
       <button
         onClick={() => void run(() => api('/sessions', { method: 'POST', admin: true }))}
@@ -635,7 +635,7 @@ function BoardBody({
   }[] = [
     {
       key: 'code',
-      label: '체크인 코드',
+      label: '입장 코드',
       onClick: () => setCodeOpen(true),
     },
     {
@@ -773,7 +773,7 @@ function BoardBody({
             onClick={() => setCodeOpen(true)}
             className="h-11 rounded-xl bg-court/15 px-4 text-body-sm font-bold text-court"
           >
-            체크인 코드
+            입장 코드
           </button>
           <button
             onClick={() => setGamesLogOpen(true)}
@@ -913,7 +913,7 @@ function BoardBody({
                 onClick={() => setManualOpen(true)}
                 className="tap h-8 rounded-lg bg-panel2 px-3 text-caption font-medium text-dim"
               >
-                수동 체크인
+                출석 추가
               </button>
             </div>
           }
@@ -921,7 +921,7 @@ function BoardBody({
             <>
               <button
                 onClick={() => setCommandOpen(true)}
-                aria-label="AI 명령 — 말하듯 적어서 게임 짜기·종료·휴식·호출·체크인"
+                aria-label="AI 명령 — 말하듯 적어서 게임 짜기·종료·휴식·호출·출석"
                 title="AI 명령"
                 className="flex h-13 w-13 shrink-0 items-center justify-center rounded-xl bg-panel2 text-court"
               >
@@ -962,7 +962,7 @@ function BoardBody({
             </>
           )}
           {roster.length === 0 && pendingShuttle.length === 0 && (
-            <Empty>체크인한 사람이 없어요</Empty>
+            <Empty>출석한 사람이 없어요</Empty>
           )}
           {/* 비어 있는 사람 → 조합에 든 사람 → 게임 중 → 휴식. 조합·게임에 든 사람도 겹쳐 넣을 수 있어 선택은 된다 */}
           <AnimatePresence initial={false}>
@@ -1393,11 +1393,11 @@ function CheckInCodeModal({ onClose }: { onClose: () => void }) {
 
   return (
     <Sheet
-      ariaLabel="체크인 코드"
+      ariaLabel="입장 코드"
       onClose={onClose}
       width="sm:max-w-sm"
       bodyClassName="flex min-h-0 flex-1 flex-col items-center gap-4 pb-2 text-center scroll-area"
-      header={<h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">체크인 코드</h2>}
+      header={<h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">입장 코드</h2>}
     >
       {error && <p className="py-8 text-sm text-coral">{error}</p>}
       {code === undefined && !error && <p className="py-8 text-sm text-dim">불러오는 중...</p>}
@@ -1410,7 +1410,7 @@ function CheckInCodeModal({ onClose }: { onClose: () => void }) {
               모임원은 <b>[필독]공지사항</b>의 작성월일 4자리를 입력해요
             </p>
             <p className="mt-1 text-xs leading-relaxed text-dim">
-              미리 체크인해 둔 사람도 이 코드로 한 번 들어오면 폰이 연결돼 내 차례와 코트 알림을 받아요
+              미리 출석 처리해 둔 사람도 이 코드로 한 번 들어오면 폰이 연결돼 내 차례와 코트 알림을 받아요
             </p>
             <p className="mt-1 text-xs text-faint">공지를 새로 올렸다면 코드도 함께 바꿔주세요</p>
           </div>
@@ -1934,7 +1934,7 @@ function ManualCheckInModal({
       setFailed(errors);
       const okCount = targets.length - errors.length;
       // 모달은 열어둔다 — 지각 시나리오는 보통 여러 명 연속 입력
-      setLastDone(okCount > 0 ? `${okCount}명 체크인 완료` : null);
+      setLastDone(okCount > 0 ? `${okCount}명 출석 완료` : null);
     });
   };
 
@@ -1961,7 +1961,7 @@ function ManualCheckInModal({
   return (
     // 입력 중인 시트라 바깥 배경 탭으로는 닫지 않는다(끌어내리기·[닫기]·뒤로가기는 됨)
     <Sheet
-      ariaLabel="수동 체크인"
+      ariaLabel="출석 추가"
       dismissible={false}
       onClose={onClose}
       width="sm:max-w-xl"
@@ -1971,7 +1971,7 @@ function ManualCheckInModal({
       header={
         <>
           <h2 className="shrink-0 text-heading font-bold whitespace-nowrap">
-            {regOpen ? '신규 등록 + 체크인' : '수동 체크인'}
+            {regOpen ? '신규 등록 + 출석' : '출석 추가'}
           </h2>
           <p className="min-w-0 truncate text-caption text-faint">
             {regOpen ? '검색에 없는 사람' : '사전 등록·현장 대리'}
@@ -1999,7 +1999,7 @@ function ManualCheckInModal({
               disabled={busy || selected.size === 0}
               className="tap h-13 flex-1 rounded-xl bg-court text-body font-bold text-bg disabled:bg-line disabled:text-faint"
             >
-              {selected.size > 0 ? `${selected.size}명 체크인` : '체크인할 사람을 고르세요'}
+              {selected.size > 0 ? `${selected.size}명 출석` : '출석할 사람을 고르세요'}
             </button>
           </div>
         )
@@ -2025,18 +2025,18 @@ function ManualCheckInModal({
             <MultiMemberForm
               defaultGuest
               initialName={query.trim()} // 방금 검색한 이름 이어받기
-              actionLabel="등록 + 체크인"
+              actionLabel="등록 + 출석"
               register={registerAndCheckIn}
-              pickExisting={{ label: '이 사람 체크인', action: checkInExisting }}
+              pickExisting={{ label: '이 사람 출석', action: checkInExisting }}
               onFinished={(done, remaining) => {
                 // 체크인은 소켓 스냅샷으로 보드에 바로 반영된다 — 여기선 결과 문구만
-                if (done.length > 0) setLastDone(`${done.join(', ')}님 체크인 완료`);
+                if (done.length > 0) setLastDone(`${done.join(', ')}님 출석 완료`);
                 setFailed([]);
                 if (remaining === 0) setRegOpen(false);
               }}
             />
             <p className="text-caption leading-relaxed text-faint">
-              게스트는 생년월일을 받지 않아요. 모임원은 본인 폰으로 코드 체크인하면 이 계정으로
+              게스트는 생년월일을 받지 않아요. 모임원은 본인 폰에서 입장 코드를 넣으면 이 계정으로
               연결돼요. 등록은 본인에게 구두로 동의받아 주세요.
             </p>
           </div>
@@ -2126,12 +2126,12 @@ function ManualCheckInModal({
               })}
               {query.trim() && results.length === 0 && (
                 <p className="py-6 text-center text-body-sm text-faint">
-                  검색 결과가 없어요. 아래 [+ 신규 등록]으로 등록하면서 바로 체크인할 수 있어요.
+                  검색 결과가 없어요. 아래 [+ 신규 등록]으로 등록하면서 바로 출석 처리할 수 있어요.
                 </p>
               )}
               {!query.trim() && (
                 <p className="py-6 text-center text-body-sm text-faint">
-                  이름으로 찾아 여러 명을 고른 뒤 한 번에 체크인해요
+                  이름으로 찾아 여러 명을 고른 뒤 한 번에 출석 처리해요
                 </p>
               )}
             </div>
@@ -2492,7 +2492,7 @@ function MemberRegisterSheet({
       header={
         <>
           <h3 className="shrink-0 text-heading font-bold whitespace-nowrap">신규 등록</h3>
-          <p className="min-w-0 truncate text-caption text-faint">체크인 없이 명단에만</p>
+          <p className="min-w-0 truncate text-caption text-faint">출석 없이 명단에만</p>
         </>
       }
     >
@@ -2512,7 +2512,7 @@ function MemberRegisterSheet({
       />
       {notice && <p className="text-body-sm font-medium text-court">{notice}</p>}
       <p className="text-caption leading-relaxed text-faint">
-        개인정보 동의는 본인이 처음 코드로 체크인할 때 받아요. 등록은 본인에게 구두로 동의받아
+        개인정보 동의는 본인이 처음 입장 코드로 들어올 때 받아요. 등록은 본인에게 구두로 동의받아
         주세요.
       </p>
     </Sheet>
@@ -2813,7 +2813,7 @@ function StaleGuestCleanupSheet({
       }
     >
       <p className="pb-3 text-xs leading-relaxed text-dim">
-        {STALE_GUEST_DAYS}일 이상 안 온 게스트예요. 체크인 검색을 어지럽히지 않게 정리하세요 —
+        {STALE_GUEST_DAYS}일 이상 안 온 게스트예요. 출석 추가 검색을 어지럽히지 않게 정리하세요 —
         삭제해도 지난 기록은 남고, [삭제됨] 탭에서 복구할 수 있어요.
       </p>
 
@@ -2984,7 +2984,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
   {
     title: '기본 흐름',
     items: [
-      '체크인만으로는 게임에 못 들어가요 — 대기 인원 맨 위 [콕 확인 대기]에서 콕 낸 사람의 [콕 확인]을 눌러야 명단으로 내려와요. 그 섹션이 비어 있으면 다 처리된 거예요.',
+      '출석만으로는 게임에 못 들어가요 — 대기 인원 맨 위 [콕 확인 대기]에서 콕 낸 사람의 [콕 확인]을 눌러야 명단으로 내려와요. 그 섹션이 비어 있으면 다 처리된 거예요.',
       '콕 확인 시각이 곧 참여 시작이에요 — 일찍 와서 콕을 늦게 낸 사람이 대기 순번을 앞지르지 않아요. 잘못 눌렀으면 행의 [콕취소]로 되돌려요 (조합·게임에 든 뒤엔 불가).',
       '명단에서 4명 선택 → [조합 만들기] → 대기 조합에서 [코트 배정] → 끝나면 [게임 종료].',
       '[게임 종료]만 게임 수 +1 · 대기시간 리셋. [대기로]는 조합을 유지한 채 뒤로. 카드의 [⋯]에 있는 게임 취소·해체는 없던 일로 (둘 다 미집계).',
@@ -2996,14 +2996,14 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
     ],
   },
   {
-    title: '체크인 코드',
+    title: '입장 코드',
     items: [
-      '모임원은 본인 화면(/m) 링크로 들어와 [체크인하러 가기] → 코드 4자리 입력 → 이름 선택 순서로 체크인해요.',
-      '코드는 소모임 [필독]공지사항의 작성월일 4자리예요 — 모임원이 이미 보는 정보라 따로 공지할 게 없어요. 공지를 새로 올렸으면 [체크인 코드] 모달의 [코드 변경]으로 같이 바꿔주세요.',
+      '모임원은 본인 화면(/m) 링크로 들어와 [내 폰 연결하기] → 코드 4자리 입력 → 이름 선택 순서로 폰을 연결해요. 미리 출석 처리돼 있지 않으면 이때 출석까지 돼요.',
+      '코드는 소모임 [필독]공지사항의 작성월일 4자리예요 — 모임원이 이미 보는 정보라 따로 공지할 게 없어요. 공지를 새로 올렸으면 [입장 코드] 모달의 [코드 변경]으로 같이 바꿔주세요.',
       '바꾼 코드는 다음 모임에도 그대로 이어져요. 코드를 여러 번 틀리면 그 폰은 잠시 막혀요(무작위 대입 방지).',
       '한 번 들어온 모임원은 다음 모임에도 본인 화면 주소만 열면 돼요. 홈 화면에 추가해두라고 안내해주세요.',
-      '모임 전에 참석자를 [수동 체크인]으로 미리 넣어두면 현장에서는 콕 확인만 하면 돼요. 미리 넣었는데 사정이 생겨 못 오게 되면 콕 확인 대기 줄의 [취소]로 지워요 — 출석 기록 없이 빠져요(퇴장과 달라요).',
-      '명단에 없는 사람은 [수동 체크인] 안의 [신규 등록]으로 등록해요 — 게스트는 이름·급수·성별만(생년월일 안 받아요), 모임원은 생년월일 포함(모르면 비워 두고 나중에 채워요). 모임원이 스스로 가입하는 경로는 없어요(외부인 가짜 등록 차단).',
+      '모임 전에 참석자를 [출석 추가]로 미리 넣어두면 현장에서는 콕 확인만 하면 돼요. 미리 넣었는데 사정이 생겨 못 오게 되면 콕 확인 대기 줄의 [취소]로 지워요 — 출석 기록 없이 빠져요(퇴장과 달라요).',
+      '명단에 없는 사람은 [출석 추가] 안의 [신규 등록]으로 등록해요 — 게스트는 이름·급수·성별만(생년월일 안 받아요), 모임원은 생년월일 포함(모르면 비워 두고 나중에 채워요). 모임원이 스스로 가입하는 경로는 없어요(외부인 가짜 등록 차단).',
       '개인정보 동의는 본인이 처음 코드로 들어올 때 받아요 — 운영진이 대신 체크하지 않아요.',
     ],
   },
@@ -3011,11 +3011,11 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
     title: '모임원 관리',
     items: [
       '[모임원 관리]에서 명단 조회·등록·수정·정리를 해요. 모임 시작 전 화면에서도 열 수 있어요.',
-      '[신규 등록]은 명단에만 추가돼요(체크인 안 됨) — 모임 전에 미리 등록해두는 용도예요. 모임 중 지각자는 [수동 체크인]의 [신규 등록]으로 등록+체크인을 한 번에 하세요.',
+      '[신규 등록]은 명단에만 추가돼요(출석 안 됨) — 모임 전에 미리 등록해두는 용도예요. 모임 중 지각자는 [출석 추가]의 [신규 등록]으로 등록+출석을 한 번에 하세요.',
       '이름·생년월일·급수·성별·역할(모임장/운영진/모임원)을 고칠 수 있어요. 급수는 게임 추천 품질에 바로 영향을 주니 실제 실력에 맞춰주세요.',
       '역할은 명단 표시용 구분이에요 — 운영 화면 접근 권한은 패스코드 하나로 같아요.',
       '자주 오는 게스트는 수정 화면에서 [모임원으로 바꾸기]할 수 있어요 (생년월일 입력 필요).',
-      '삭제는 명단에서만 감춰요 — 지난 기록은 남고 [삭제됨] 탭에서 복구돼요. 진행 중 모임에 체크인된 사람은 퇴장 처리가 먼저예요.',
+      '삭제는 명단에서만 감춰요 — 지난 기록은 남고 [삭제됨] 탭에서 복구돼요. 진행 중 모임에 출석한 사람은 퇴장 처리가 먼저예요.',
       '[오래 안 온 게스트 정리]로 90일 이상 미출석 게스트를 골라서 한 번에 지울 수 있어요.',
       '본인이 개인정보 삭제를 요청하면 [개인정보 삭제]를 쓰세요 — 이름·생년월일·성별이 지워지고 복구할 수 없어요.',
     ],
@@ -3033,21 +3033,21 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
     title: '게임 추천',
     items: [
       '[게임 추천]은 참고용 초안 3종 — 공정성(오래 기다린 순) / 새 조합(오늘 안 만난 사람) / 믹스.',
-      '[마이크] AI 명령 — "민수랑 준호 넣어서 남복 짜줘", "3번 코트 끝났어", "민수 휴식", "홍길동 체크인"처럼 적으면 미리보기를 보여 주고, [확인]해야 실행돼요(체크인은 이름이 정확히 맞는 사람만 바로). 성 없이 이름만 말해도 오늘 출석자 중 한 명이면 알아들어요. 시트의 [🎙 눌러서 말하기]로 말해도 되고, 말이 끝나면 저절로 멈추거나 [말 끝]으로 멈춰요.',
+      '[마이크] AI 명령 — "민수랑 준호 넣어서 남복 짜줘", "3번 코트 끝났어", "민수 휴식", "홍길동 출석"처럼 적으면 미리보기를 보여 주고, [확인]해야 실행돼요(출석은 이름이 정확히 맞는 사람만 바로). 성 없이 이름만 말해도 오늘 출석자 중 한 명이면 알아들어요. 시트의 [🎙 눌러서 말하기]로 말해도 되고, 말이 끝나면 저절로 멈추거나 [말 끝]으로 멈춰요.',
       '한 번에 여러 개를 말해도 돼요 — "3번 코트 끝났고 남복 하나 짜줘"처럼 말하면 미리보기가 차례로 나와요(최대 3개). 하나를 [확인]하면 다음 것으로 넘어가고, 원치 않으면 [건너뛰기].',
       '[마이크]에 상황을 물어봐도 돼요 — "누가 제일 오래 기다렸어?", "민수 오늘 몇 게임 했어?", "아직 0게임인 사람?", "빈 코트 있어?", "몇 명 왔어?", "다음 게임 누구야?". 숫자는 지금 현황에서 바로 계산해요.',
-      '[마이크] "게스트 홍길동 남자 C급 추가해줘" — 미리보기에서 빠진 성별·급수를 눌러 채우고 [체크인]. 같은 이름 게스트가 있으면 새로 만들지 않고 그 사람으로 체크인해요. 콕 확인은 명단 맨 위에서 따로 해요.',
+      '[마이크] "게스트 홍길동 남자 C급 추가해줘" — 미리보기에서 빠진 성별·급수를 눌러 채우고 [출석]. 같은 이름 게스트가 있으면 새로 만들지 않고 그 사람으로 출석 처리해요. 콕 확인은 명단 맨 위에서 따로 해요.',
       '게임 수는 "온 시간 대비"로 따져요 — 늦게 온 사람이 먼저 온 사람의 판수를 따라잡으려 연달아 추천되지 않고, 온 뒤부터 같은 속도로 돌아가요.',
       '대기시간·게임 수·함께 뛴 조합·성별 구성(남복/여복/혼복)을 점수로 계산해요. 넣을지는 운영진 마음!',
       '종목 탭(남복/여복/혼복/기타 3:1)을 누르면 그 구성으로만 추천해요. 성별 미지정 멤버는 [전체] 탭에서만 나와요.',
     ],
   },
   {
-    title: 'AI 체크인 (수동 체크인 안)',
+    title: 'AI 출석 (출석 추가 안)',
     items: [
-      '[수동 체크인] → [AI 체크인]에서 소모임 참석 신청 목록 캡처(최대 4장)를 올리면, 명단과 이름이 확실히 맞는 사람만 자동으로 체크인해요.',
-      '성+이름이 한 명과 정확히 맞을 때만 자동이에요. 동명이인·이름만 적힌 경우는 후보 버튼으로, 별명·못 찾은 사람은 검색으로 직접 체크인해주세요.',
-      '"97년생 김민수 체크인해줘"처럼 문장으로도 돼요. 체크인 말고 다른 요청은 처리하지 않아요.',
+      '[출석 추가] → [AI 출석]에서 소모임 참석 신청 목록 캡처(최대 4장)를 올리면, 명단과 이름이 확실히 맞는 사람만 자동으로 출석 처리해요.',
+      '성+이름이 한 명과 정확히 맞을 때만 자동이에요. 동명이인·이름만 적힌 경우는 후보 버튼으로, 별명·못 찾은 사람은 검색으로 직접 출석 처리해주세요.',
+      '"97년생 김민수 출석 처리해줘"처럼 문장으로도 돼요. 출석 말고 다른 요청은 처리하지 않아요.',
       '잘못 잡힌 사람은 결과 카드의 이름 옆 ✕로 바로 취소할 수 있어요(콕 확인 전까지).',
     ],
   },
@@ -3932,7 +3932,7 @@ function ShuttleRow({
       {/* 출석 취소(노쇼) 2탭 확인 — 콕 확인 바로 옆이라 오탭 한 번에 지워지면 안 된다 */}
       <ConfirmButton
         label="취소"
-        title="체크인 취소 — 못 오게 된 사람을 출석 기록 없이 제거"
+        title="출석 취소 — 못 오게 된 사람을 출석 기록 없이 제거"
         onConfirm={() => void run(() => api(`/attendances/${attendance.id}`, { method: 'DELETE', admin: true }))}
         className="tap ml-auto h-8 shrink-0 rounded-lg px-2.5 text-caption font-medium"
         idleCls="text-dim"

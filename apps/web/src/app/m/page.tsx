@@ -83,7 +83,7 @@ export default function MyStatusPage() {
     return (
       <Shell>
         {memberId ? (
-          <Centered title="아직 오늘 명단에 없어요" desc="운영진에게 말하거나 코드로 직접 체크인할 수 있어요" />
+          <Centered title="아직 오늘 명단에 없어요" desc="운영진에게 말하거나 코드로 직접 출석할 수 있어요" />
         ) : (
           <Centered
             title="내 폰을 연결해 주세요"
@@ -94,7 +94,7 @@ export default function MyStatusPage() {
           href="/m/checkin"
           className="flex h-14 items-center justify-center rounded-xl bg-court text-body font-bold text-bg"
         >
-          {memberId ? '코드로 체크인하기' : '내 폰 연결하기'}
+          {memberId ? '코드로 출석하기' : '내 폰 연결하기'}
         </Link>
       </Shell>
     );
@@ -305,7 +305,7 @@ function MyStatus({
   let tone = 'text-ink';
   if (me.status === 'LEFT') {
     title = '퇴장했어요';
-    sub = '다시 오면 코드로 다시 체크인해 주세요';
+    sub = '다시 오면 코드로 다시 출석해 주세요';
     tone = 'text-dim';
   } else if (!me.shuttleConfirmedAt) {
     // 콕 확인 전엔 대기 목록에 없어 순번이 안 잡힌다 — 순번 대신 할 일을 보여준다

@@ -38,7 +38,7 @@ const commandSchema = z.strictObject({
 });
 
 // unsupported 안내 — AI가 문장을 쓰지 않으므로 체크인 외 요청엔 항상 이 고정 문구
-export const UNSUPPORTED_COMMAND_MESSAGE = '모임원 체크인만 할 수 있어요. 예: 김OO 체크인해줘';
+export const UNSUPPORTED_COMMAND_MESSAGE = '모임원 출석 처리만 할 수 있어요. 예: 김OO 출석 처리해줘';
 
 const COMMAND_SYSTEM_PROMPT = `당신은 배드민턴 모임 관제판의 명령 해석기입니다. 운영진이 입력한 한 줄 명령에서 "체크인할 사람"만 뽑습니다.
 
@@ -53,7 +53,7 @@ const COMMAND_SYSTEM_PROMPT = `당신은 배드민턴 모임 관제판의 명령
 
 // 한 번에 처리할 이름 상한 — 모델이 이상하게 길게 뽑아도 체크인이 폭주하지 않게
 const MAX_NAMES = 60;
-const FALLBACK = '직접 체크인해주세요.'; // AI 실패 안내 꼬리 — 수동 체크인으로 이어서 처리
+const FALLBACK = '직접 출석 처리해주세요.'; // AI 실패 안내 꼬리 — 수동 체크인으로 이어서 처리
 
 // 캡처 판독 지시 — 판단(누구를 체크인할지)은 서버가 하므로 여기선 "있는 그대로 읽기"만 시킨다
 const IMAGES_SYSTEM_PROMPT = `당신은 배드민턴 소모임 앱의 "참석 신청자 목록" 캡처에서 사람 이름을 읽는 판독기입니다.
@@ -225,13 +225,13 @@ export class AiCheckInService {
   // 안내 문장은 서버가 정해진 틀로 만든다 — AI가 문장을 쓰지 않으므로 체크인 외 응답이 나올 수 없다
   private buildMessage(result: Omit<IAiCheckInResult, 'message'>): string {
     const parts: string[] = [];
-    if (result.checkedIn.length > 0) parts.push(`${result.checkedIn.length}명 체크인했어요.`);
+    if (result.checkedIn.length > 0) parts.push(`${result.checkedIn.length}명 출석 처리했어요.`);
     if (result.alreadyIn.length > 0) parts.push(`${result.alreadyIn.length}명은 이미 출석 중이에요.`);
     if (result.notFound.length > 0) parts.push(`${result.notFound.join(', ')}은(는) 못 찾았어요.`);
     if (result.ambiguous.length > 0) {
       parts.push(`${result.ambiguous.map((a) => a.name).join(', ')}은(는) 누구인지 확실하지 않아요.`);
     }
-    if (result.notFound.length > 0 || result.ambiguous.length > 0) parts.push('직접 체크인해주세요.');
-    return parts.length > 0 ? parts.join(' ') : '체크인할 이름을 찾지 못했어요.';
+    if (result.notFound.length > 0 || result.ambiguous.length > 0) parts.push('직접 출석 처리해주세요.');
+    return parts.length > 0 ? parts.join(' ') : '출석 처리할 이름을 찾지 못했어요.';
   }
 }

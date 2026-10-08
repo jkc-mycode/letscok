@@ -318,7 +318,7 @@ export class MembersService {
     });
     if (active) {
       throw new ConflictException(
-        '진행 중인 모임에 체크인된 모임원입니다. 퇴장 처리 후 삭제해주세요.',
+        '진행 중인 모임에 출석한 모임원입니다. 퇴장 처리 후 삭제해주세요.',
       );
     }
   }

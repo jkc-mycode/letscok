@@ -48,7 +48,7 @@ export default function CheckinPage() {
         router.replace('/m');
         return;
       }
-      showToast(e instanceof ApiError ? e.message : '체크인에 실패했습니다.');
+      showToast(e instanceof ApiError ? e.message : '출석에 실패했습니다.');
     } finally {
       setBusy(false);
     }
@@ -81,7 +81,7 @@ export default function CheckinPage() {
       <header className="flex flex-col gap-1.5">
         <h1 className="text-display font-bold">코드와 이름을 넣어 주세요</h1>
         {/* 운영진이 미리 체크인해 뒀으면 폰 연결만, 아니면 체크인까지 — 둘 다 이 한 번으로 끝난다 */}
-        <p className="text-body text-dim">미리 체크인돼 있으면 내 폰과 연결되고, 아니면 체크인까지 돼요</p>
+        <p className="text-body text-dim">미리 출석돼 있으면 내 폰과 연결되고, 아니면 출석까지 돼요</p>
       </header>
 
       <CodeBoxes value={inputCode} onChange={setInputCode} />
@@ -116,7 +116,7 @@ function CodeBoxes({ value, onChange }: { value: string; onChange: (v: string) =
   return (
     <div className="flex flex-col gap-2.5">
       <label htmlFor="checkin-code" className="text-body-sm font-bold text-dim">
-        체크인 코드
+        입장 코드
       </label>
       <div className="relative">
         <div className="grid grid-cols-4 gap-2" aria-hidden>
@@ -143,7 +143,7 @@ function CodeBoxes({ value, onChange }: { value: string; onChange: (v: string) =
           inputMode="numeric"
           autoComplete="off"
           maxLength={4}
-          aria-label="체크인 코드 4자리"
+          aria-label="입장 코드 4자리"
           className="absolute inset-0 h-full w-full cursor-pointer text-transparent caret-transparent opacity-0"
         />
       </div>
@@ -279,7 +279,7 @@ function SearchPanel({
             : !hasCode
               ? '코드 4자리를 입력해주세요'
               : needsConsent && !consent
-                ? '동의 후 체크인할 수 있어요'
+                ? '동의 후 출석할 수 있어요'
                 : `${selected.name}(으)로 들어가기`}
         </button>
         <p className="text-center text-caption text-faint">이름이 안 보이면 운영진에게 등록을 요청해 주세요</p>

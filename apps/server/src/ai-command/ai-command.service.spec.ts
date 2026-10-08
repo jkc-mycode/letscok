@@ -307,7 +307,7 @@ describe('AiCommandService.run — 게스트 추가', () => {
           grade: null,
           existingMemberId: null,
           alreadyCheckedIn: false,
-          note: '같은 이름의 모임원이 있어요 — 모임원이면 "이름 체크인"으로 해 주세요',
+          note: '같은 이름의 모임원이 있어요 — 모임원이면 "이름 출석"으로 해 주세요',
         },
         { name: '이영희', gender: 'FEMALE', grade: 'D', existingMemberId: known.id, alreadyCheckedIn: false, note: null },
         { name: '박손님', gender: 'MALE', grade: 'E', existingMemberId: here.id, alreadyCheckedIn: true, note: null },

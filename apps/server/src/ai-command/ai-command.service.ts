@@ -104,7 +104,7 @@ const FEATURE_GUIDE: Record<Command['feature'], string> = {
   other: '',
 };
 export const UNSUPPORTED_MESSAGE =
-  '게임 짜기, 게임 종료, 휴식·복귀, 호출, 체크인, 게스트 추가, 상황 질문만 할 수 있어요. 예: "남복 짜줘", "3번 코트 끝났어", "누가 제일 오래 기다렸어?"';
+  '게임 짜기, 게임 종료, 휴식·복귀, 호출, 출석, 게스트 추가, 상황 질문만 할 수 있어요. 예: "남복 짜줘", "3번 코트 끝났어", "누가 제일 오래 기다렸어?"';
 export const ASK_UNSUPPORTED_MESSAGE =
   '그 질문엔 아직 답할 수 없어요. 오래 기다린 사람, 누구 게임 수, 0게임인 사람, 게임 적은 사람, 빈 코트, 인원, 다음 게임을 물어봐 주세요.';
 export const UNCLEAR_MESSAGE = '잘 못 알아들었어요. 다시 말해 주시거나 글로 입력해 주세요.';
@@ -300,7 +300,7 @@ export class AiCommandService {
         grade: guest ? guest.grade : g.grade,
         existingMemberId: guest?.id ?? null,
         alreadyCheckedIn: !!guest && guest.attendances.length > 0,
-        note: regular ? '같은 이름의 모임원이 있어요 — 모임원이면 "이름 체크인"으로 해 주세요' : null,
+        note: regular ? '같은 이름의 모임원이 있어요 — 모임원이면 "이름 출석"으로 해 주세요' : null,
       };
     });
     return { kind: 'guest_preview', guests };

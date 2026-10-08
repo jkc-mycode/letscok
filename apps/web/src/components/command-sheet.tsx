@@ -29,7 +29,7 @@ import { useSpeech } from '@/lib/use-speech';
 // AI 운영 명령 — 문장을 보내면 서버가 미리보기만 돌려주고, 운영진이 [확인]해야 기존 API로 실행한다
 // (체크인만 예외: 기존 AI 체크인 규칙대로 확실한 사람은 바로 체크인된다)
 
-const EXAMPLES = ['남복 짜줘', '민수랑 준호 넣어서 혼복', '3번 코트 끝났고 남복 하나 짜줘', '민수 휴식', '홍길동 체크인', '게스트 홍길동 남자 C급 추가', '누가 제일 오래 기다렸어?'];
+const EXAMPLES = ['남복 짜줘', '민수랑 준호 넣어서 혼복', '3번 코트 끝났고 남복 하나 짜줘', '민수 휴식', '홍길동 출석', '게스트 홍길동 남자 C급 추가', '누가 제일 오래 기다렸어?'];
 
 const CATEGORY_LABEL: Record<RecommendationCategory, string> = {
   ALL: '전체',
@@ -269,7 +269,7 @@ export function CommandSheet({
       const ok = guests.length - failed.length;
       setNotice(
         [
-          ok > 0 ? `게스트 ${ok}명 체크인했어요. 콕을 내면 명단 맨 위에서 [콕 확인]을 눌러 주세요` : '',
+          ok > 0 ? `게스트 ${ok}명 출석 처리했어요. 콕을 내면 명단 맨 위에서 [콕 확인]을 눌러 주세요` : '',
           failed.length > 0 ? `못 한 사람: ${failed.join(', ')}` : '',
         ]
           .filter(Boolean)
@@ -394,7 +394,7 @@ export function CommandSheet({
             ))}
           </div>
           <p className="text-caption leading-relaxed text-faint">
-            게임 짜기·게임 종료·휴식·복귀·호출·게스트 추가는 미리보기를 보고 [확인]해야 실행돼요. 체크인은 이름이 정확히
+            게임 짜기·게임 종료·휴식·복귀·호출·게스트 추가는 미리보기를 보고 [확인]해야 실행돼요. 출석은 이름이 정확히
             맞는 사람만 바로 처리돼요.
           </p>
         </>
@@ -636,7 +636,7 @@ function GuestPreview({ guests, onConfirm }: { guests: IAiGuestDraft[]; onConfir
           <div className="flex items-center gap-2">
             <span className="font-bold">{guest.name}</span>
             <span className="text-xs text-faint">
-              {guest.alreadyCheckedIn ? '오늘 이미 출석했어요' : guest.existingMemberId ? '등록된 게스트 — 체크인만' : '새 게스트'}
+              {guest.alreadyCheckedIn ? '오늘 이미 출석했어요' : guest.existingMemberId ? '등록된 게스트 — 출석만' : '새 게스트'}
             </span>
           </div>
           {guest.note && <p className="text-xs text-amber whitespace-normal">{guest.note}</p>}
@@ -674,7 +674,7 @@ function GuestPreview({ guests, onConfirm }: { guests: IAiGuestDraft[]; onConfir
         disabled={!ready}
         className="h-12 rounded-xl bg-court text-base font-bold text-bg disabled:bg-panel2 disabled:text-faint"
       >
-        {todo.length === 0 ? '체크인할 게스트가 없어요' : ready ? `게스트 ${todo.length}명 체크인` : '성별과 급수를 골라 주세요'}
+        {todo.length === 0 ? '출석할 게스트가 없어요' : ready ? `게스트 ${todo.length}명 출석` : '성별과 급수를 골라 주세요'}
       </button>
     </div>
   );
@@ -694,7 +694,7 @@ function stepSummary(step: IAiCommandStep): string {
     case 'answer':
       return step.title;
     case 'check_in':
-      return '체크인';
+      return '출석';
     default:
       return '안내';
   }

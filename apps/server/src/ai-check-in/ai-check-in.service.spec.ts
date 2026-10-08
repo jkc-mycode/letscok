@@ -194,14 +194,14 @@ describe('안내 문장과 세션', () => {
     const result = await service.applyNames(session.id, [full('김하나'), full('김민수'), full('없음')]);
 
     expect(result.message).toBe(
-      '1명 체크인했어요. 없음은(는) 못 찾았어요. 김민수은(는) 누구인지 확실하지 않아요. 직접 체크인해주세요.',
+      '1명 출석 처리했어요. 없음은(는) 못 찾았어요. 김민수은(는) 누구인지 확실하지 않아요. 직접 출석 처리해주세요.',
     );
   });
 
   it('읽은 이름이 없으면 그렇게 안내한다', async () => {
     const session = await seedSession();
 
-    expect((await service.applyNames(session.id, [])).message).toBe('체크인할 이름을 찾지 못했어요.');
+    expect((await service.applyNames(session.id, [])).message).toBe('출석 처리할 이름을 찾지 못했어요.');
   });
 
   it('진행 중 모임이 아니면 404', async () => {

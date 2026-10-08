@@ -137,7 +137,7 @@ export function AiCheckInPanel({
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center gap-2 text-left text-sm font-bold whitespace-normal text-court"
       >
-        <SparkleIcon /> AI 체크인 — 신청 명단 캡처·명령
+        <SparkleIcon /> AI 출석 — 신청 명단 캡처·명령
         <span className="ml-auto shrink-0 text-xs font-normal text-dim">{open ? '접기' : '열기'}</span>
       </button>
 
@@ -169,7 +169,7 @@ export function AiCheckInPanel({
               onChange={(e) => setCommand(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && void sendCommand()}
               maxLength={200}
-              placeholder="예: 97년생 김민수 체크인해줘"
+              placeholder="예: 97년생 김민수 출석 처리해줘"
               className="h-11 rounded-xl border-2 border-transparent bg-panel2 px-3 text-sm outline-none focus:border-court"
               onClear={() => setCommand('')}
               wrapperClassName="min-w-0 flex-1"
@@ -183,8 +183,8 @@ export function AiCheckInPanel({
             </button>
           </div>
           <p className="text-caption text-faint">
-            성+이름이 명단의 한 명과 정확히 맞을 때만 자동으로 체크인해요. 동명이인·이름만 적힌 경우는
-            아래 후보 버튼으로, 못 찾은 사람은 검색으로 직접 체크인해주세요.
+            성+이름이 명단의 한 명과 정확히 맞을 때만 자동으로 출석 처리해요. 동명이인·이름만 적힌 경우는
+            아래 후보 버튼으로, 못 찾은 사람은 검색으로 직접 출석 처리해주세요.
           </p>
 
           {working && <AiThinking steps={working.steps} note={working.note} />}
@@ -244,7 +244,7 @@ function ResultCard({
                 {cancellable && (
                   <button
                     onClick={() => void onCancel(attendance.id)}
-                    title="잘못 체크인됐으면 취소"
+                    title="잘못 출석 처리됐으면 취소"
                     className="tap text-dim hover:text-coral"
                   >
                     ✕
