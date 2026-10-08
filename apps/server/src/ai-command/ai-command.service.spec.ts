@@ -67,7 +67,7 @@ async function seedAttendee(
 beforeEach(async () => {
   aiStub.extract.mockReset();
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE game_players, games, attendances, courts, sessions, members CASCADE',
+    'TRUNCATE TABLE game_players, games, attendances, courts, sessions, members, admin_memos CASCADE',
   );
 });
 
@@ -274,6 +274,28 @@ describe('AiCommandService.run — 상황 질문', () => {
     aiStub.extract.mockResolvedValueOnce(ask('other'));
     const other = await service.run(session.id, '오늘 누가 제일 잘 쳐?');
     expect(other.kind).toBe('message');
+  });
+
+  it('메모 — 전체는 적은 순서대로, 이름을 말하면 그 이름(성 뺀 이름 포함)이 들어간 것만', async () => {
+    const session = await seedSession();
+    await prisma.adminMemo.create({ data: { content: '김민수 9시에 먼저 감' } });
+    await prisma.adminMemo.create({ data: { content: '지은 발목 조심' } });
+    await prisma.adminMemo.create({ data: { content: '민수 라켓 빌려줌' } });
+
+    aiStub.extract.mockResolvedValueOnce(ask('memos'));
+    expect(await service.run(session.id, '메모 뭐 있어?')).toEqual({
+      kind: 'answer',
+      title: '운영 메모',
+      lines: ['김민수 9시에 먼저 감', '지은 발목 조심', '민수 라켓 빌려줌'],
+    });
+
+    aiStub.extract.mockResolvedValueOnce(ask('memos', ['김민수']));
+    const mine = await service.run(session.id, '김민수 메모 있어?');
+    expect(mine.kind === 'answer' && mine.lines).toEqual(['김민수 9시에 먼저 감', '민수 라켓 빌려줌']);
+
+    aiStub.extract.mockResolvedValueOnce(ask('memos', ['준호']));
+    const none = await service.run(session.id, '준호 메모?');
+    expect(none.kind === 'answer' && none.lines).toEqual(['준호님 메모는 없어요.']);
   });
 });
 

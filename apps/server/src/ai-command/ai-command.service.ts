@@ -47,7 +47,7 @@ const commandSchema = z.strictObject({
     .enum(['court_manage', 'close_session', 'replace_player', 'leave', 'other'])
     .describe('known_unsupported일 때 어떤 기능인지, 그 외 other'),
   question: z
-    .enum(['longest_wait', 'person', 'no_games', 'fewest_games', 'free_courts', 'headcount', 'next_game', 'other'])
+    .enum(['longest_wait', 'person', 'no_games', 'fewest_games', 'free_courts', 'headcount', 'next_game', 'memos', 'other'])
     .describe('ask일 때 질문 종류, 그 외 other'),
   guests: z
     .array(
@@ -82,6 +82,7 @@ const SYSTEM_PROMPT = `당신은 배드민턴 모임 관제판의 명령 해석�
 - ask: 지금 모임 상황을 묻는 질문. question:
   - longest_wait: 누가 제일 오래 기다렸는지 / person: 특정 사람의 게임 수·지금 상태(people=[그 사람]) / no_games: 아직 한 게임도 못 한 사람
   - fewest_games: 게임을 적게 한 사람 / free_courts: 빈 코트 / headcount: 몇 명 왔는지·인원 현황 / next_game: 다음 게임이 누구인지
+  - memos: 운영 메모에 뭐가 적혀 있는지. 특정 사람 메모를 물으면 people=[그 사람]. 예: "메모 뭐 있어?", "민수 메모 있어?"
   - 위에 없는 질문은 other
 - add_guest: 게스트를 새로 추가·등록해 달라는 요청. 예: "게스트 홍길동 남자 C급 추가해줘", "게스트 두 명 왔어 김철수 남자 D급 이영희 여자". guests에 사람마다 name, gender, grade(말 안 한 건 null)
   - "게스트 홍길동 체크인"처럼 성별·급수 없이 체크인만 말하면 check_in(guest=true)으로 둡니다. 추가·등록·새로·데려왔다는 말이 있거나 성별·급수를 함께 말하면 add_guest
@@ -412,9 +413,32 @@ export class AiCommandService {
           lines: [next.players.map((p) => p.attendance.member.name).join(', ')],
         };
       }
+      case 'memos':
+        return this.memoAnswer(command.people);
       default:
         return { kind: 'message', text: ASK_UNSUPPORTED_MESSAGE };
     }
+  }
+
+  // 운영 메모 읽어 주기 — 메모 글은 AI로 보내지 않고 서버가 그대로 읽어 준다(건강 정보 등이 적히는 곳이라)
+  // 이름을 말하면 그 이름(또는 성 뺀 이름)이 들어간 메모만
+  private async memoAnswer(people: string[]): Promise<IAiCommandStep> {
+    const memos = await this.prisma.adminMemo.findMany({ orderBy: { createdAt: 'asc' } });
+    const names = people.map((p) => p.trim()).filter(Boolean);
+    if (names.length === 0) {
+      return {
+        kind: 'answer',
+        title: '운영 메모',
+        lines: memos.length === 0 ? ['메모가 없어요.'] : memos.slice(0, 10).map((m) => m.content),
+      };
+    }
+    const keys = names.flatMap((n) => (n.length === 3 ? [n, n.slice(1)] : [n]));
+    const hit = memos.filter((m) => keys.some((k) => m.content.includes(k)));
+    return {
+      kind: 'answer',
+      title: `${names.join(', ')} 메모`,
+      lines: hit.length === 0 ? [`${names.map((n) => `${n}님`).join(', ')} 메모는 없어요.`] : hit.slice(0, 10).map((m) => m.content),
+    };
   }
 
   // 휴식·복귀·호출 — 대상만 찾아 미리보기(실행 가능 여부는 실행 API가 기존 규칙대로 판단)
