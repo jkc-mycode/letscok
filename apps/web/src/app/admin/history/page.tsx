@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
 import { HistoryTabs } from '@/components/history-tabs';
+import { InstallPrompt } from '@/components/install-prompt';
 import { api, ApiError } from '@/lib/api';
 
 const PAGE_SIZE = 20;
@@ -36,6 +37,7 @@ function HistoryList() {
 
   return (
     <main className="fade-in mx-auto flex min-h-dvh w-full max-w-lg flex-col gap-4 p-6">
+      <InstallPrompt app="admin" />
       <header>
         {/* 설치된 관제판 앱에는 브라우저 뒤로가기가 없다 — 홈 로고도 scope 밖이라 링크가 아니어서
             이 링크가 없으면 관제판으로 돌아갈 방법이 사라진다 */}

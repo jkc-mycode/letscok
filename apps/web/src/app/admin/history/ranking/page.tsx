@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
 import { GenderMarker, GradeBadge } from '@/components/badges';
 import { HistoryTabs } from '@/components/history-tabs';
+import { InstallPrompt } from '@/components/install-prompt';
 import { api, ApiError } from '@/lib/api';
 
 // 기간 필터 — months 값이 null이면 전체 누적
@@ -56,6 +57,7 @@ function Ranking() {
 
   return (
     <main className="fade-in mx-auto flex min-h-dvh w-full max-w-lg flex-col gap-4 p-6">
+      <InstallPrompt app="admin" />
       <header>
         <Link href="/admin" className="text-sm text-dim transition-opacity hover:opacity-70">
           ← 운영 화면

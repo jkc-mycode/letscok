@@ -59,6 +59,7 @@ import { ExitGuard } from '@/components/exit-guard';
 import { ClearableInput } from '@/components/clearable-input';
 import { gamePartnerPeople, GenderMarker, GradeBadge, PartnerNote, Toast } from '@/components/badges';
 import { HomeLink } from '@/components/home-link';
+import { InstallPrompt } from '@/components/install-prompt';
 import { MegaphoneIcon } from '@/components/icons';
 import { LogoLoader } from '@/components/logo-loader';
 import { MotionCard } from '@/components/motion-card';
@@ -179,6 +180,7 @@ function StartScreen({
   return (
     // 디자인 시스템: 큰 제목 + 주요 버튼 하나(모임 시작), 모임 전에 하기 좋은 일은 한 덩어리 목록
     <main className="fade-in mx-auto flex min-h-dvh w-full max-w-md flex-col gap-6 px-5 pt-2 pb-6">
+      <InstallPrompt app="admin" />
       <HomeLink className="flex h-11 items-center self-start text-caption font-bold tracking-[0.3em] text-court transition-opacity hover:opacity-70">
         LETSCOK
       </HomeLink>
@@ -753,6 +755,8 @@ function BoardBody({
       style={{ '--tab-index': tabIndex } as React.CSSProperties}
       className="fade-in flex h-dvh flex-col overflow-x-hidden p-2 md:p-4"
     >
+      {/* 설치 안내 — 카톡으로 연 운영진도 브라우저로 나가게. 설치된 앱에선 뜨지 않는다 */}
+      <InstallPrompt app="admin" className="mb-2 shrink-0" />
       {/* 헤더 */}
       {/* 머리 — 태블릿은 자주 쓰는 두 개(체크인 코드·게임 기록)만 펼치고 나머지는 폰과 같은 더보기 시트로 */}
       <header className="flex items-center gap-2 pb-2 md:gap-3 md:pb-3">

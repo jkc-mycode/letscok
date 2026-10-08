@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
 import { GenderMarker, GradeBadge } from '@/components/badges';
 import { SessionReportModal } from '@/components/session-report-modal';
+import { InstallPrompt } from '@/components/install-prompt';
 import { api, ApiError } from '@/lib/api';
 
 export default function HistoryDetailPage() {
@@ -38,6 +39,7 @@ function HistoryDetail() {
 
   return (
     <main className="fade-in mx-auto flex min-h-dvh w-full max-w-lg flex-col gap-5 p-6">
+      <InstallPrompt app="admin" />
       <header>
         <Link href="/admin/history" className="text-sm text-dim transition-opacity hover:opacity-70">
           ← 모임 목록

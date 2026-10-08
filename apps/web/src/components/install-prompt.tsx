@@ -9,7 +9,10 @@ import { useCallback, useEffect, useState } from 'react';
 //   ios     프로그램적 설치 불가 — "공유 → 홈 화면에 추가" 안내가 유일한 수단
 // 앱별로 따로 센다 — 한 기기에서 모임원 배너를 닫았다고 관제판 배너까지 숨으면 안 된다
 const dismissKey = (app: string) => `letscok:install-dismissed-at:${app}`;
-const DISMISS_DAYS = 7; // 모임이 주 1회라 다음 모임엔 다시 눈에 띈다
+const DISMISS_DAYS = 3; // 설치 권유는 닫으면 3일 쉰다
+// 카톡 안내는 쉬지 않는다 — 카톡 안에선 설치·알림이 안 되니 링크로 들어올 때마다 다시 띄운다.
+// 같은 방문 안에서 화면을 옮길 때마다 또 뜨면 번거로우니, 닫으면 이번 방문(탭)만 숨긴다
+const isKakao = () => /KAKAOTALK/i.test(navigator.userAgent);
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -22,6 +25,7 @@ type InstallWindow = Window & { __letscokInstallEvent?: BeforeInstallPromptEvent
 type Mode = 'hidden' | 'kakao' | 'android' | 'ios';
 
 function isDismissed(app: string): boolean {
+  if (isKakao()) return sessionStorage.getItem(dismissKey(app)) !== null;
   const at = Number(localStorage.getItem(dismissKey(app)) ?? 0);
   if (!at) return false;
   return Date.now() - at < DISMISS_DAYS * 24 * 60 * 60 * 1000;
@@ -52,15 +56,15 @@ const COPY = {
   },
 } as const;
 
-export function InstallPrompt({ app = 'member' }: { app?: keyof typeof COPY }) {
+// className = 놓이는 자리에 맞춘 바깥 여백(보드처럼 꽉 찬 화면에선 shrink-0 등)
+export function InstallPrompt({ app = 'member', className = '' }: { app?: keyof typeof COPY; className?: string }) {
   const [mode, setMode] = useState<Mode>('hidden');
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
 
   useEffect(() => {
     if (isInstalled() || isDismissed(app)) return;
 
-    const ua = navigator.userAgent;
-    if (/KAKAOTALK/i.test(ua)) {
+    if (isKakao()) {
       setMode('kakao');
       return;
     }
@@ -95,7 +99,7 @@ export function InstallPrompt({ app = 'member' }: { app?: keyof typeof COPY }) {
   }, [app]);
 
   const dismiss = useCallback(() => {
-    localStorage.setItem(dismissKey(app), String(Date.now()));
+    (isKakao() ? sessionStorage : localStorage).setItem(dismissKey(app), String(Date.now()));
     setMode('hidden');
   }, [app]);
 
@@ -122,7 +126,7 @@ export function InstallPrompt({ app = 'member' }: { app?: keyof typeof COPY }) {
   if (mode === 'hidden') return null;
 
   return (
-    <div className="rounded-xl border border-court/40 bg-court/10 p-3">
+    <div className={`rounded-xl border border-court/40 bg-court/10 p-3 ${className}`}>
       <div className="flex items-start gap-2">
         <div className="flex-1">
           {mode === 'kakao' && (

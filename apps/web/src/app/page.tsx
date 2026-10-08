@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { InstallPrompt } from '@/components/install-prompt';
 
 // 이스터에그 — 제목의 🏸를 1초 간격 내 10연타하면 셔틀콕 러너(크롬 공룡 게임 변형)가 열린다
 const RUNNER_TAPS = 10;
@@ -26,6 +27,7 @@ export default function HomePage() {
 
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-8">
+      <InstallPrompt className="mx-5 self-stretch sm:mx-auto sm:w-full sm:max-w-md" />
       <div className="text-center">
         <p className="text-sm font-medium tracking-[0.3em] text-court">LETSCOK</p>
         <h1 className="mt-2 text-4xl font-bold">
