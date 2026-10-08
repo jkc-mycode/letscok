@@ -78,14 +78,23 @@ export default function MyStatusPage() {
     );
   }
   if (!me) {
+    // 체크인은 보통 운영진이 미리 해 둔다(소모임 투표 기준) — 코드 입력의 주된 쓰임은 이 폰을 본인과 잇는 것
+    // 연결 전(memberId 없음)과 연결은 됐는데 오늘 명단에 없는 경우를 문구로 가른다
     return (
       <Shell>
-        <Centered title="체크인이 필요해요" desc="셔틀콕 내고 코드 입력하셨나요?" />
+        {memberId ? (
+          <Centered title="아직 오늘 명단에 없어요" desc="운영진에게 말하거나 코드로 직접 체크인할 수 있어요" />
+        ) : (
+          <Centered
+            title="내 폰을 연결해 주세요"
+            desc="처음 한 번 코드와 이름을 넣으면 내 차례와 코트 알림을 받을 수 있어요"
+          />
+        )}
         <Link
           href="/m/checkin"
           className="flex h-14 items-center justify-center rounded-xl bg-court text-body font-bold text-bg"
         >
-          체크인하러 가기
+          {memberId ? '코드로 체크인하기' : '내 폰 연결하기'}
         </Link>
       </Shell>
     );

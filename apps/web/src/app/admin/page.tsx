@@ -1407,7 +1407,10 @@ function CheckInCodeModal({ onClose }: { onClose: () => void }) {
           <div>
             <p className="tabular font-mono text-5xl font-bold tracking-[0.2em]">{code}</p>
             <p className="mt-2 text-xs leading-relaxed text-dim">
-              모임원은 <b>[필독]공지사항</b>의 작성월일 4자리를 입력해 체크인해요
+              모임원은 <b>[필독]공지사항</b>의 작성월일 4자리를 입력해요
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-dim">
+              미리 체크인해 둔 사람도 이 코드로 한 번 들어오면 폰이 연결돼 내 차례와 코트 알림을 받아요
             </p>
             <p className="mt-1 text-xs text-faint">공지를 새로 올렸다면 코드도 함께 바꿔주세요</p>
           </div>
