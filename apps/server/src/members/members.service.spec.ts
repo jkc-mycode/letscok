@@ -336,3 +336,21 @@ describe('search 공개 응답', () => {
     expect(full.birthYear).toBe(1997);
   });
 });
+
+describe('page 정렬 — 모임장·운영진 먼저', () => {
+  it('어떤 정렬이든 모임장, 운영진(이름순), 나머지(고른 정렬) 순', async () => {
+    const leader = await service.create(memberDto({ name: '하모임장', grade: 'F', birthDate: '1990-01-01' }));
+    const m2 = await service.create(memberDto({ name: '다운영', grade: 'E', birthDate: '1990-01-02' }));
+    const m1 = await service.create(memberDto({ name: '가운영', grade: 'D', birthDate: '1990-01-03' }));
+    await service.create(memberDto({ name: '나일반', grade: 'A', birthDate: '1990-01-04' }));
+    await service.create(memberDto({ name: '라일반', grade: 'B', birthDate: '1990-01-05' }));
+    await service.update(leader.id, { role: 'LEADER' });
+    await service.update(m1.id, { role: 'MANAGER' });
+    await service.update(m2.id, { role: 'MANAGER' });
+
+    const names = async (sort: 'NAME' | 'GRADE' | 'RECENT') => (await service.page({ sort })).items.map((m) => m.name);
+    expect(await names('GRADE')).toEqual(['하모임장', '가운영', '다운영', '나일반', '라일반']);
+    expect(await names('NAME')).toEqual(['하모임장', '가운영', '다운영', '나일반', '라일반']);
+    expect((await names('RECENT')).slice(0, 3)).toEqual(['하모임장', '가운영', '다운영']);
+  });
+});

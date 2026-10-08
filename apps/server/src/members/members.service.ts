@@ -353,9 +353,12 @@ export class MembersService {
 
 const GRADE_ORDER = ['A', 'B', 'C', 'D', 'E', 'F'];
 
+// 역할 순서 — 어떤 정렬을 골라도 모임장이 맨 위, 다음 운영진(이름순), 나머지는 고른 정렬대로
+const ROLE_RANK: Record<string, number> = { LEADER: 0, MANAGER: 1 };
+const roleRank = (m: IMemberSummary) => ROLE_RANK[m.role] ?? 2;
+
 // 모임원 관리 정렬 — summaries()는 이미 최근 출석순(RECENT). 나머지는 동률이면 이름순
 function sortSummaries(list: IMemberSummary[], sort: MemberListSort): IMemberSummary[] {
-  if (sort === 'RECENT') return list;
   const byName = (a: IMemberSummary, b: IMemberSummary) => a.name.localeCompare(b.name, 'ko');
   const compare: Record<Exclude<MemberListSort, 'RECENT'>, (a: IMemberSummary, b: IMemberSummary) => number> = {
     NAME: byName,
@@ -363,5 +366,11 @@ function sortSummaries(list: IMemberSummary[], sort: MemberListSort): IMemberSum
     CREATED: (a, b) => b.createdAt.localeCompare(a.createdAt) || byName(a, b),
     GRADE: (a, b) => GRADE_ORDER.indexOf(a.grade) - GRADE_ORDER.indexOf(b.grade) || byName(a, b),
   };
-  return [...list].sort(compare[sort]);
+  const sorted = sort === 'RECENT' ? [...list] : [...list].sort(compare[sort]);
+  // sort는 안정 정렬이라 같은 역할(나머지) 안에서는 위에서 고른 순서가 그대로 남는다
+  return sorted.sort((a, b) => {
+    const rank = roleRank(a) - roleRank(b);
+    if (rank !== 0) return rank;
+    return roleRank(a) === 1 ? byName(a, b) : 0;
+  });
 }
