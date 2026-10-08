@@ -160,14 +160,38 @@ describe('이름만·별명·불명', () => {
     const session = await seedSession();
     await seedMember('김강민');
     await seedMember('남궁강민');
-    await seedMember('강민'); // 이름 자체가 같은 회원은 "성 뺀 이름"이 아니라 제외
+    await seedMember('강민'); // 이름이 정확히 같은 회원도 후보에 — 외자 이름(오석)을 놓치지 않게
 
     const result = await service.applyNames(session.id, [
       { raw: '강민', name: '강민', kind: 'given', birthYear: null, guest: false },
     ]);
 
     expect(result.checkedIn).toEqual([]);
-    expect(result.ambiguous[0].candidates.map((c) => c.name).sort()).toEqual(['김강민', '남궁강민']);
+    expect(result.ambiguous[0].candidates.map((c) => c.name).sort()).toEqual(['강민', '김강민', '남궁강민']);
+  });
+
+  it('외자 이름을 AI가 이름만(given)으로 읽어도, 정확히 같은 회원이 1명뿐이면 바로 출석', async () => {
+    const session = await seedSession();
+    const oh = await seedMember('오석');
+
+    const result = await service.applyNames(session.id, [
+      { raw: '오석 NEW', name: '오석', kind: 'given', birthYear: null, guest: false },
+    ]);
+
+    expect(result.checkedIn.map((m) => m.name)).toEqual(['오석']);
+    expect(await attendedIds(session.id)).toEqual([oh.id]);
+  });
+
+  it('외자 이름을 불명(unclear)으로 읽으면 정확히 같은 회원을 후보로(자동 출석은 안 함)', async () => {
+    const session = await seedSession();
+    await seedMember('오석');
+
+    const result = await service.applyNames(session.id, [
+      { raw: '오석', name: '오석', kind: 'unclear', birthYear: null, guest: false },
+    ]);
+
+    expect(result.checkedIn).toEqual([]);
+    expect(result.ambiguous[0].candidates.map((c) => c.name)).toEqual(['오석']);
   });
 
   it('별명·판단 불가는 원문으로 못 찾음', async () => {
