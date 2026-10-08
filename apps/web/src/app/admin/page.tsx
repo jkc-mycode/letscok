@@ -2192,8 +2192,11 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
   const [keyword, setKeyword] = useState(''); // 입력이 300ms 멈춘 뒤의 검색어 — 타이핑마다 요청하지 않게
   const [filter, setFilter] = useState<MemberListFilter>('ALL');
   const [sort, setSort] = useState<MemberListSort>('RECENT');
-  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1); // 지금까지 이어 받은 쪽 수 — 끝까지 내리면 하나씩 늘어난다
+  const [loadingMore, setLoadingMore] = useState(false);
+  const requestRef = useRef(0); // 탭·검색이 바뀐 뒤 늦게 온 이전 응답을 버리려고
   const listRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const [editTarget, setEditTarget] = useState<IMemberSummary | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
@@ -2204,29 +2207,70 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
     const timer = setTimeout(() => setKeyword(query.trim()), 300);
     return () => clearTimeout(timer);
   }, [query]);
-  // 탭·검색어·정렬이 바뀌면 첫 쪽부터
-  useEffect(() => setPage(1), [filter, keyword, sort]);
+  const fetchPage = useCallback(
+    (page: number) => {
+      const params = new URLSearchParams({ filter, sort, page: String(page), ...(keyword && { q: keyword }) });
+      return api<IMemberPage>(`/members/page?${params}`, { admin: true });
+    },
+    [filter, sort, keyword],
+  );
 
-  const refetch = useCallback(async () => {
-    const params = new URLSearchParams({ filter, sort, page: String(page), ...(keyword && { q: keyword }) });
-    try {
-      const [pageData, stale] = await Promise.all([
-        api<IMemberPage>(`/members/page?${params}`, { admin: true }),
-        api<IMemberSummary[]>('/members/stale-guests', { admin: true }),
-      ]);
-      setData(pageData);
-      setStaleGuests(stale);
-    } catch {
-      showToast('명단을 불러오지 못했습니다.');
-    }
-  }, [filter, sort, page, keyword, showToast]);
-  useEffect(() => {
-    void refetch();
-  }, [refetch]);
-  // 쪽·정렬이 바뀌면 목록 맨 위로
+  // 첫 쪽부터 count쪽까지 다시 받아 이어 붙인다 — 수정·등록 뒤에도 보던 범위(스크롤 위치)가 유지되게
+  const reload = useCallback(
+    async (count: number) => {
+      const id = ++requestRef.current;
+      try {
+        const stale = api<IMemberSummary[]>('/members/stale-guests', { admin: true });
+        const chunks = await Promise.all(Array.from({ length: count }, (_, i) => fetchPage(i + 1)));
+        const staleList = await stale;
+        if (id !== requestRef.current) return;
+        setData({ ...chunks[chunks.length - 1], items: chunks.flatMap((c) => c.items) });
+        setPages(count);
+        setStaleGuests(staleList);
+      } catch {
+        if (id === requestRef.current) showToast('명단을 불러오지 못했습니다.');
+      }
+    },
+    [fetchPage, showToast],
+  );
+  // 탭·검색어·정렬이 바뀌면 첫 쪽부터, 목록도 맨 위로
   useEffect(() => {
     listRef.current?.scrollTo({ top: 0 });
-  }, [page, sort, filter]);
+    void reload(1);
+  }, [reload]);
+  const refetch = () => reload(pages);
+
+  const hasMore = data !== null && data.items.length < data.total;
+  // 다음 100명 — 목록 끝 표시(sentinel)가 보이면 부른다
+  const loadMore = async () => {
+    if (!hasMore || loadingMore) return;
+    const id = requestRef.current;
+    setLoadingMore(true);
+    try {
+      const next = await fetchPage(pages + 1);
+      if (id !== requestRef.current) return;
+      setData((prev) => prev && { ...next, items: [...prev.items, ...next.items] });
+      setPages(pages + 1);
+    } catch {
+      showToast('명단을 더 불러오지 못했습니다.');
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+  const loadMoreRef = useRef(loadMore);
+  loadMoreRef.current = loadMore;
+  // 불러온 뒤에도 끝 표시가 아직 보이면(목록이 짧은 화면) 바로 한 번 더 — 다시 관찰을 걸면 즉시 알려 준다
+  const loadedCount = data?.items.length ?? 0;
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => entry.isIntersecting && void loadMoreRef.current(),
+      { root: listRef.current, rootMargin: '300px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loadedCount]);
 
   // 모달 전용 실행기 — Board의 run은 스냅샷 refetch까지 묶여 있어 세션 없는 화면에선 못 쓴다
   const run = async (action: () => Promise<unknown>) => {
@@ -2243,7 +2287,6 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
   };
 
   const visible = data?.items ?? [];
-  const pageCount = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
 
   // 탭 숫자는 검색과 상관없이 진짜 전체 인원(서버 counts)
   const FILTER_TABS: { value: MemberListFilter; label: string }[] = [
@@ -2271,30 +2314,6 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
         }
         footer={
           <div className="flex items-center gap-2">
-            {/* 100명씩 — 넘을 때만 쪽 넘기기 */}
-            {data && pageCount > 1 && (
-              <>
-                <button
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1}
-                  aria-label="이전 쪽"
-                  className="tap h-12 w-11 shrink-0 rounded-xl bg-panel2 text-dim disabled:opacity-30"
-                >
-                  ‹
-                </button>
-                <span className="tabular shrink-0 text-center font-mono text-body-sm text-dim">
-                  {page}/{pageCount}
-                </span>
-                <button
-                  onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-                  disabled={page >= pageCount}
-                  aria-label="다음 쪽"
-                  className="tap h-12 w-11 shrink-0 rounded-xl bg-panel2 text-dim disabled:opacity-30"
-                >
-                  ›
-                </button>
-              </>
-            )}
             {/* 등록 — 체크인 없이 명단에만 추가 (모임 전 사전 등록용). 모임 중 즉석 등록+체크인은 [수동 체크인]의 [신규 등록] */}
             <button
               onClick={() => setRegisterOpen(true)}
@@ -2412,6 +2431,12 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
               </span>
             </button>
           ))}
+          {/* 목록 끝 표시 — 보이면 다음 100명 */}
+          {hasMore && (
+            <div ref={sentinelRef} className="py-4 text-center text-body-sm text-faint sm:col-span-2">
+              {loadingMore ? '더 불러오는 중...' : ''}
+            </div>
+          )}
         </div>
       </Sheet>
       {registerOpen && (
