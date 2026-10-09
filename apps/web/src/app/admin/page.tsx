@@ -125,10 +125,16 @@ function Board({ onLogout }: { onLogout: () => void }) {
     }
   };
   // 잠그지 않는 실행기 — 사람마다 따로인 빠른 동작(콕 확인)용. 연달아 눌러도 모두 처리하고, 실패만 알린다
+  // 새로고침은 마지막 요청 뒤 한 번만 — [모두 콕 확인]으로 20명이면 요청이 40개가 되어 분당 요청 제한에 가까워진다
+  const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (refetchTimer.current) clearTimeout(refetchTimer.current);
+  }, []);
   const runParallel = async (action: () => Promise<unknown>) => {
     try {
       await action();
-      void refetch(); // 기다리지 않는다 — 화면은 이미 바뀌어 있고 실시간 화면도 곧 온다
+      if (refetchTimer.current) clearTimeout(refetchTimer.current);
+      refetchTimer.current = setTimeout(() => void refetch(), 400); // 화면은 이미 바뀌어 있고 실시간 화면도 곧 온다
       return true;
     } catch (e) {
       showToast(e instanceof ApiError ? e.message : '요청에 실패했습니다.');
@@ -1013,9 +1019,22 @@ function BoardBody({
         >
           {pendingShuttle.length > 0 && (
             <>
-              <p className="pb-1 text-center text-caption font-medium text-amber">
-                콕 확인 대기 {pendingShuttle.length}명 — [콕 확인]을 누르면 명단으로 내려가요
-              </p>
+              <div className="flex items-center gap-2 pb-1">
+                <p className="min-w-0 flex-1 text-caption font-medium text-amber">
+                  콕 확인 대기 {pendingShuttle.length}명 — [콕 확인]을 누르면 명단으로 내려가요
+                </p>
+                {/* 한꺼번에 콕을 냈을 때 — 두 번 눌러야 실행(콕을 안 낸 사람까지 확인되는 실수 방지) */}
+                {pendingShuttle.length >= 2 && (
+                  <ConfirmButton
+                    label={`모두 콕 확인 (${pendingShuttle.length})`}
+                    confirmLabel={`${pendingShuttle.length}명 모두 확인`}
+                    title="콕 확인 대기 전원을 한 번에 확인"
+                    onConfirm={() => pendingShuttle.forEach((a) => confirmShuttle(a.id))}
+                    className="tap h-9 shrink-0 rounded-lg px-3 text-caption font-bold"
+                    idleCls="bg-amber text-bg"
+                  />
+                )}
+              </div>
               <AnimatePresence initial={false}>
                 {pendingShuttle.map((attendance) => (
                   <ShuttleRow key={attendance.id} attendance={attendance} run={run} onConfirm={confirmShuttle} />
