@@ -13,6 +13,13 @@ const DISMISS_DAYS = 3; // 설치 권유는 닫으면 3일 쉰다
 // 카톡 안내는 쉬지 않는다 — 카톡 안에선 설치·알림이 안 되니 링크로 들어올 때마다 다시 띄운다.
 // 같은 방문 안에서 화면을 옮길 때마다 또 뜨면 번거로우니, 닫으면 이번 방문(탭)만 숨긴다
 const isKakao = () => /KAKAOTALK/i.test(navigator.userAgent);
+// 카톡으로 들어오면 한 번은 저절로 기본 브라우저로 넘긴다 — 같은 방문에서 되풀이하지 않게 표시
+const KAKAO_AUTO_KEY = 'letscok:kakao-auto-opened';
+
+// 카카오톡의 "외부 브라우저로 열기" — 안드로이드·아이폰 모두 사용자의 기본 브라우저로 연다
+function openWithKakaoExternal() {
+  window.location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(window.location.href)}`;
+}
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -60,12 +67,23 @@ const COPY = {
 export function InstallPrompt({ app = 'member', className = '' }: { app?: keyof typeof COPY; className?: string }) {
   const [mode, setMode] = useState<Mode>('hidden');
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
+  const [autoOpened, setAutoOpened] = useState(false);
 
   useEffect(() => {
     if (isInstalled() || isDismissed(app)) return;
 
     if (isKakao()) {
       setMode('kakao');
+      // 카톡 안에서는 설치·알림이 안 된다 — 누르지 않아도 바로 브라우저로 넘긴다(카톡 화면엔 안내와 버튼이 남는다)
+      try {
+        if (!sessionStorage.getItem(KAKAO_AUTO_KEY)) {
+          sessionStorage.setItem(KAKAO_AUTO_KEY, '1');
+          setAutoOpened(true);
+          openWithKakaoExternal();
+        }
+      } catch {
+        // 저장소가 막힌 환경 — 자동으로 넘기지 않고 버튼만 둔다(되풀이 방지가 안 되므로)
+      }
       return;
     }
     if (isIos()) {
@@ -112,15 +130,14 @@ export function InstallPrompt({ app = 'member', className = '' }: { app?: keyof 
     });
   }, [deferred]);
 
-  // 카톡 인앱 브라우저 탈출 — Android는 크롬을 직접 열 수 있고, iOS는 강제할 방법이 없어
-  // 카카오 스킴을 시도하되 실패해도 아래 안내 문구가 남는다
+  // 버튼으로 다시 열기 — 자동(카카오 방식)이 안 먹혔을 수 있으니 안드로이드는 크롬을 직접 지정, 아이폰은 카카오 방식
   const openExternal = useCallback(() => {
-    const { host, pathname, search, href } = window.location;
+    const { host, pathname, search } = window.location;
     if (/Android/i.test(navigator.userAgent)) {
       window.location.href = `intent://${host}${pathname}${search}#Intent;scheme=https;package=com.android.chrome;end`;
       return;
     }
-    window.location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(href)}`;
+    openWithKakaoExternal();
   }, []);
 
   if (mode === 'hidden') return null;
@@ -131,10 +148,13 @@ export function InstallPrompt({ app = 'member', className = '' }: { app?: keyof 
         <div className="flex-1">
           {mode === 'kakao' && (
             <>
-              <p className="text-sm font-medium text-court">브라우저로 열어주세요</p>
+              <p className="text-sm font-medium text-court">
+                {autoOpened ? '브라우저에서 열었어요' : '브라우저로 열어주세요'}
+              </p>
               <p className="mt-1 text-xs leading-relaxed text-dim">
-                카톡 안에서는 앱으로 설치할 수 없어요. 브라우저로 열면 홈 화면에 추가할 수
-                있습니다.
+                {autoOpened
+                  ? '안 열렸으면 아래 버튼을 눌러 주세요. 카톡 안에서는 앱 설치와 알림이 안 돼요.'
+                  : '카톡 안에서는 앱으로 설치할 수 없어요. 브라우저로 열면 홈 화면에 추가할 수 있습니다.'}
               </p>
             </>
           )}
