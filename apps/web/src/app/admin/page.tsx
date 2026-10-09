@@ -13,6 +13,7 @@ import {
   IHistorySessionDetail,
   IGameRecommendation,
   IMember,
+  IMemberAlias,
   IMemberPage,
   IMemberSummary,
   IPushCallResult,
@@ -2709,6 +2710,8 @@ function MemberEditSheet({
         </>
       )}
 
+      {!deleted && <AliasEditor memberId={member.id} />}
+
       {/* 위험 구역 — 삭제·익명화는 2탭 확인 (단일 패스코드 구조라 권한 대신 실수 방지로 지킨다) */}
       <div className="mt-1 flex flex-col gap-1.5 border-t border-line pt-3">
         {deleted ? (
@@ -3064,7 +3067,8 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
     title: 'AI 출석 (출석 추가 안)',
     items: [
       '[출석 추가] → [AI 출석]에서 소모임 참석 신청 목록 캡처(최대 4장)를 올리면, 명단과 이름이 확실히 맞는 사람만 자동으로 출석 처리해요.',
-      '성+이름이 한 명과 정확히 맞을 때만 자동이에요. 동명이인·이름만 적힌 경우는 후보 버튼으로, 별명·못 찾은 사람은 검색으로 직접 출석 처리해주세요.',
+      '성+이름이 한 명과 정확히 맞을 때만 자동이에요. 동명이인·이름만 적힌 경우는 "이 모임원인가요?" 카드에서 고르고, 별명·못 찾은 사람은 [모임원 찾아 연결]로 이어 주세요.',
+      '성 없는 이름("강민")·별명("콕콕이")은 한 번 고르면 기억해서 다음 모임부터 묻지 않고 바로 출석해요. 잘못 연결했으면 [모임원 관리] → 그 사람 수정 화면의 "소모임 이름"에서 지워요.',
       '"97년생 김민수 출석 처리해줘"처럼 문장으로도 돼요. 출석 말고 다른 요청은 처리하지 않아요.',
       '잘못 잡힌 사람은 결과 카드의 이름 옆 ✕로 바로 취소할 수 있어요(콕 확인 전까지).',
     ],
@@ -4231,6 +4235,87 @@ function WaitingRow({
         ⋯
       </button>
     </MotionCard>
+  );
+}
+
+// 소모임 이름 — AI 출석에서 기억한 표기("강민"·"콕콕이"). 잘못 연결됐으면 지우고, 미리 알면 직접 추가
+function AliasEditor({ memberId }: { memberId: string }) {
+  const [aliases, setAliases] = useState<IMemberAlias[] | null>(null);
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api<IMemberAlias[]>(`/members/${memberId}/aliases`, { admin: true })
+      .then(setAliases)
+      .catch(() => setAliases([]));
+  }, [memberId]);
+
+  const call = async (request: () => Promise<IMemberAlias[]>) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setAliases(await request());
+      setDraft('');
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '요청에 실패했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const add = () => {
+    const alias = draft.trim();
+    if (!alias) return;
+    void call(() => api<IMemberAlias[]>(`/members/${memberId}/aliases`, { method: 'POST', admin: true, body: { alias } }));
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-caption font-bold text-dim">소모임 이름</span>
+      <p className="text-caption text-faint">AI 출석이 이 이름을 보면 묻지 않고 바로 이 모임원으로 출석해요</p>
+      {aliases && aliases.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {aliases.map((a) => (
+            <span key={a.id} className="flex h-9 items-center gap-1 rounded-lg bg-panel2 pr-1 pl-3 text-body-sm">
+              {a.alias}
+              <button
+                onClick={() =>
+                  void call(() => api<IMemberAlias[]>(`/members/${memberId}/aliases/${a.id}`, { method: 'DELETE', admin: true }))
+                }
+                disabled={busy}
+                aria-label={`소모임 이름 ${a.alias} 지우기`}
+                className="tap flex h-7 w-7 items-center justify-center rounded text-dim hover:text-coral"
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-1.5">
+        <ClearableInput
+          autoComplete="off"
+          aria-label="소모임 이름 추가"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && add()}
+          maxLength={30}
+          placeholder="예: 강민, 콕콕이"
+          className="h-11 rounded-xl border-2 border-transparent bg-panel2 px-3 text-body-sm outline-none focus:border-court"
+          onClear={() => setDraft('')}
+          wrapperClassName="min-w-0 flex-1"
+        />
+        <button
+          onClick={add}
+          disabled={busy || !draft.trim()}
+          className="tap h-11 shrink-0 rounded-xl bg-panel2 px-4 text-body-sm font-bold text-court disabled:opacity-40"
+        >
+          추가
+        </button>
+      </div>
+      {error && <p className="text-caption text-coral">{error}</p>}
+    </div>
   );
 }
 

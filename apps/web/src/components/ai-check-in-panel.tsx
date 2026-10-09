@@ -132,6 +132,15 @@ export function AiCheckInPanel({
     });
     return ok;
   };
+  // 소모임 표기를 회원과 연결 + 출석 — 다음부터 같은 표기는 묻지 않고 바로 출석
+  const link = async (memberId: string, alias: string) => {
+    let ok = false;
+    await run(async () => {
+      await api(`/sessions/${sessionId}/ai-check-in/link`, { method: 'POST', admin: true, body: { memberId, alias } });
+      ok = true;
+    });
+    return ok;
+  };
   const cancel = (attendanceId: string) =>
     run(() => api(`/attendances/${attendanceId}`, { method: 'DELETE', admin: true }));
 
@@ -190,7 +199,8 @@ export function AiCheckInPanel({
           </div>
           <p className="text-caption text-faint">
             성+이름이 명단의 한 명과 정확히 맞을 때만 자동으로 출석 처리해요. 동명이인·이름만 적힌 경우는
-            아래 후보 버튼으로, 못 찾은 사람은 검색으로 직접 출석 처리해주세요.
+            아래에서 고르고, 못 찾은 별명은 [모임원 찾아 연결]로 이어 주세요. 성 없는 이름·별명은 한 번 고르면
+            다음부터 바로 출석돼요.
           </p>
 
           {working && <AiThinking steps={working.steps} note={working.note} />}
@@ -202,6 +212,7 @@ export function AiCheckInPanel({
               entry={entry}
               attendanceByMemberId={attendanceByMemberId}
               onCheckIn={checkIn}
+              onLink={link}
               onCancel={cancel}
             />
           ))}
@@ -215,11 +226,13 @@ function ResultCard({
   entry,
   attendanceByMemberId,
   onCheckIn,
+  onLink,
   onCancel,
 }: {
   entry: LogEntry;
   attendanceByMemberId: Map<string, IAttendance>;
   onCheckIn: (memberId: string) => Promise<boolean>;
+  onLink: (memberId: string, alias: string) => Promise<boolean>;
   onCancel: (attendanceId: string) => Promise<void>;
 }) {
   const { input, result } = entry;
@@ -265,13 +278,14 @@ function ResultCard({
       {result.alreadyIn.length > 0 && (
         <p className="mt-2 text-xs text-dim">이미 출석: {result.alreadyIn.map((m) => m.name).join(', ')}</p>
       )}
-      {result.notFound.length > 0 && (
-        <p className="mt-2 text-xs text-amber">못 찾음: {result.notFound.map((n) => n.name).join(', ')}</p>
-      )}
+      {/* 못 찾은 표기(별명 등) — 모임원을 찾아 연결하면 출석 + 다음부터 바로 */}
+      {result.notFound.map((item) => (
+        <NotFoundRow key={item.name} item={item} present={present} onLink={onLink} />
+      ))}
 
       {/* 확실하지 않은 사람 — "이 모임원인가요?" 질문 카드로 운영진이 탭 한 번에 고른다 */}
       {result.ambiguous.map((item) => (
-        <AmbiguousCard key={item.name} item={item} present={present} onCheckIn={onCheckIn} />
+        <AmbiguousCard key={item.name} item={item} present={present} onCheckIn={onCheckIn} onLink={onLink} />
       ))}
     </div>
   );
@@ -289,11 +303,15 @@ function AmbiguousCard({
   item,
   present,
   onCheckIn,
+  onLink,
 }: {
   item: IAiCheckInResult['ambiguous'][number];
   present: (memberId: string) => boolean;
   onCheckIn: (memberId: string) => Promise<boolean>;
+  onLink: (memberId: string, alias: string) => Promise<boolean>;
 }) {
+  // 성 없는 이름·불명은 고르면 기억한다(다음부터 바로 출석). 동명이인·표기 불일치는 실명이라 매번 확인
+  const remember = item.reason === 'GIVEN_ONLY' || item.reason === 'UNCLEAR';
   const [picked, setPicked] = useState<IMember | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -302,6 +320,7 @@ function AmbiguousCard({
     return (
       <p className="mt-2 rounded-xl bg-court/10 px-3 py-2.5 text-body-sm text-court">
         '{item.name}' → <b>{picked.name}</b> 출석
+        {remember && <span className="text-caption text-dim"> · 다음부터 바로 출석</span>}
       </p>
     );
   }
@@ -317,7 +336,7 @@ function AmbiguousCard({
     if (busyId) return;
     setBusyId(member.id);
     try {
-      if (await onCheckIn(member.id)) setPicked(member);
+      if (await (remember ? onLink(member.id, item.alias) : onCheckIn(member.id))) setPicked(member);
     } finally {
       setBusyId(null);
     }
@@ -352,6 +371,106 @@ function AmbiguousCard({
       <button onClick={() => setDismissed(true)} className="tap h-10 self-start px-1 text-caption text-dim">
         아니에요, 여기 없어요
       </button>
+    </div>
+  );
+}
+
+// 못 찾은 표기 한 줄 — [모임원 찾아 연결] → 이름 검색 → 고르면 출석 + 그 표기를 기억
+function NotFoundRow({
+  item,
+  present,
+  onLink,
+}: {
+  item: IAiCheckInResult['notFound'][number];
+  present: (memberId: string) => boolean;
+  onLink: (memberId: string, alias: string) => Promise<boolean>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<IMember[]>([]);
+  const [linked, setLinked] = useState<IMember | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!open || !trimmed) {
+      setResults([]);
+      return;
+    }
+    let alive = true;
+    const timer = setTimeout(() => {
+      api<IMember[]>(`/members/search?name=${encodeURIComponent(trimmed)}`, { admin: true })
+        .then((list) => alive && setResults(list))
+        .catch(() => alive && setResults([]));
+    }, 300);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [open, query]);
+
+  if (linked) {
+    return (
+      <p className="mt-2 rounded-xl bg-court/10 px-3 py-2.5 text-body-sm text-court">
+        '{item.name}' → <b>{linked.name}</b> 출석<span className="text-caption text-dim"> · 다음부터 바로 출석</span>
+      </p>
+    );
+  }
+
+  const pick = async (member: IMember) => {
+    if (busyId || !item.alias) return;
+    setBusyId(member.id);
+    try {
+      if (await onLink(member.id, item.alias)) setLinked(member);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div className="mt-2 flex flex-col gap-1.5 rounded-xl bg-panel p-3">
+      <div className="flex items-center gap-2">
+        <span className="min-w-0 flex-1 text-body-sm text-amber">'{item.name}' — 명단에서 못 찾았어요</span>
+        {!open && item.alias && (
+          <button onClick={() => setOpen(true)} className="tap h-9 shrink-0 rounded-lg bg-panel2 px-3 text-caption font-bold text-court">
+            모임원 찾아 연결
+          </button>
+        )}
+      </div>
+      {open && (
+        <>
+          <ClearableInput
+            autoComplete="off"
+            aria-label={`${item.name}와 연결할 모임원 검색`}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="실명으로 검색"
+            className="h-11 rounded-lg border-2 border-transparent bg-panel2 px-3 text-body-sm outline-none focus:border-court"
+            onClear={() => setQuery('')}
+          />
+          {results.map((member) => {
+            const isPresent = present(member.id);
+            return (
+              <button
+                key={member.id}
+                onClick={() => void pick(member)}
+                disabled={busyId !== null}
+                className="flex min-h-11 items-center gap-2 rounded-lg bg-panel2 px-3 text-left text-body-sm disabled:opacity-60"
+              >
+                <GradeBadge grade={member.grade} />
+                <span className="font-medium">{member.name}</span>
+                <GenderMarker gender={member.gender} />
+                {member.isGuest && <span className="text-caption text-sky">게스트</span>}
+                <span className="tabular font-mono text-caption text-faint">{member.birthDate ?? ''}</span>
+                <span className="ml-auto shrink-0 text-caption font-bold text-court">
+                  {busyId === member.id ? '처리 중…' : isPresent ? '연결만' : '연결 + 출석'}
+                </span>
+              </button>
+            );
+          })}
+          <p className="text-caption text-faint">고르면 출석하고, 다음부터 '{item.name}'은(는) 묻지 않고 바로 출석해요</p>
+        </>
+      )}
     </div>
   );
 }
