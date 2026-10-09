@@ -124,6 +124,17 @@ function Board({ onLogout }: { onLogout: () => void }) {
       setBusy(false);
     }
   };
+  // 잠그지 않는 실행기 — 사람마다 따로인 빠른 동작(콕 확인)용. 연달아 눌러도 모두 처리하고, 실패만 알린다
+  const runParallel = async (action: () => Promise<unknown>) => {
+    try {
+      await action();
+      void refetch(); // 기다리지 않는다 — 화면은 이미 바뀌어 있고 실시간 화면도 곧 온다
+      return true;
+    } catch (e) {
+      showToast(e instanceof ApiError ? e.message : '요청에 실패했습니다.');
+      return false;
+    }
+  };
 
   if (loading) {
     return (
@@ -153,6 +164,7 @@ function Board({ onLogout }: { onLogout: () => void }) {
       <BoardBody
         snapshot={snapshot}
         run={run}
+        runParallel={runParallel}
         busy={busy}
         toast={toast}
         onLogout={onLogout}
@@ -314,6 +326,7 @@ const SWIPE_EDGE_GUARD = 20; // 화면 가장자리 시작 스와이프는 시�
 function BoardBody({
   snapshot,
   run,
+  runParallel,
   busy,
   toast,
   onLogout,
@@ -321,6 +334,7 @@ function BoardBody({
 }: {
   snapshot: ISessionSnapshot;
   run: (a: () => Promise<unknown>) => Promise<void>;
+  runParallel: (a: () => Promise<unknown>) => Promise<boolean>;
   busy: boolean;
   toast: ToastState | null;
   onLogout: () => void;
@@ -523,12 +537,43 @@ function BoardBody({
 
   // 콕 확인 대기 — 확인 전엔 게임 배정이 막히므로 대기 인원과 분리해 구역 맨 위에 모은다
   // (운영진은 이 섹션이 비었는지만 확인하면 된다)
+  // 콕 확인은 누르자마자 반영한다 — 서버 응답·화면 새로고침(두 번 오감)을 기다리면 멈춘 것처럼 보이고,
+  // 여러 명을 연달아 누를 때 앞사람이 끝나기 전 누른 건 무시됐다. 서버 화면에 확인이 실리면 이 표시는 지운다
+  const [confirming, setConfirming] = useState<Map<string, string>>(new Map()); // 출석 id → 누른 시각
+  useEffect(() => {
+    setConfirming((prev) => {
+      const next = new Map([...prev].filter(([id]) => !attendances.find((a) => a.id === id)?.shuttleConfirmedAt));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [attendances]);
+  const shuttleView = useMemo(
+    () =>
+      confirming.size === 0
+        ? attendances
+        : attendances.map((a) => {
+            const at = confirming.get(a.id);
+            return at && !a.shuttleConfirmedAt ? { ...a, shuttleConfirmedAt: at, waitingSince: at } : a;
+          }),
+    [attendances, confirming],
+  );
+  const confirmShuttle = (attendanceId: string) => {
+    if (confirming.has(attendanceId)) return;
+    setConfirming((prev) => new Map(prev).set(attendanceId, new Date().toISOString()));
+    void runParallel(() => api(`/attendances/${attendanceId}/shuttle`, { method: 'PATCH', admin: true })).then((ok) => {
+      if (ok) return;
+      setConfirming((prev) => {
+        const next = new Map(prev);
+        next.delete(attendanceId); // 실패 — 콕 확인 대기로 되돌린다(알림은 runParallel이 띄움)
+        return next;
+      });
+    });
+  };
   const pendingShuttle = useMemo(
-    () => attendances.filter((a) => a.status !== 'LEFT' && !a.shuttleConfirmedAt),
-    [attendances],
+    () => shuttleView.filter((a) => a.status !== 'LEFT' && !a.shuttleConfirmedAt),
+    [shuttleView],
   );
   // 명단 — 콕 확인된 출석자 전원(조합에 넣어도 사라지지 않는 자석판 명단). 비어 있는 사람(오래 기다린 순)이 위
-  const roster = useMemo(() => sortRoster(attendances), [attendances]);
+  const roster = useMemo(() => sortRoster(shuttleView), [shuttleView]);
   // 대회 연습 파트너 — 서로를 가리키는 쌍만(퇴장·취소로 한쪽만 남은 값은 무시)
   const partnerNames = useMemo(() => {
     const byId = new Map(attendances.filter((a) => a.status !== 'LEFT').map((a) => [a.id, a]));
@@ -973,7 +1018,7 @@ function BoardBody({
               </p>
               <AnimatePresence initial={false}>
                 {pendingShuttle.map((attendance) => (
-                  <ShuttleRow key={attendance.id} attendance={attendance} run={run} />
+                  <ShuttleRow key={attendance.id} attendance={attendance} run={run} onConfirm={confirmShuttle} />
                 ))}
               </AnimatePresence>
               <div className="mb-1 border-b border-line" />
@@ -4006,9 +4051,11 @@ function QueueCard({
 function ShuttleRow({
   attendance,
   run,
+  onConfirm,
 }: {
   attendance: IAttendance;
   run: (a: () => Promise<unknown>) => Promise<void>;
+  onConfirm: (attendanceId: string) => void; // 누르자마자 명단으로(잠금 없이 — 연달아 눌러도 모두 처리)
 }) {
   const member = attendance.member;
   if (!member) return null;
@@ -4028,11 +4075,7 @@ function ShuttleRow({
         idleCls="text-dim"
       />
       <button
-        onClick={() =>
-          void run(() =>
-            api(`/attendances/${attendance.id}/shuttle`, { method: 'PATCH', admin: true }),
-          )
-        }
+        onClick={() => onConfirm(attendance.id)}
         className="h-8 shrink-0 rounded-lg bg-amber px-3 text-caption font-bold text-bg"
       >
         콕 확인
