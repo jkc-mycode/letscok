@@ -266,7 +266,7 @@ function ResultCard({
         <p className="mt-2 text-xs text-dim">이미 출석: {result.alreadyIn.map((m) => m.name).join(', ')}</p>
       )}
       {result.notFound.length > 0 && (
-        <p className="mt-2 text-xs text-amber">못 찾음: {result.notFound.join(', ')}</p>
+        <p className="mt-2 text-xs text-amber">못 찾음: {result.notFound.map((n) => n.name).join(', ')}</p>
       )}
 
       {/* 확실하지 않은 사람 — "이 모임원인가요?" 질문 카드로 운영진이 탭 한 번에 고른다 */}

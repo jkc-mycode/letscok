@@ -13,9 +13,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { IApiResponse, IMember, IMemberPage, IMemberSummary } from '@letscok/shared-types';
+import { IApiResponse, IMember, IMemberAlias, IMemberPage, IMemberSummary } from '@letscok/shared-types';
 import { AdminGuard, isAdminRequest } from '../common/guards/admin.guard';
 import { CreateMemberDto } from './dto/create-member.dto';
+import { CreateMemberAliasDto } from './dto/member-alias.dto';
 import { MemberPageQueryDto } from './dto/member-page-query.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 import { MembersService } from './members.service';
@@ -90,6 +91,25 @@ export class MembersController {
   @UseGuards(AdminGuard)
   async restore(@Param('id') id: string): Promise<IApiResponse<IMember>> {
     return { success: true, data: await this.membersService.restore(id) };
+  }
+
+  // 소모임 표기(AI 출석에서 기억한 이름) — 운영진 전용
+  @Get(':id/aliases')
+  @UseGuards(AdminGuard)
+  async aliases(@Param('id') id: string): Promise<IApiResponse<IMemberAlias[]>> {
+    return { success: true, data: await this.membersService.listAliases(id) };
+  }
+
+  @Post(':id/aliases')
+  @UseGuards(AdminGuard)
+  async addAlias(@Param('id') id: string, @Body() dto: CreateMemberAliasDto): Promise<IApiResponse<IMemberAlias[]>> {
+    return { success: true, data: await this.membersService.addAlias(id, dto.alias) };
+  }
+
+  @Delete(':id/aliases/:aliasId')
+  @UseGuards(AdminGuard)
+  async removeAlias(@Param('id') id: string, @Param('aliasId') aliasId: string): Promise<IApiResponse<IMemberAlias[]>> {
+    return { success: true, data: await this.membersService.removeAlias(id, aliasId) };
   }
 
   // 익명화 삭제 — 본인의 개인정보 삭제 요청용. 복구 불가(웹에서 2탭 확인)

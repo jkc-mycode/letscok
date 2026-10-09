@@ -1,9 +1,12 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  IAiCheckInLinkDto,
+  IAiCheckInLinkResult,
   IAiCheckInMember,
   IAiCheckInResult,
   IAiCheckInStatus,
 } from '@letscok/shared-types';
+import { normalizeName } from '../common/utils/name.util';
 import { z } from 'zod';
 import { AttendancesService } from '../attendances/attendances.service';
 import { toMemberResponse } from '../common/mappers/entity.mappers';
@@ -75,9 +78,7 @@ const IMAGES_SYSTEM_PROMPT = `당신은 배드민턴 소모임 앱의 "참석 �
 - 글자가 잘리거나 흐려서 읽을 수 없는 항목은 적지 않습니다.`;
 
 // 비교용 이름 정규화 — 공백·이모지를 지우고 한글 조합형 차이를 맞춘다
-export function normalizeName(name: string): string {
-  return name.normalize('NFC').replace(/[\s\p{Extended_Pictographic}️‍]/gu, '');
-}
+export { normalizeName }; // AI 명령 등 기존 사용처를 위해 다시 내보낸다
 
 // "97" 같은 두 자리 생년 → 1997 (30 이상은 1900년대, 미만은 2000년대)
 function toFullYear(year: number): number {
@@ -143,10 +144,13 @@ export class AiCheckInService {
     await this.sessionsService.findOpenSessionOrThrow(sessionId);
     const members = await this.prisma.member.findMany({ where: { deletedAt: null } });
     const byNormalizedName = members.map((member) => ({ member, key: normalizeName(member.name) }));
+    // 기억해 둔 소모임 표기 — 가장 먼저 본다(한 번 고른 "강민"·"콕콕이"는 다시 묻지 않는다). 삭제된 회원을 가리키면 무시
+    const aliases = await this.prisma.memberAlias.findMany({ where: { member: { deletedAt: null } }, include: { member: true } });
+    const byAlias = new Map(aliases.map((a) => [a.alias, a.member]));
 
     const checkedIn: IAiCheckInMember[] = [];
     const alreadyIn: IAiCheckInMember[] = [];
-    const notFound: string[] = [];
+    const notFound: IAiCheckInResult['notFound'] = [];
     const ambiguous: IAiCheckInResult['ambiguous'] = [];
     const seen = new Set<string>(); // 여러 장에 같은 사람이 찍혀도 한 번만
     const handledMemberIds = new Set<string>();
@@ -158,8 +162,16 @@ export class AiCheckInService {
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
 
+      const linked = name ? byAlias.get(name) : undefined;
+      if (linked) {
+        if (handledMemberIds.has(linked.id)) continue;
+        handledMemberIds.add(linked.id);
+        await this.checkIn(sessionId, linked, checkedIn, alreadyIn);
+        continue;
+      }
+
       if (!name || item.kind === 'nickname') {
-        notFound.push(label);
+        notFound.push({ name: label, alias: name });
         continue;
       }
 
@@ -168,8 +180,8 @@ export class AiCheckInService {
 
       // 불명 — 확신이 없으니 자동은 안 하고, 이름이 정확히 같은 회원만 후보로
       if (item.kind === 'unclear') {
-        if (sameName.length === 0) notFound.push(label);
-        else ambiguous.push({ name: label, reason: 'UNCLEAR', candidates: sameName.map(toMemberResponse) });
+        if (sameName.length === 0) notFound.push({ name: label, alias: name });
+        else ambiguous.push({ name: label, alias: name, reason: 'UNCLEAR', candidates: sameName.map(toMemberResponse) });
         continue;
       }
 
@@ -187,8 +199,8 @@ export class AiCheckInService {
           continue;
         }
         const candidates = [...sameName, ...bySurname];
-        if (candidates.length === 0) notFound.push(label);
-        else ambiguous.push({ name: label, reason: 'GIVEN_ONLY', candidates: candidates.map(toMemberResponse) });
+        if (candidates.length === 0) notFound.push({ name: label, alias: name });
+        else ambiguous.push({ name: label, alias: name, reason: 'GIVEN_ONLY', candidates: candidates.map(toMemberResponse) });
         continue;
       }
 
@@ -196,7 +208,7 @@ export class AiCheckInService {
       const exact = sameName;
       const narrowed = this.applyHints(exact, item);
       if (exact.length === 0) {
-        notFound.push(label);
+        notFound.push({ name: label, alias: name });
       } else if (narrowed.length === 1) {
         const member = narrowed[0];
         if (handledMemberIds.has(member.id)) continue;
@@ -206,7 +218,7 @@ export class AiCheckInService {
         // 여러 명이 남았거나, 표기(생년·게스트)가 회원 정보와 어긋나 0명이 됐다 — 확실하지 않으니 후보로
         const candidates = narrowed.length > 0 ? narrowed : exact;
         const reason = narrowed.length > 0 ? 'SAME_NAME' : 'HINT_MISMATCH';
-        ambiguous.push({ name: label, reason, candidates: candidates.map(toMemberResponse) });
+        ambiguous.push({ name: label, alias: name, reason, candidates: candidates.map(toMemberResponse) });
       }
     }
 
@@ -226,6 +238,25 @@ export class AiCheckInService {
   }
 
   // 기존 수동 체크인을 그대로 재사용 — 409(이미 출석)는 실패가 아니라 정보로 분류
+  // 소모임 표기를 회원과 연결하고 출석 — 질문 카드에서 고르거나 못 찾은 별명을 직접 연결할 때
+  // 같은 표기가 다른 사람을 가리키고 있었으면 새로 고른 사람으로 바꾼다(운영진이 방금 확인한 쪽이 맞다)
+  async link(sessionId: string, dto: IAiCheckInLinkDto): Promise<IAiCheckInLinkResult> {
+    await this.sessionsService.findOpenSessionOrThrow(sessionId);
+    const alias = normalizeName(dto.alias);
+    if (!alias) throw new BadRequestException('연결할 이름이 비어 있어요.');
+    const member = await this.prisma.member.findFirst({ where: { id: dto.memberId, deletedAt: null } });
+    if (!member) throw new NotFoundException('모임원을 찾을 수 없어요.');
+    await this.prisma.memberAlias.upsert({
+      where: { alias },
+      create: { alias, memberId: member.id },
+      update: { memberId: member.id },
+    });
+    const checkedIn: IAiCheckInMember[] = [];
+    const alreadyIn: IAiCheckInMember[] = [];
+    await this.checkIn(sessionId, member, checkedIn, alreadyIn);
+    return { member: { memberId: member.id, name: member.name }, alreadyIn: alreadyIn.length > 0 };
+  }
+
   private async checkIn(
     sessionId: string,
     member: Member,
@@ -246,7 +277,7 @@ export class AiCheckInService {
     const parts: string[] = [];
     if (result.checkedIn.length > 0) parts.push(`${result.checkedIn.length}명 출석 처리했어요.`);
     if (result.alreadyIn.length > 0) parts.push(`${result.alreadyIn.length}명은 이미 출석 중이에요.`);
-    if (result.notFound.length > 0) parts.push(`${result.notFound.join(', ')}은(는) 못 찾았어요.`);
+    if (result.notFound.length > 0) parts.push(`${result.notFound.map((n) => n.name).join(', ')}은(는) 못 찾았어요.`);
     if (result.ambiguous.length > 0) {
       parts.push(`${result.ambiguous.map((a) => a.name).join(', ')}은(는) 누구인지 확실하지 않아요.`);
     }

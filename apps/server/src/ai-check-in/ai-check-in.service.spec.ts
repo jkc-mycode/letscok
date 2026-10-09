@@ -139,7 +139,7 @@ describe('성+이름 (full)', () => {
       full('없는사람', { raw: '🏸없는사람' }),
     ]);
 
-    expect(result.notFound).toEqual(['정다섯', '🏸없는사람']);
+    expect(result.notFound.map((n) => n.name)).toEqual(['정다섯', '🏸없는사람']);
     expect(await attendedIds(session.id)).toEqual([]);
   });
 
@@ -207,7 +207,7 @@ describe('이름만·별명·불명', () => {
       { raw: '하나?', name: '하나', kind: 'unclear', birthYear: null, guest: false },
     ]);
 
-    expect(result.notFound).toEqual(['스매싱장인', '하나?']);
+    expect(result.notFound.map((n) => n.name)).toEqual(['스매싱장인', '하나?']);
     expect(await attendedIds(session.id)).toEqual([]);
   });
 });
@@ -258,7 +258,7 @@ describe('checkInFromImages (캡처)', () => {
     const result = await service.checkInFromImages(session.id, [png, jpeg]);
 
     expect(result.checkedIn).toEqual([{ memberId: member.id, name: '김하나' }]);
-    expect(result.notFound).toEqual(['스매싱장인']);
+    expect(result.notFound.map((n) => n.name)).toEqual(['스매싱장인']);
     const content = aiStub.extract.mock.calls[0][3];
     expect(content.slice(0, 2)).toEqual([
       { type: 'image_url', image_url: { url: `data:image/png;base64,${png.buffer.toString('base64')}` } },
@@ -329,3 +329,52 @@ describe('checkInFromCommand (자연어 명령)', () => {
   });
 });
 
+
+describe('소모임 이름 기억', () => {
+  it('연결하면 출석하고 기억해서, 다음엔 성 없는 이름·별명도 묻지 않고 바로 출석', async () => {
+    const session = await seedSession();
+    const kim = await seedMember('김강민');
+    await seedMember('남궁강민');
+
+    const first = await service.applyNames(session.id, [
+      { raw: '강민', name: '강민', kind: 'given', birthYear: null, guest: false },
+      { raw: '콕콕이', name: '콕콕이', kind: 'nickname', birthYear: null, guest: false },
+    ]);
+    expect(first.ambiguous[0].alias).toBe('강민');
+    expect(first.notFound).toEqual([{ name: '콕콕이', alias: '콕콕이' }]);
+
+    const linked = await service.link(session.id, { memberId: kim.id, alias: '강민' });
+    expect(linked).toEqual({ member: { memberId: kim.id, name: '김강민' }, alreadyIn: false });
+    const again = await service.link(session.id, { memberId: kim.id, alias: '콕콕 이' }); // 공백은 정규화
+    expect(again.alreadyIn).toBe(true);
+
+    // 다음 모임 — 같은 표기는 바로 출석
+    await prisma.session.update({ where: { id: session.id }, data: { status: 'CLOSED' } });
+    const next = await seedSession();
+    const result = await service.applyNames(next.id, [
+      { raw: '강민', name: '강민', kind: 'given', birthYear: null, guest: false },
+      { raw: '콕콕이', name: '콕콕이', kind: 'nickname', birthYear: null, guest: false },
+    ]);
+    expect(result.checkedIn.map((m) => m.name)).toEqual(['김강민']);
+    expect(result.alreadyIn).toEqual([]);
+    expect(result.ambiguous).toEqual([]);
+    expect(result.notFound).toEqual([]);
+  });
+
+  it('같은 표기를 다른 사람과 다시 연결하면 새 사람으로 바뀌고, 삭제된 회원을 가리키면 무시', async () => {
+    const session = await seedSession();
+    const a = await seedMember('김강민');
+    const b = await seedMember('이강민');
+    await service.link(session.id, { memberId: a.id, alias: '강민' });
+    await service.link(session.id, { memberId: b.id, alias: '강민' });
+    expect((await prisma.memberAlias.findUnique({ where: { alias: '강민' } }))?.memberId).toBe(b.id);
+
+    await prisma.member.update({ where: { id: b.id }, data: { deletedAt: new Date() } });
+    await prisma.attendance.deleteMany({ where: { sessionId: session.id } });
+    const result = await service.applyNames(session.id, [
+      { raw: '강민', name: '강민', kind: 'given', birthYear: null, guest: false },
+    ]);
+    expect(result.checkedIn).toEqual([]);
+    expect(result.ambiguous[0].candidates.map((c) => c.name)).toEqual(['김강민']);
+  });
+});

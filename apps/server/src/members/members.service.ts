@@ -10,7 +10,9 @@ import {
   MEMBER_PAGE_SIZE,
   MemberListFilter,
   MemberListSort,
+  IMemberAlias,
 } from '@letscok/shared-types';
+import { normalizeName } from '../common/utils/name.util';
 import { toMemberResponse, toPublicMemberResponse } from '../common/mappers/entity.mappers';
 import { toDateString } from '../common/utils/date.util';
 import { PrismaService } from '../prisma/prisma.service';
@@ -249,8 +251,9 @@ export class MembersService {
     }
 
     // 기기 주소(푸시 구독)도 본인을 가리키는 정보라 함께 지운다
-    const [, anonymized] = await this.prisma.$transaction([
+    const [, , anonymized] = await this.prisma.$transaction([
       this.prisma.pushSubscription.deleteMany({ where: { memberId: member.id } }),
+      this.prisma.memberAlias.deleteMany({ where: { memberId: member.id } }), // 소모임 표기도 본인을 가리키는 정보
       this.prisma.member.update({
         where: { id: member.id },
         data: {
@@ -268,6 +271,31 @@ export class MembersService {
 
   // (이름, 생년월일) 중복 방지 — 등록·수정·복구가 같은 규칙을 공유한다
   // 게스트는 이름+null 매칭이라 같은 이름 게스트 재등록도 걸린다
+  // 소모임 표기(AI 출석에서 기억한 "강민"·"콕콕이") — 모임원 수정 화면에서 보고 지우고 직접 추가
+  async listAliases(id: string): Promise<IMemberAlias[]> {
+    await this.findActiveMemberOrThrow(id);
+    const rows = await this.prisma.memberAlias.findMany({ where: { memberId: id }, orderBy: { createdAt: 'asc' } });
+    return rows.map((r) => ({ id: r.id, alias: r.alias, createdAt: r.createdAt.toISOString() }));
+  }
+
+  // 같은 표기가 다른 사람에게 있으면 409 — 직접 추가는 확인 절차가 없으니 남의 것을 조용히 빼앗지 않는다
+  async addAlias(id: string, raw: string): Promise<IMemberAlias[]> {
+    await this.findActiveMemberOrThrow(id);
+    const alias = normalizeName(raw);
+    if (!alias) throw new ConflictException('소모임 이름이 비어 있어요.');
+    const existing = await this.prisma.memberAlias.findUnique({ where: { alias }, include: { member: true } });
+    if (existing && existing.memberId !== id) {
+      throw new ConflictException(`'${raw.trim()}'은(는) 이미 ${existing.member.name}님에게 연결돼 있어요.`);
+    }
+    if (!existing) await this.prisma.memberAlias.create({ data: { alias, memberId: id } });
+    return this.listAliases(id);
+  }
+
+  async removeAlias(id: string, aliasId: string): Promise<IMemberAlias[]> {
+    await this.prisma.memberAlias.deleteMany({ where: { id: aliasId, memberId: id } });
+    return this.listAliases(id);
+  }
+
   // 같은 이름의 사람이 하나라도 있으면(모임원·게스트, 삭제 제외) 막는다 — 생년월일 없이 등록할 때
   private async assertNameFree(name: string, excludeId?: string) {
     const same = await this.prisma.member.findFirst({

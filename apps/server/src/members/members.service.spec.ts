@@ -354,3 +354,15 @@ describe('page 정렬 — 모임장·운영진 먼저', () => {
     expect((await names('RECENT')).slice(0, 3)).toEqual(['하모임장', '가운영', '다운영']);
   });
 });
+
+describe('소모임 이름(별칭)', () => {
+  it('직접 추가·목록·삭제, 다른 사람에게 이미 있으면 409', async () => {
+    const a = await service.create(memberDto({ name: '김강민', birthDate: '1990-01-01' }));
+    const b = await service.create(memberDto({ name: '이강민', birthDate: '1990-01-02' }));
+
+    const added = await service.addAlias(a.id, ' 강 민 ');
+    expect(added.map((x) => x.alias)).toEqual(['강민']);
+    await expect(service.addAlias(b.id, '강민')).rejects.toThrow('이미 김강민님에게 연결돼 있어요');
+    expect(await service.removeAlias(a.id, added[0].id)).toEqual([]);
+  });
+});

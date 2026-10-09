@@ -450,6 +450,23 @@ export interface IAiCheckInMember {
   name: string;
 }
 
+// 소모임 표기를 회원과 연결하고 출석 — 다음부터 같은 표기는 묻지 않고 바로 출석
+export interface IAiCheckInLinkDto {
+  memberId: string;
+  alias: string; // 결과의 alias(정규화 표기) 그대로
+}
+export interface IAiCheckInLinkResult {
+  member: IAiCheckInMember;
+  alreadyIn: boolean; // 이미 출석 중이었음(연결만 저장)
+}
+
+// 회원에게 연결된 소모임 표기 — 모임원 수정 화면에서 보고 지운다(운영진 전용)
+export interface IMemberAlias {
+  id: string;
+  alias: string;
+  createdAt: string;
+}
+
 // 운영진 자연어 명령 — 예: "97년생 김민수 체크인해줘"
 export interface IAiCheckInCommandDto {
   text: string;
@@ -464,8 +481,8 @@ export type AiCheckInAmbiguousReason = 'GIVEN_ONLY' | 'SAME_NAME' | 'HINT_MISMAT
 export interface IAiCheckInResult {
   checkedIn: IAiCheckInMember[]; // 이번에 체크인됨
   alreadyIn: IAiCheckInMember[]; // 이미 출석 중 — 실패가 아니라 정보
-  notFound: string[]; // 명단에서 못 찾은 표기(캡처 원문 그대로)
-  ambiguous: { name: string; reason: AiCheckInAmbiguousReason; candidates: IMember[] }[]; // 동명이인·이름만 표기 — 운영진이 고른다
+  notFound: { name: string; alias: string }[]; // 명단에서 못 찾은 표기 — name=캡처 원문, alias=기억할 때 쓰는 정규화 표기
+  ambiguous: { name: string; alias: string; reason: AiCheckInAmbiguousReason; candidates: IMember[] }[]; // 동명이인·이름만 표기 — 운영진이 고른다
   message: string; // 서버가 정해진 틀로 조립한 안내 문장 (AI가 쓴 문장이 아님)
 }
 

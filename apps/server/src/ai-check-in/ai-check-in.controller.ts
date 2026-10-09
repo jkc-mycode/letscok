@@ -11,10 +11,10 @@ import {
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
-import { IAiCheckInResult, IAiCheckInStatus, IApiResponse } from '@letscok/shared-types';
+import { IAiCheckInLinkResult, IAiCheckInResult, IAiCheckInStatus, IApiResponse } from '@letscok/shared-types';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { AiCheckInService } from './ai-check-in.service';
-import { AiCheckInCommandDto } from './dto/ai-check-in.dtos';
+import { AiCheckInCommandDto, AiCheckInLinkDto } from './dto/ai-check-in.dtos';
 
 // 캡처 업로드 제한 — 웹이 긴 변 1568px JPEG로 줄여 보내므로 장당 1.5MB면 넉넉하다
 // (원본 수 MB를 여러 장 받으면 Render 무료 인스턴스 512MB 메모리가 위험)
@@ -70,5 +70,14 @@ export class AiCheckInController {
       success: true,
       data: await this.aiCheckInService.checkInFromCommand(sessionId, dto.text),
     };
+  }
+
+  // 소모임 표기("강민"·"콕콕이")를 회원과 연결하고 출석 — 다음부터 같은 표기는 묻지 않고 바로 출석
+  @Post('sessions/:sessionId/ai-check-in/link')
+  async link(
+    @Param('sessionId') sessionId: string,
+    @Body() dto: AiCheckInLinkDto,
+  ): Promise<IApiResponse<IAiCheckInLinkResult>> {
+    return { success: true, data: await this.aiCheckInService.link(sessionId, dto) };
   }
 }
