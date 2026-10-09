@@ -574,8 +574,12 @@ function BoardBody({
       });
     });
   };
+  // 명단과 같은 규칙 — 모임장 → 운영진을 맨 위에(현장에서 찾기 쉽게), 나머지는 스냅샷 순서
   const pendingShuttle = useMemo(
-    () => shuttleView.filter((a) => a.status !== 'LEFT' && !a.shuttleConfirmedAt),
+    () =>
+      shuttleView
+        .filter((a) => a.status !== 'LEFT' && !a.shuttleConfirmedAt)
+        .sort((a, b) => roleRank(a) - roleRank(b)),
     [shuttleView],
   );
   // 명단 — 콕 확인된 출석자 전원(조합에 넣어도 사라지지 않는 자석판 명단). 비어 있는 사람(오래 기다린 순)이 위
@@ -4081,6 +4085,7 @@ function ShuttleRow({
   return (
     <MotionCard className="flex min-h-11 items-center gap-2 rounded-[10px] bg-amber/10 py-1.5 pr-1.5 pl-2.5 text-body-sm transition-colors">
       <GradeBadge grade={member.grade} />
+      <RoleCrown role={member.role} />
       <span className="shrink-0 whitespace-nowrap font-medium">{member.name}</span>
       <GenderMarker gender={member.gender} />
       {member.isGuest && <GuestMark />}
