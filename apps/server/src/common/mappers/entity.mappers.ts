@@ -6,6 +6,7 @@ import {
   IMember,
   ISession,
 } from '@letscok/shared-types';
+import { withSlots } from '../utils/game-slots';
 import {
   Attendance,
   Court,
@@ -96,12 +97,14 @@ export function toGameResponse(
     startedAt: game.startedAt?.toISOString() ?? null,
     endedAt: game.endedAt?.toISOString() ?? null,
     queueOrder: game.queueOrder,
+    // 자리 순으로 — 비어 있는 자리(도입 전 데이터)는 들어온 순서로 채워 본다
     ...(game.players && {
-      players: game.players.map(
+      players: withSlots(game.players).map(
         (player): IGamePlayer => ({
           id: player.id,
           gameId: player.gameId,
           attendanceId: player.attendanceId,
+          slot: player.slot,
           ...(player.attendance && {
             attendance: toAttendanceResponse(player.attendance),
           }),

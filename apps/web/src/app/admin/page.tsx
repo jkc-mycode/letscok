@@ -450,8 +450,10 @@ function BoardBody({
       }
       // 빈칸 또는 빈칸 있는 카드의 여백 — 같은 카드거나 다 찬 카드면 그대로(사람은 코트 자체엔 못 놓는다)
       if (target.kind === 'court' || target.gameId === from || (target.kind === 'card' && target.full)) return;
+      // 빈칸에 놓았으면 그 자리로(팀이 정해진다), 카드 여백이면 첫 빈자리
+      const addBody = target.kind === 'slot' ? { ...body, slot: target.slot } : body;
       void run(async () => {
-        await api(`/games/${target.gameId}/players`, { method: 'POST', admin: true, body });
+        await api(`/games/${target.gameId}/players`, { method: 'POST', admin: true, body: addBody });
         await leaveOrigin();
       });
     },
@@ -3498,25 +3500,38 @@ function BoardSlots({
   const players = game.players ?? [];
   const queued = game.status === 'QUEUED';
   const draft = queued && !isFullGame(game);
+  // 자리 순서대로 — 윗줄(자리 0·1)이 한 팀, 아랫줄(2·3)이 상대
+  const cell = (slot: number) => {
+    const player = players.find((p) => p.slot === slot);
+    if (player?.attendance?.member) {
+      return (
+        <SlotPerson
+          key={player.id}
+          game={game}
+          player={player}
+          overlap={overlapIds?.has(player.attendanceId) ?? false}
+          removable={draft}
+          run={run}
+          dragEnabled={dragEnabled}
+        />
+      );
+    }
+    if (!queued) return <div key={`none-${slot}`} />;
+    return (
+      <EmptySlot key={`empty-${slot}`} slot={slot} game={game} dragEnabled={dragEnabled} onClick={onFillSlot} />
+    );
+  };
   return (
     <div className="mt-3 grid grid-cols-2 gap-1.5">
-      {players.map((player) =>
-        player.attendance?.member ? (
-          <SlotPerson
-            key={player.id}
-            game={game}
-            player={player}
-            overlap={overlapIds?.has(player.attendanceId) ?? false}
-            removable={draft}
-            run={run}
-            dragEnabled={dragEnabled}
-          />
-        ) : null,
-      )}
-      {queued &&
-        Array.from({ length: Math.max(0, GAME_SIZE - players.length) }, (_, i) => (
-          <EmptySlot key={`empty-${i}`} id={`slot:${game.id}:${i}`} game={game} dragEnabled={dragEnabled} onClick={onFillSlot} />
-        ))}
+      {cell(0)}
+      {cell(1)}
+      <div className="col-span-2 flex h-4 items-center gap-2 text-caption font-bold text-faint" aria-hidden>
+        <span className="h-px flex-1 bg-line" />
+        VS
+        <span className="h-px flex-1 bg-line" />
+      </div>
+      {cell(2)}
+      {cell(3)}
       <PartnerNote people={gamePartnerPeople(game)} className="col-span-2 mt-0.5" />
     </div>
   );
@@ -3596,17 +3611,17 @@ function SlotPerson({
 }
 
 function EmptySlot({
-  id,
+  slot,
   game,
   dragEnabled,
   onClick,
 }: {
-  id: string;
+  slot: number;
   game: IGame;
   dragEnabled: boolean;
   onClick?: () => void;
 }) {
-  const drop = useDropTarget(id, { kind: 'slot', ...gameRef(game) }, dragEnabled);
+  const drop = useDropTarget(`slot:${game.id}:${slot}`, { kind: 'slot', slot, ...gameRef(game) }, dragEnabled);
   return (
     <button
       ref={drop.ref}

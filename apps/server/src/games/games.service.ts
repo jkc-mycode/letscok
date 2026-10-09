@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { GAME_SIZE, IFillCourtsResult, IGame, IPushCallResult } from '@letscok/shared-types';
+import { pickFreeSlot, withSlots } from '../common/utils/game-slots';
 import { Prisma } from '../generated/prisma/client';
 import { toGameResponse } from '../common/mappers/entity.mappers';
 import { createCooldown } from '../common/utils/cooldown.util';
@@ -77,7 +78,7 @@ export class GamesService {
           queueOrder: await this.nextQueueOrder(tx, sessionId), // 대기 조합 큐의 맨 뒤
           players: {
             createMany: {
-              data: uniqueIds.map((attendanceId) => ({ attendanceId })),
+              data: uniqueIds.map((attendanceId, slot) => ({ attendanceId, slot })), // 고른 순서대로 자리 — 0·1 한 팀, 2·3 상대
             },
           },
         },
@@ -381,11 +382,13 @@ export class GamesService {
     }
 
     const replaced = await this.prisma.$transaction(async (tx) => {
+      // 들어오는 사람은 나간 사람 자리에 — 팀이 바뀌지 않게
+      const outSlot = withSlots(game.players).find((p) => p.attendanceId === dto.outAttendanceId)?.slot ?? null;
       await tx.gamePlayer.deleteMany({
         where: { gameId: id, attendanceId: dto.outAttendanceId },
       });
       await tx.gamePlayer.create({
-        data: { gameId: id, attendanceId: dto.inAttendanceId },
+        data: { gameId: id, attendanceId: dto.inAttendanceId, slot: outSlot },
       });
 
       // 들어오는 사람: 게임 중 게임이면 즉시 PLAYING, 대기 조합이면 미배정자만 MATCHED 승격
@@ -429,7 +432,7 @@ export class GamesService {
         data: {
           sessionId,
           queueOrder: await this.nextQueueOrder(tx, sessionId),
-          players: { create: { attendanceId: attendance.id } },
+          players: { create: { attendanceId: attendance.id, slot: 0 } },
         },
         include: GAME_INCLUDE,
       });
@@ -455,7 +458,7 @@ export class GamesService {
       await this.lockSession(tx, game.sessionId);
       const current = await tx.game.findUniqueOrThrow({
         where: { id },
-        select: { status: true, players: { select: { attendanceId: true } } },
+        select: { status: true, players: { select: { attendanceId: true, slot: true } } },
       });
       if (current.status !== 'QUEUED') {
         throw new ConflictException('이미 코트에 배정되었거나 해체된 조합이에요.');
@@ -470,7 +473,9 @@ export class GamesService {
       if (ids.length + 1 === GAME_SIZE) {
         await this.assertNotDuplicate(tx, game.sessionId, [...ids, attendance.id], id);
       }
-      await tx.gamePlayer.create({ data: { gameId: id, attendanceId: attendance.id } });
+      // 놓은 빈자리에 — 지정이 없거나 이미 찼으면 첫 빈자리
+      const slot = pickFreeSlot(current.players, dto.slot);
+      await tx.gamePlayer.create({ data: { gameId: id, attendanceId: attendance.id, slot } });
       if (attendance.status === 'CHECKED_IN') {
         await tx.attendance.update({ where: { id: attendance.id }, data: { status: 'MATCHED' } });
       }

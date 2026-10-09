@@ -52,7 +52,7 @@ export type DragItem = DragPerson | DragGame;
 // 놓는 곳
 export type DropTarget =
   | { kind: 'new-game' } // 대기 조합 맨 아래 새 조합 자리
-  | ({ kind: 'slot' } & GameRef) // 빈칸
+  | ({ kind: 'slot'; slot: number } & GameRef) // 빈칸 — slot = 게임 안 자리(0·1 한 팀, 2·3 상대)
   | ({ kind: 'player'; attendanceId: string } & GameRef) // 찬 칸(교체)
   | ({ kind: 'card'; full: boolean; queued: boolean } & GameRef) // 카드 여백 — 사람: 빈칸 있으면 넣기 / 조합: 대기 조합이면 그 자리로 순서 이동
   | { kind: 'roster' } // 명단 구역 — 카드에서 끌어낸 사람을 빼기

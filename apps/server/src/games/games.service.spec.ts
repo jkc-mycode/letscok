@@ -4,6 +4,7 @@ import { PushService } from '../push/push.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { SessionsService } from '../sessions/sessions.service';
 import { GamesService } from './games.service';
+import { pickFreeSlot, withSlots } from '../common/utils/game-slots';
 
 // 게임 상태 머신 통합 테스트 — 실제 Prisma+테스트 DB로 검증한다
 // (조합 생성/배정/종료/대기로/해체/선수 교체가 출석 상태·카운터를 올바르게 전이시키는지)
@@ -776,5 +777,49 @@ describe('빈칸 있는 조합', () => {
       [g2.id, 3],
     ]);
     await expect(service.reorder(session.id, { gameIds: [g1.id, g2.id] })).rejects.toThrow(ConflictException);
+  });
+});
+
+describe('게임 자리(팀)', () => {
+  const slotsOf = (game: { players?: { attendanceId: string; slot: number }[] }) =>
+    Object.fromEntries((game.players ?? []).map((p) => [p.attendanceId, p.slot]));
+
+  it('조합을 만들면 고른 순서대로 자리 0~3, 교체하면 나간 사람 자리에 들어온다', async () => {
+    const session = await seedSession();
+    const [a, b, c, d] = await seedFour(session.id);
+    const e = await seedAttendance(session.id);
+
+    const game = await service.create(session.id, { attendanceIds: [c.id, a.id, d.id, b.id] });
+    expect(slotsOf(game)).toEqual({ [c.id]: 0, [a.id]: 1, [d.id]: 2, [b.id]: 3 });
+    expect(game.players?.map((p) => p.slot)).toEqual([0, 1, 2, 3]); // 응답은 자리 순
+
+    const replaced = await service.replacePlayer(game.id, { outAttendanceId: d.id, inAttendanceId: e.id });
+    expect(slotsOf(replaced)[e.id]).toBe(2);
+  });
+
+  it('빈칸에 넣을 때 자리를 고르면 그 자리, 이미 찼거나 안 고르면 첫 빈자리', async () => {
+    const session = await seedSession();
+    const [a, b, c, d] = await seedFour(session.id);
+
+    const draft = await service.createDraft(session.id, { attendanceId: a.id });
+    expect(slotsOf(draft)[a.id]).toBe(0);
+    const withB = await service.addPlayer(draft.id, { attendanceId: b.id, slot: 3 });
+    expect(slotsOf(withB)[b.id]).toBe(3);
+    const withC = await service.addPlayer(draft.id, { attendanceId: c.id, slot: 3 }); // 이미 찬 자리 → 첫 빈자리
+    expect(slotsOf(withC)[c.id]).toBe(1);
+    const full = await service.addPlayer(draft.id, { attendanceId: d.id });
+    expect(slotsOf(full)[d.id]).toBe(2);
+  });
+
+  it('자리가 비어 있는 예전 데이터는 남는 자리를 들어온 순서대로 채워 본다', () => {
+    const rows = [
+      { id: 'a', slot: null },
+      { id: 'b', slot: null },
+      { id: 'c', slot: 0 },
+      { id: 'd', slot: null },
+    ];
+    expect(withSlots(rows).map((r) => `${r.id}${r.slot}`)).toEqual(['c0', 'a1', 'b2', 'd3']);
+    expect(pickFreeSlot([{ slot: 0 }, { slot: 2 }], 2)).toBe(1);
+    expect(pickFreeSlot([{ slot: 0 }, { slot: 1 }, { slot: 2 }, { slot: 3 }])).toBeNull();
   });
 });

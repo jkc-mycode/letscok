@@ -156,6 +156,7 @@ export interface IGamePlayer {
   id: string;
   gameId: string;
   attendanceId: string;
+  slot: number; // 자리 0~3 — 0·1이 한 팀, 2·3이 상대(응답은 자리 순으로 정렬돼 온다)
   attendance?: IAttendance;
 }
 
@@ -246,6 +247,7 @@ export interface ICreateDraftGameDto {
 // 대기 조합의 빈칸에 한 명 넣기
 export interface IAddGamePlayerDto {
   attendanceId: string;
+  slot?: number; // 넣을 자리 0~3 — 비었으면 그 자리, 아니면(또는 생략) 첫 빈자리
 }
 
 // 대기 조합 전체 순서를 한 번에 — 끌어서 놓은 최종 순서(지금 대기 중인 조합 전부)

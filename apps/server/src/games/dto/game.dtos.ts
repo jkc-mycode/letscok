@@ -17,6 +17,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Max,
   Min,
 } from 'class-validator';
 
@@ -64,6 +65,12 @@ export class CreateDraftGameDto implements ICreateDraftGameDto {
 export class AddGamePlayerDto implements IAddGamePlayerDto {
   @IsString({ message: '모임원을 선택해주세요.' })
   attendanceId: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(3)
+  slot?: number;
 }
 
 // 대기 조합 전체 순서 — 지금 대기 중인 조합 id 전부를 새 순서대로(빠지거나 남는 게 있으면 서비스가 409)

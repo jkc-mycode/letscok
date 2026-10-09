@@ -258,8 +258,15 @@ export default function MyStatusPage() {
 }
 
 // 게임 4명 이름 — 목록 한 줄용
+// 목록 한 줄 — 팀을 알 수 있게 "가, 나 vs 다, 라"(자리 0·1 대 2·3)
 function playerNames(game: IGame): string {
-  return (game.players ?? []).map((p) => p.attendance?.member?.name ?? '').filter(Boolean).join(', ');
+  const names = (team: 0 | 1) =>
+    (game.players ?? [])
+      .filter((p) => (p.slot < 2 ? 0 : 1) === team)
+      .map((p) => p.attendance?.member?.name ?? '')
+      .filter(Boolean)
+      .join(', ');
+  return [names(0), names(1)].filter(Boolean).join(' vs ');
 }
 
 // 내 상태 — 모임원이 이 앱을 여는 이유("어디로 가요? 언제예요?")를 가장 크게 한 문장으로 보여 준다(스크롤해도 위에 고정)
@@ -369,26 +376,39 @@ function CourtLines() {
 
 // 내 게임 4명 — 게임 중이면 "같은 코트", 조합 대기면 "함께 칠 사람"
 function MyGameCard({ game, playing, memberId }: { game: IGame; playing: boolean; memberId: string | null }) {
+  const all = game.players ?? [];
+  const mySlot = all.find((p) => p.attendance?.memberId === memberId)?.slot ?? 0;
+  const mine = mySlot < 2 ? 0 : 1;
+  const teams = [
+    { label: '우리 팀', players: all.filter((p) => (p.slot < 2 ? 0 : 1) === mine) },
+    { label: '상대 팀', players: all.filter((p) => (p.slot < 2 ? 0 : 1) !== mine) },
+  ];
   return (
     <section className="flex flex-col gap-3 rounded-2xl bg-panel p-4">
       <h2 className="text-body-sm font-bold text-dim">{playing ? '같은 코트' : '함께 칠 사람'}</h2>
-      <div className="grid grid-cols-2 gap-2">
-        {(game.players ?? []).map((player) => {
-          const member = player.attendance?.member;
-          if (!member) return null;
-          const isMe = member.id === memberId;
-          return (
-            <div key={player.id} className="flex h-13 min-w-0 items-center gap-2 rounded-xl bg-panel2 px-3">
-              <GradeBadge grade={member.grade} />
-              <span className={`shrink-0 whitespace-nowrap text-body ${isMe ? 'font-bold text-court' : 'font-medium'}`}>
-                {member.name}
-              </span>
-              <GenderMarker gender={member.gender} />
-              {isMe && <span className="ml-auto"><MeChip /></span>}
-            </div>
-          );
-        })}
-      </div>
+      {/* 우리 팀(내 자리 쪽)을 위에, 상대 팀을 아래에 — 자리 0·1이 한 팀, 2·3이 상대 */}
+      {teams.map(({ label, players }) => (
+        <div key={label} className="flex flex-col gap-1.5">
+          <span className={`text-caption font-bold ${label === '우리 팀' ? 'text-court' : 'text-faint'}`}>{label}</span>
+          <div className="grid grid-cols-2 gap-2">
+            {players.map((player) => {
+              const member = player.attendance?.member;
+              if (!member) return null;
+              const isMe = member.id === memberId;
+              return (
+                <div key={player.id} className="flex h-13 min-w-0 items-center gap-2 rounded-xl bg-panel2 px-3">
+                  <GradeBadge grade={member.grade} />
+                  <span className={`shrink-0 whitespace-nowrap text-body ${isMe ? 'font-bold text-court' : 'font-medium'}`}>
+                    {member.name}
+                  </span>
+                  <GenderMarker gender={member.gender} />
+                  {isMe && <span className="ml-auto"><MeChip /></span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
       <PartnerNote people={gamePartnerPeople(game)} className="" />
     </section>
   );
