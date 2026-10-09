@@ -73,3 +73,9 @@ export const AlertIcon = (p: IconProps) => (
     <path d="M12 17h.01" />
   </Icon>
 );
+
+export const CrownIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3 8 L7.5 12 L12 5 L16.5 12 L21 8 L19 18 L5 18 Z" />
+  </Icon>
+);

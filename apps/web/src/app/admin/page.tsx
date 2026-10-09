@@ -60,7 +60,7 @@ import { ClearableInput } from '@/components/clearable-input';
 import { gamePartnerPeople, GenderMarker, GradeBadge, PartnerNote, Toast } from '@/components/badges';
 import { HomeLink } from '@/components/home-link';
 import { InstallPrompt } from '@/components/install-prompt';
-import { MegaphoneIcon } from '@/components/icons';
+import { CrownIcon, MegaphoneIcon } from '@/components/icons';
 import { LogoLoader } from '@/components/logo-loader';
 import { MotionCard } from '@/components/motion-card';
 import { GRADES, MultiMemberForm, NewMemberBody } from '@/components/multi-member-form';
@@ -3440,7 +3440,10 @@ function isFullGame(game: IGame): boolean {
   return (game.players?.length ?? 0) >= GAME_SIZE;
 }
 
-// 명단 순서 — 비어 있는 사람 → 조합에 든 사람 → 게임 중 → 휴식 (각 묶음 안은 스냅샷 순서 = 오래 기다린 순)
+// 명단 순서 — 모임장 → 운영진을 맨 위에 고정(현장에서 찾기 쉽게), 그 아래는
+// 비어 있는 사람 → 조합에 든 사람 → 게임 중 → 휴식 (각 묶음 안은 스냅샷 순서 = 오래 기다린 순)
+const ROLE_RANK: Record<string, number> = { LEADER: 0, MANAGER: 1 };
+const roleRank = (a: IAttendance) => ROLE_RANK[a.member?.role ?? 'MEMBER'] ?? 2;
 const ROSTER_RANK: Partial<Record<IAttendance['status'], number>> = {
   CHECKED_IN: 0,
   MATCHED: 1,
@@ -3450,7 +3453,7 @@ const ROSTER_RANK: Partial<Record<IAttendance['status'], number>> = {
 function sortRoster(attendances: IAttendance[]): IAttendance[] {
   return attendances
     .filter((a) => a.shuttleConfirmedAt && ROSTER_RANK[a.status] !== undefined)
-    .sort((a, b) => ROSTER_RANK[a.status]! - ROSTER_RANK[b.status]!);
+    .sort((a, b) => roleRank(a) - roleRank(b) || ROSTER_RANK[a.status]! - ROSTER_RANK[b.status]!);
 }
 
 // 사람마다 지금 있는 곳 — 대기 조합 순번들("조합 2, 3") 또는 코트("1번 코트")
@@ -4101,6 +4104,7 @@ function WaitingRow({
       } ${drag.dragCls}`}
     >
       <GradeBadge grade={member.grade} />
+      <RoleCrown role={member.role} />
       {/* 이름은 줄이지 않는다(폰에서 "김…"이 되던 문제) — 공간이 모자라면 옆 칩이 대신 줄어든다 */}
       <span className={`shrink-0 whitespace-nowrap ${selected ? 'font-bold' : 'font-medium'}`}>{member.name}</span>
       <GenderMarker gender={member.gender} />
@@ -4144,6 +4148,18 @@ function WaitingRow({
         ⋯
       </button>
     </MotionCard>
+  );
+}
+
+// 모임장(주황)·운영진(초록) 왕관 — 글자 칩보다 자리를 덜 차지한다
+function RoleCrown({ role }: { role: MemberRole }) {
+  if (role === 'MEMBER') return null;
+  const label = role === 'LEADER' ? '모임장' : '운영진';
+  return (
+    <span title={label} className={`flex shrink-0 ${role === 'LEADER' ? 'text-amber' : 'text-court'}`}>
+      <CrownIcon size={14} />
+      <span className="sr-only">{label}</span>
+    </span>
   );
 }
 
