@@ -436,8 +436,23 @@ function BoardBody({
         });
         return;
       }
+      // 같은 카드 안에 놓으면 자리 바꾸기(팀) — 사람 위면 맞바꾸고 빈칸이면 그 자리로
+      const moveSlot = (slot: number | undefined) => {
+        if (slot === undefined || !from) return;
+        void run(() => api(`/games/${from}/slots`, { method: 'PATCH', admin: true, body: { attendanceId: person.attendanceId, slot } }));
+      };
+      if (target.kind === 'player' && target.gameId === from) {
+        if (target.attendanceId === person.attendanceId) return;
+        const slot = queuedGames.find((g) => g.id === from)?.players?.find((p) => p.attendanceId === target.attendanceId)?.slot;
+        moveSlot(slot);
+        return;
+      }
+      if (target.kind === 'slot' && target.gameId === from) {
+        moveSlot(target.slot);
+        return;
+      }
       if (target.kind === 'player') {
-        if (target.gameId === from || target.attendanceId === person.attendanceId) return; // 같은 카드 안 — 그대로
+        if (target.attendanceId === person.attendanceId) return;
         void run(async () => {
           await api(`/games/${target.gameId}/players`, {
             method: 'PATCH',
@@ -2989,6 +3004,7 @@ const HELP_SECTIONS: { title: string; items: string[] }[] = [
       '출석만으로는 게임에 못 들어가요 — 대기 인원 맨 위 [콕 확인 대기]에서 콕 낸 사람의 [콕 확인]을 눌러야 명단으로 내려와요. 그 섹션이 비어 있으면 다 처리된 거예요.',
       '콕 확인 시각이 곧 참여 시작이에요 — 일찍 와서 콕을 늦게 낸 사람이 대기 순번을 앞지르지 않아요. 잘못 눌렀으면 행의 [콕취소]로 되돌려요 (조합·게임에 든 뒤엔 불가).',
       '명단에서 4명 선택 → [조합 만들기] → 대기 조합에서 [코트 배정] → 끝나면 [게임 종료].',
+      '카드의 윗줄 두 명이 한 팀, 아랫줄 두 명이 상대 팀이에요(고른 순서대로 앉아요). 팀을 바꾸려면 폰에서는 사람을 길게 눌러 고른 뒤 바꿀 사람이나 빈칸을 누르고, 태블릿에서는 같은 카드 안의 다른 사람 위로 끌어다 놓으세요.',
       '[게임 종료]만 게임 수 +1 · 대기시간 리셋. [대기로]는 조합을 유지한 채 뒤로. 카드의 [⋯]에 있는 게임 취소·해체는 없던 일로 (둘 다 미집계).',
       '부상·급한 일로 한 명만 바꿀 땐 카드 [⋯] → 교체 — 게임을 갈아엎지 않아 타이머·순서가 유지돼요. 빠진 사람은 대기로 돌아와요.',
       '대회 연습 파트너는 [마이크]에 "민수랑 준호 대회 연습한대"라고 말하면 돼요. 그날 게임 추천이 두 사람을 같은 게임에 넣는 쪽으로 기울고(둘 다 비어 있을 때만, 강제 아님) 카드에 "대회 연습: ○○·○○ 한 팀"이 보여요. 명단 이름 옆 "파트너 ○○"를 두 번 누르면 해제. 운영 메모에도 한 줄 남아요.',
@@ -3500,10 +3516,22 @@ function BoardSlots({
   const players = game.players ?? [];
   const queued = game.status === 'QUEUED';
   const draft = queued && !isFullGame(game);
+  // 자리 바꾸기 — 길게 눌러 고른 사람(끌 수 없는 칸: 폰 전체·태블릿 게임 중 코트). 다른 사람·빈칸을 누르면 그 자리로
+  const [picked, setPicked] = useState<string | null>(null);
+  useEffect(() => {
+    if (picked && !players.some((p) => p.attendanceId === picked)) setPicked(null); // 그 사람이 빠지면 선택도 푼다
+  }, [players, picked]);
+  const moveTo = (slot: number) => {
+    const attendanceId = picked;
+    setPicked(null);
+    if (!attendanceId) return;
+    void run(() => api(`/games/${game.id}/slots`, { method: 'PATCH', admin: true, body: { attendanceId, slot } }));
+  };
   // 자리 순서대로 — 윗줄(자리 0·1)이 한 팀, 아랫줄(2·3)이 상대
   const cell = (slot: number) => {
     const player = players.find((p) => p.slot === slot);
     if (player?.attendance?.member) {
+      const isPicked = picked === player.attendanceId;
       return (
         <SlotPerson
           key={player.id}
@@ -3513,12 +3541,23 @@ function BoardSlots({
           removable={draft}
           run={run}
           dragEnabled={dragEnabled}
+          picked={isPicked}
+          pickTarget={picked !== null && !isPicked}
+          onLongPress={() => setPicked(player.attendanceId)}
+          onTap={picked === null ? undefined : isPicked ? () => setPicked(null) : () => moveTo(slot)}
         />
       );
     }
     if (!queued) return <div key={`none-${slot}`} />;
     return (
-      <EmptySlot key={`empty-${slot}`} slot={slot} game={game} dragEnabled={dragEnabled} onClick={onFillSlot} />
+      <EmptySlot
+        key={`empty-${slot}`}
+        slot={slot}
+        game={game}
+        dragEnabled={dragEnabled}
+        pickTarget={picked !== null}
+        onClick={picked !== null ? () => moveTo(slot) : onFillSlot}
+      />
     );
   };
   return (
@@ -3532,6 +3571,14 @@ function BoardSlots({
       </div>
       {cell(2)}
       {cell(3)}
+      {picked && (
+        <div className="col-span-2 flex items-center gap-2 rounded-lg bg-amber/10 px-2.5 py-1.5 text-caption text-amber">
+          <span className="min-w-0 flex-1">바꿀 사람이나 빈칸을 누르세요</span>
+          <button onClick={() => setPicked(null)} className="tap shrink-0 font-bold">
+            취소
+          </button>
+        </div>
+      )}
       <PartnerNote people={gamePartnerPeople(game)} className="col-span-2 mt-0.5" />
     </div>
   );
@@ -3544,6 +3591,10 @@ function SlotPerson({
   removable,
   run,
   dragEnabled,
+  picked,
+  pickTarget,
+  onLongPress,
+  onTap,
 }: {
   game: IGame;
   player: NonNullable<IGame['players']>[number];
@@ -3551,6 +3602,10 @@ function SlotPerson({
   removable: boolean;
   run: (a: () => Promise<unknown>) => Promise<void>;
   dragEnabled: boolean;
+  picked: boolean; // 자리를 바꾸려고 길게 눌러 고른 사람
+  pickTarget: boolean; // 다른 사람이 골라져 있어 이 칸을 누르면 자리가 바뀐다
+  onLongPress: () => void;
+  onTap?: () => void;
 }) {
   const member = player.attendance!.member!;
   const queued = game.status === 'QUEUED';
@@ -3574,11 +3629,21 @@ function SlotPerson({
     },
     dragEnabled && queued,
   );
+  // 끌 수 있는 칸(태블릿 대기 조합)은 길게 누르면 끌기가 시작된다 — 자리 바꾸기는 같은 카드 안에 놓는 것으로
+  const press = useLongPress(onLongPress, !(dragEnabled && queued));
   return (
     <div
       ref={mergeRefs(drop.ref, drag.ref)}
       {...drag.props}
-      className={`flex h-10 min-w-0 items-center gap-1.5 overflow-hidden rounded-lg bg-panel px-2 text-sm ${drag.dragCls} ${drop.overCls}`}
+      {...press.handlers}
+      onClick={() => {
+        if (press.consumeFired()) return; // 길게 누른 손을 뗄 때의 클릭은 무시
+        onTap?.();
+      }}
+      className={`flex h-10 min-w-0 items-center gap-1.5 overflow-hidden rounded-lg bg-panel px-2 text-sm select-none ${
+        picked ? 'ring-2 ring-amber ring-inset' : pickTarget ? 'ring-1 ring-amber/40 ring-inset' : ''
+      } ${drag.dragCls} ${drop.overCls}`}
+      style={{ WebkitTouchCallout: 'none' }}
     >
       <GradeBadge grade={member.grade} />
       <span className="shrink-0 whitespace-nowrap font-medium">{member.name}</span>
@@ -3597,9 +3662,10 @@ function SlotPerson({
       )}
       {removable && (
         <button
-          onClick={() =>
-            void run(() => api(`/games/${game.id}/players/${player.attendanceId}`, { method: 'DELETE', admin: true }))
-          }
+          onClick={(e) => {
+            e.stopPropagation(); // 칸 누르기(자리 바꾸기)와 분리
+            void run(() => api(`/games/${game.id}/players/${player.attendanceId}`, { method: 'DELETE', admin: true }));
+          }}
           aria-label={`${member.name} 빼기`}
           className="tap ml-auto h-7 w-7 shrink-0 rounded text-xs text-dim hover:text-coral"
         >
@@ -3614,11 +3680,13 @@ function EmptySlot({
   slot,
   game,
   dragEnabled,
+  pickTarget,
   onClick,
 }: {
   slot: number;
   game: IGame;
   dragEnabled: boolean;
+  pickTarget: boolean; // 자리를 바꿀 사람이 골라져 있음 — 누르면 이 자리로 옮긴다
   onClick?: () => void;
 }) {
   const drop = useDropTarget(`slot:${game.id}:${slot}`, { kind: 'slot', slot, ...gameRef(game) }, dragEnabled);
@@ -3627,10 +3695,10 @@ function EmptySlot({
       ref={drop.ref}
       onClick={onClick}
       className={`h-10 rounded-lg border border-dashed text-xs ${
-        drop.dragging ? 'border-amber/60 text-amber' : 'border-line text-faint'
+        drop.dragging || pickTarget ? 'border-amber/60 text-amber' : 'border-line text-faint'
       } ${drop.overCls}`}
     >
-      {drop.dragging ? '여기에 놓기' : '+ 넣기'}
+      {drop.dragging ? '여기에 놓기' : pickTarget ? '이 자리로' : '+ 넣기'}
     </button>
   );
 }
@@ -4164,6 +4232,45 @@ function WaitingRow({
       </button>
     </MotionCard>
   );
+}
+
+// 길게 누르기(약 0.45초) — 손가락이 움직이면 취소(스크롤·구역 넘기기와 구분). 뗄 때 오는 클릭은 consumeFired로 걸러 낸다
+function useLongPress(onLongPress: () => void, enabled: boolean, ms = 450) {
+  const timer = useRef<number | null>(null);
+  const start = useRef<{ x: number; y: number } | null>(null);
+  const fired = useRef(false);
+  const cancel = () => {
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = null;
+  };
+  useEffect(() => cancel, []);
+  const handlers = enabled
+    ? {
+        onPointerDown: (e: React.PointerEvent) => {
+          fired.current = false;
+          start.current = { x: e.clientX, y: e.clientY };
+          cancel();
+          timer.current = window.setTimeout(() => {
+            fired.current = true;
+            navigator.vibrate?.(15);
+            onLongPress();
+          }, ms);
+        },
+        onPointerMove: (e: React.PointerEvent) => {
+          if (start.current && Math.hypot(e.clientX - start.current.x, e.clientY - start.current.y) > 8) cancel();
+        },
+        onPointerUp: cancel,
+        onPointerCancel: cancel,
+        onPointerLeave: cancel,
+        onContextMenu: (e: React.MouseEvent) => e.preventDefault(), // 안드로이드 길게 누르기 메뉴 막기
+      }
+    : {};
+  const consumeFired = () => {
+    const was = fired.current;
+    fired.current = false;
+    return was;
+  };
+  return { handlers, consumeFired };
 }
 
 // 모임장(주황)·운영진(초록) 왕관 — 글자 칩보다 자리를 덜 차지한다

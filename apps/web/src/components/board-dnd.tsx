@@ -78,7 +78,12 @@ function judge(item: DragItem, target: DropTarget): Judgement {
   }
   if (target.kind === 'court') return 'no';
   if (target.kind === 'new-game' || target.kind === 'roster') return 'yes';
-  if (target.gameId === item.fromGameId) return 'noop'; // 제자리
+  if (target.gameId === item.fromGameId) {
+    // 같은 카드 안 — 다른 사람 위·빈칸이면 자리 바꾸기(팀), 자기 자신·카드 여백은 제자리
+    if (target.kind === 'slot') return 'yes';
+    if (target.kind === 'player' && target.attendanceId !== item.attendanceId) return 'yes';
+    return 'noop';
+  }
   if (target.memberIds.includes(item.attendanceId)) return 'noop'; // 이미 든 조합
   if (target.playing && item.playing) return 'noop'; // 다른 코트에서 게임 중인 사람을 게임 중 코트에
   if (target.kind === 'card' && target.full) return 'noop'; // 다 찬 카드 여백 — 사람 위에 놓아야 교체

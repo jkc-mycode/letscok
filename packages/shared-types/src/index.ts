@@ -245,6 +245,12 @@ export interface ICreateDraftGameDto {
 }
 
 // 대기 조합의 빈칸에 한 명 넣기
+// 게임 안 자리 옮기기 — slot에 다른 사람이 있으면 서로 맞바꾸고, 비어 있으면 그 자리로 옮긴다(팀 바꾸기)
+export interface IMoveGameSlotDto {
+  attendanceId: string;
+  slot: number; // 0~3 — 0·1 한 팀, 2·3 상대
+}
+
 export interface IAddGamePlayerDto {
   attendanceId: string;
   slot?: number; // 넣을 자리 0~3 — 비었으면 그 자리, 아니면(또는 생략) 첫 빈자리

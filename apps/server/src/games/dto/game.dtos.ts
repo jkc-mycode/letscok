@@ -4,6 +4,7 @@ import {
   ICreateDraftGameDto,
   ICreateGameDto,
   IReorderGamesDto,
+  IMoveGameSlotDto,
   IReplaceGamePlayerDto,
   IUpdateGameOrderDto,
   RecommendationCategory,
@@ -71,6 +72,16 @@ export class AddGamePlayerDto implements IAddGamePlayerDto {
   @Min(0)
   @Max(3)
   slot?: number;
+}
+
+export class MoveGameSlotDto implements IMoveGameSlotDto {
+  @IsString({ message: '옮길 사람을 선택해주세요.' })
+  attendanceId: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(3)
+  slot: number;
 }
 
 // 대기 조합 전체 순서 — 지금 대기 중인 조합 id 전부를 새 순서대로(빠지거나 남는 게 있으면 서비스가 409)

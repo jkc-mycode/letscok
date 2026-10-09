@@ -17,6 +17,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { SessionsService } from '../sessions/sessions.service';
 import {
   AddGamePlayerDto,
+  MoveGameSlotDto,
   AssignGameDto,
   CreateDraftGameDto,
   CreateGameDto,
@@ -483,6 +484,29 @@ export class GamesService {
     });
     this.realtime.broadcastSnapshot(game.sessionId);
     if (updated.players.length === GAME_SIZE) this.push.notifyGame(id); // 4명이 다 찼을 때만 "조합에 들어갔어요"
+    return toGameResponse(updated);
+  }
+
+  // 게임 안 자리 옮기기 — 그 자리에 사람이 있으면 맞바꾸고 비어 있으면 옮긴다. 대기 조합·게임 중 모두(코트에서 팀을 바꾸는 경우)
+  // 자리가 비어 있던 예전 데이터도 이참에 지금 보이는 자리로 저장한다(바꾼 뒤 순서가 흔들리지 않게)
+  async moveSlot(id: string, dto: MoveGameSlotDto): Promise<IGame> {
+    const game = await this.findGameOrThrow(id);
+    if (game.status !== 'QUEUED' && game.status !== 'PLAYING') {
+      throw new ConflictException('끝났거나 해체된 게임이에요.');
+    }
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await this.lockSession(tx, game.sessionId);
+      const players = withSlots(await tx.gamePlayer.findMany({ where: { gameId: id } }));
+      const mover = players.find((p) => p.attendanceId === dto.attendanceId);
+      if (!mover) throw new ConflictException('이 게임에 없는 모임원이에요.');
+      const occupant = players.find((p) => p.slot === dto.slot && p.id !== mover.id);
+      for (const player of players) {
+        const slot = player.id === mover.id ? dto.slot : player.id === occupant?.id ? mover.slot : player.slot;
+        await tx.gamePlayer.update({ where: { id: player.id }, data: { slot } });
+      }
+      return tx.game.findUniqueOrThrow({ where: { id }, include: GAME_INCLUDE });
+    });
+    this.realtime.broadcastSnapshot(game.sessionId);
     return toGameResponse(updated);
   }
 

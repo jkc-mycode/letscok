@@ -19,6 +19,7 @@ import {
 import { AdminGuard } from '../common/guards/admin.guard';
 import {
   AddGamePlayerDto,
+  MoveGameSlotDto,
   AssignGameDto,
   CreateDraftGameDto,
   CreateGameDto,
@@ -144,6 +145,12 @@ export class GamesController {
     @Param('attendanceId') attendanceId: string,
   ): Promise<IApiResponse<IGame>> {
     return { success: true, data: await this.gamesService.removePlayer(id, attendanceId) };
+  }
+
+  // 게임 안 자리 옮기기(팀 바꾸기) — 대기 조합·게임 중 모두
+  @Patch('games/:id/slots')
+  async moveSlot(@Param('id') id: string, @Body() dto: MoveGameSlotDto): Promise<IApiResponse<IGame>> {
+    return { success: true, data: await this.gamesService.moveSlot(id, dto) };
   }
 
   @Patch('games/:id/order')

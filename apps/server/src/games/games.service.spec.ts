@@ -823,3 +823,33 @@ describe('게임 자리(팀)', () => {
     expect(pickFreeSlot([{ slot: 0 }, { slot: 1 }, { slot: 2 }, { slot: 3 }])).toBeNull();
   });
 });
+
+describe('moveSlot (자리 옮기기)', () => {
+  const slotsOf = (game: { players?: { attendanceId: string; slot: number }[] }) =>
+    Object.fromEntries((game.players ?? []).map((p) => [p.attendanceId, p.slot]));
+
+  it('사람이 있는 자리면 맞바꾸고, 빈자리면 옮긴다 — 게임 중에도 된다', async () => {
+    const session = await seedSession();
+    const court = await seedCourt(session.id);
+    const [a, b, c, d] = await seedFour(session.id);
+    const game = await service.create(session.id, { attendanceIds: [a.id, b.id, c.id, d.id] });
+
+    const swapped = await service.moveSlot(game.id, { attendanceId: b.id, slot: 2 });
+    expect(slotsOf(swapped)).toEqual({ [a.id]: 0, [c.id]: 1, [b.id]: 2, [d.id]: 3 });
+
+    await service.assign(game.id, { courtId: court.id });
+    const playing = await service.moveSlot(game.id, { attendanceId: a.id, slot: 3 });
+    expect(slotsOf(playing)).toEqual({ [d.id]: 0, [c.id]: 1, [b.id]: 2, [a.id]: 3 });
+  });
+
+  it('빈칸 있는 조합에서 빈자리로 옮기기, 게임에 없는 사람은 409', async () => {
+    const session = await seedSession();
+    const [a, b] = await seedFour(session.id);
+    const draft = await service.createDraft(session.id, { attendanceId: a.id });
+    await service.addPlayer(draft.id, { attendanceId: b.id });
+
+    const moved = await service.moveSlot(draft.id, { attendanceId: a.id, slot: 3 });
+    expect(slotsOf(moved)).toEqual({ [b.id]: 1, [a.id]: 3 });
+    await expect(service.moveSlot(draft.id, { attendanceId: 'nobody', slot: 0 })).rejects.toThrow(ConflictException);
+  });
+});
