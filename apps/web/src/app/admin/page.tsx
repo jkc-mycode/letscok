@@ -3560,19 +3560,19 @@ function SlotPerson({
     <div
       ref={mergeRefs(drop.ref, drag.ref)}
       {...drag.props}
-      className={`flex h-10 min-w-0 items-center gap-1.5 rounded-lg bg-panel px-2 text-sm ${drag.dragCls} ${drop.overCls}`}
+      className={`flex h-10 min-w-0 items-center gap-1.5 overflow-hidden rounded-lg bg-panel px-2 text-sm ${drag.dragCls} ${drop.overCls}`}
     >
       <GradeBadge grade={member.grade} />
-      <span className="min-w-0 truncate font-medium">{member.name}</span>
+      <span className="shrink-0 whitespace-nowrap font-medium">{member.name}</span>
       <GenderMarker gender={member.gender} />
-      {member.isGuest && <span className="text-caption text-sky">G</span>}
+      {member.isGuest && <span className="shrink-0 text-caption text-sky">G</span>}
       {busyElsewhere && (
-        <span className="shrink-0 rounded bg-court/15 px-1 py-0.5 text-caption font-medium text-court">게임 중</span>
+        <span className="min-w-0 truncate rounded bg-court/15 px-1 py-0.5 text-caption font-medium text-court">게임 중</span>
       )}
       {!busyElsewhere && overlap && (
         <span
           title="다른 대기 조합에도 포함"
-          className="shrink-0 rounded bg-amber/15 px-1 py-0.5 text-caption font-medium text-amber"
+          className="min-w-0 truncate rounded bg-amber/15 px-1 py-0.5 text-caption font-medium text-amber"
         >
           겹침
         </span>
@@ -3720,12 +3720,12 @@ function SlotFillSheet({
             className="flex shrink-0 items-center gap-1.5 rounded-xl bg-panel2 p-3 text-left text-sm disabled:opacity-50"
           >
             <GradeBadge grade={member.grade} />
-            <span className="min-w-0 truncate font-medium">{member.name}</span>
+            <span className="shrink-0 whitespace-nowrap font-medium">{member.name}</span>
             <GenderMarker gender={member.gender} />
-            {member.isGuest && <span className="text-caption text-sky">G</span>}
+            {member.isGuest && <span className="shrink-0 text-caption text-sky">G</span>}
             {place && (
               <span
-                className={`shrink-0 rounded px-1.5 py-0.5 text-caption font-medium ${
+                className={`min-w-0 truncate rounded px-1.5 py-0.5 text-caption font-medium ${
                   attendance.status === 'PLAYING' ? 'bg-court/15 text-court' : 'bg-amber/15 text-amber'
                 }`}
               >
@@ -3925,9 +3925,9 @@ function ShuttleRow({
   return (
     <MotionCard className="flex min-h-11 items-center gap-2 rounded-[10px] bg-amber/10 py-1.5 pr-1.5 pl-2.5 text-body-sm transition-colors">
       <GradeBadge grade={member.grade} />
-      <span className="truncate font-medium">{member.name}</span>
+      <span className="shrink-0 whitespace-nowrap font-medium">{member.name}</span>
       <GenderMarker gender={member.gender} />
-      {member.isGuest && <span className="text-caption text-sky">게스트</span>}
+      {member.isGuest && <GuestMark />}
       {/* 사전 체크인 취소 — 개인 사정·노쇼 등으로 못 오게 된 사람을 출석 기록 없이 제거 (퇴장과 다름) */}
       {/* 출석 취소(노쇼) 2탭 확인 — 콕 확인 바로 옆이라 오탭 한 번에 지워지면 안 된다 */}
       <ConfirmButton
@@ -4101,12 +4101,13 @@ function WaitingRow({
       } ${drag.dragCls}`}
     >
       <GradeBadge grade={member.grade} />
-      <span className={`min-w-0 truncate ${selected ? 'font-bold' : 'font-medium'}`}>{member.name}</span>
+      {/* 이름은 줄이지 않는다(폰에서 "김…"이 되던 문제) — 공간이 모자라면 옆 칩이 대신 줄어든다 */}
+      <span className={`shrink-0 whitespace-nowrap ${selected ? 'font-bold' : 'font-medium'}`}>{member.name}</span>
       <GenderMarker gender={member.gender} />
-      {member.isGuest && <span className="text-caption text-sky">게스트</span>}
+      {member.isGuest && <GuestMark />}
       {busyStatus && (
         <span
-          className={`shrink-0 rounded-md px-1.5 py-0.5 text-caption font-medium ${
+          className={`min-w-0 truncate rounded-md px-1.5 py-0.5 text-caption font-medium ${
             busyStatus === 'PLAYING' ? 'bg-court/15 text-court' : 'bg-amber/15 text-amber'
           }`}
         >
@@ -4114,7 +4115,7 @@ function WaitingRow({
         </span>
       )}
       {resting && (
-        <span className="shrink-0 rounded-md bg-sky/15 px-1.5 py-0.5 text-caption font-medium text-sky">
+        <span className="min-w-0 truncate rounded-md bg-sky/15 px-1.5 py-0.5 text-caption font-medium text-sky">
           휴식
         </span>
       )}
@@ -4143,6 +4144,16 @@ function WaitingRow({
         ⋯
       </button>
     </MotionCard>
+  );
+}
+
+// 게스트 표시 — 폰에선 "G"로 짧게(이름 자리를 지키려고), 넓은 화면에선 "게스트"
+function GuestMark() {
+  return (
+    <span className="shrink-0 text-caption text-sky">
+      <span className="sm:hidden">G</span>
+      <span className="hidden sm:inline">게스트</span>
+    </span>
   );
 }
 

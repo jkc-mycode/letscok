@@ -68,23 +68,24 @@ export function PlayerGrid({
         // 대기 조합 카드에 있는데 본인은 다른 코트에서 게임 중 = 미리 짜둔 조합의 차용 인원
         const isBusy = game.status === 'QUEUED' && player.attendance?.status === 'PLAYING';
         return (
-          <div key={player.id} className="flex items-center gap-1.5 text-sm">
+          <div key={player.id} className="flex min-w-0 items-center gap-1.5 overflow-hidden text-sm">
             <GradeBadge grade={member.grade} />
-            <span className={`truncate font-medium ${isMe ? 'font-bold text-court' : ''}`}>
+            {/* 이름은 줄이지 않는다 — 좁으면 옆 칩이 줄어든다 */}
+            <span className={`shrink-0 whitespace-nowrap font-medium ${isMe ? 'font-bold text-court' : ''}`}>
               {member.name}
             </span>
             <GenderMarker gender={member.gender} />
             {isMe && <MeChip />}
-            {member.isGuest && <span className="text-caption text-sky">G</span>}
+            {member.isGuest && <span className="shrink-0 text-caption text-sky">G</span>}
             {isBusy && (
-              <span className="shrink-0 rounded bg-court/15 px-1 py-0.5 text-caption font-medium text-court">
+              <span className="min-w-0 truncate rounded bg-court/15 px-1 py-0.5 text-caption font-medium text-court">
                 게임 중
               </span>
             )}
             {!isBusy && overlapIds?.has(player.attendanceId) && (
               <span
                 title="다른 대기 조합에도 포함"
-                className="shrink-0 rounded bg-amber/15 px-1 py-0.5 text-caption font-medium text-amber"
+                className="min-w-0 truncate rounded bg-amber/15 px-1 py-0.5 text-caption font-medium text-amber"
               >
                 겹침
               </span>
