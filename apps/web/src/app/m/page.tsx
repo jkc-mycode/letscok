@@ -380,7 +380,7 @@ function MyGameCard({ game, playing, memberId }: { game: IGame; playing: boolean
           return (
             <div key={player.id} className="flex h-13 min-w-0 items-center gap-2 rounded-xl bg-panel2 px-3">
               <GradeBadge grade={member.grade} />
-              <span className={`min-w-0 truncate text-body ${isMe ? 'font-bold text-court' : 'font-medium'}`}>
+              <span className={`shrink-0 whitespace-nowrap text-body ${isMe ? 'font-bold text-court' : 'font-medium'}`}>
                 {member.name}
               </span>
               <GenderMarker gender={member.gender} />
@@ -434,7 +434,8 @@ function Row({
         {badge}
       </span>
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className={`truncate text-body font-medium ${titleCls}`}>{title}</span>
+        {/* 네 명 이름이 한 줄에 안 들어가면 "…"로 자르지 않고 다음 줄로 — 이름은 끊지 않는다(break-keep) */}
+        <span className={`text-body font-medium break-keep ${titleCls}`}>{title}</span>
         {sub && <span className={`text-caption ${subCls ?? 'text-dim'}`}>{sub}</span>}
       </div>
       {right}
@@ -460,12 +461,18 @@ function PersonRow({
       className={`flex items-center gap-2 px-4 py-3 ${isMe ? 'bg-court/10' : ''} ${resting && !isMe ? 'opacity-60' : ''}`}
     >
       <GradeBadge grade={member.grade} />
-      <span className={`min-w-0 truncate text-body ${isMe ? 'font-bold text-court' : 'font-medium'}`}>{member.name}</span>
+      {/* 이름은 줄이지 않는다 — 좁으면 휴식 칩이 줄어들고, 폰에선 게스트를 "G"로 */}
+      <span className={`shrink-0 whitespace-nowrap text-body ${isMe ? 'font-bold text-court' : 'font-medium'}`}>{member.name}</span>
       <GenderMarker gender={member.gender} />
       {isMe && <MeChip />}
-      {member.isGuest && <span className="shrink-0 text-caption text-sky">게스트</span>}
+      {member.isGuest && (
+        <span className="shrink-0 text-caption text-sky">
+          <span className="sm:hidden">G</span>
+          <span className="hidden sm:inline">게스트</span>
+        </span>
+      )}
       {resting && (
-        <span className="shrink-0 rounded-md bg-sky/15 px-1.5 py-0.5 text-caption font-medium text-sky">휴식</span>
+        <span className="min-w-0 truncate rounded-md bg-sky/15 px-1.5 py-0.5 text-caption font-medium text-sky">휴식</span>
       )}
       <span className="tabular ml-auto shrink-0 font-mono text-caption text-dim">{right}</span>
     </MotionCard>
