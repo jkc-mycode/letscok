@@ -376,6 +376,14 @@ export interface IHistoryMemberStats {
   recentSessions: { date: string; gamesPlayed: number }[]; // 최근 모임별 게임 수
 }
 
+// 개인 출석 이력 한 쪽 — [모임원 관리]에서 무한 스크롤로 전체 출석을 최신순으로 본다
+export interface IHistoryMemberSessionPage {
+  items: { sessionId: string; date: string; gamesPlayed: number }[];
+  total: number; // 전체 출석 수(더 불러올지 판단용)
+  page: number;
+  limit: number;
+}
+
 // 참여 랭킹 한 줄 — 승패가 아니라 참여(출석·게임 수) 기준. 0회 멤버도 포함(멤버 색인 겸용)
 export interface IHistoryRankingEntry {
   memberId: string;

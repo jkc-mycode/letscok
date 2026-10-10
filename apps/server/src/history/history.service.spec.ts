@@ -258,3 +258,30 @@ describe('getMemberStats', () => {
     });
   });
 });
+
+describe('getMemberSessions', () => {
+  it('전체 출석을 최신순으로 쪽 단위로 나눠 준다', async () => {
+    const me = await seedMember('본인');
+    const sessions = await Promise.all(
+      ['2026-01-01', '2026-01-08', '2026-01-15'].map((date) => seedClosedSession(date)),
+    );
+    await Promise.all(sessions.map((session, i) => seedAttendance(session.id, me.id, i + 1)));
+
+    const first = await service.getMemberSessions(me.id, 1, 2);
+    expect(first.total).toBe(3);
+    expect(first.items).toEqual([
+      { sessionId: sessions[2].id, date: '2026-01-15', gamesPlayed: 3 },
+      { sessionId: sessions[1].id, date: '2026-01-08', gamesPlayed: 2 },
+    ]);
+
+    const second = await service.getMemberSessions(me.id, 2, 2);
+    expect(second.items.map((item) => item.date)).toEqual(['2026-01-01']);
+  });
+
+  it('없는 모임원은 404, 출석 없는 모임원은 빈 목록', async () => {
+    await expect(service.getMemberSessions('none', 1, 50)).rejects.toThrow(NotFoundException);
+
+    const newbie = await seedMember('새싹');
+    expect(await service.getMemberSessions(newbie.id, 1, 50)).toEqual({ items: [], total: 0, page: 1, limit: 50 });
+  });
+});

@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import {
+  IHistoryMemberSessionPage,
   IHistoryMemberStats,
   IHistoryRankingEntry,
   IHistorySessionDetail,
@@ -227,6 +228,36 @@ export class HistoryService {
         date: toDateString(attendance.session.date),
         gamesPlayed: attendance.gamesPlayed,
       })),
+    };
+  }
+
+  // 개인 출석 이력 한 쪽 — 최신순. 진행 중인 오늘 모임도 출석했으면 포함
+  async getMemberSessions(memberId: string, page: number, limit: number): Promise<IHistoryMemberSessionPage> {
+    const member = await this.prisma.member.findUnique({ where: { id: memberId }, select: { id: true } });
+    if (!member) {
+      throw new NotFoundException('모임원을 찾을 수 없습니다.');
+    }
+
+    const [attendances, total] = await Promise.all([
+      this.prisma.attendance.findMany({
+        where: { memberId },
+        orderBy: [{ session: { date: 'desc' } }, { id: 'desc' }], // 같은 날짜 두 모임도 쪽 경계에서 겹치거나 빠지지 않게
+        skip: (page - 1) * limit,
+        take: limit,
+        select: { sessionId: true, gamesPlayed: true, session: { select: { date: true } } },
+      }),
+      this.prisma.attendance.count({ where: { memberId } }),
+    ]);
+
+    return {
+      items: attendances.map((attendance) => ({
+        sessionId: attendance.sessionId,
+        date: toDateString(attendance.session.date),
+        gamesPlayed: attendance.gamesPlayed,
+      })),
+      total,
+      page,
+      limit,
     };
   }
 }

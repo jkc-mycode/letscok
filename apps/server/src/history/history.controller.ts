@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import {
   IApiResponse,
+  IHistoryMemberSessionPage,
   IHistoryMemberStats,
   IHistoryRankingEntry,
   IHistorySessionDetail,
@@ -63,5 +64,22 @@ export class HistoryController {
     @Param('id') id: string,
   ): Promise<IApiResponse<IHistoryMemberStats>> {
     return { success: true, data: await this.historyService.getMemberStats(id) };
+  }
+
+  // 개인 출석 이력 — 전체를 최신순으로 쪽 단위(무한 스크롤)
+  @Get('members/:id/sessions')
+  async getMemberSessions(
+    @Param('id') id: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+  ): Promise<IApiResponse<IHistoryMemberSessionPage>> {
+    return {
+      success: true,
+      data: await this.historyService.getMemberSessions(
+        id,
+        Math.max(1, page),
+        Math.min(50, Math.max(1, limit)),
+      ),
+    };
   }
 }
