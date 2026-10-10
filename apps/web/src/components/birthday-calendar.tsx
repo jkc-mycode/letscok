@@ -1,7 +1,8 @@
 'use client';
 
 import { IMemberSummary } from '@letscok/shared-types';
-import { useEffect, useMemo, useState } from 'react';
+import { motion } from 'motion/react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { GenderMarker, GradeBadge } from '@/components/badges';
 import { Sheet } from '@/components/sheet';
 import { api } from '@/lib/api';
@@ -11,6 +12,7 @@ import { api } from '@/lib/api';
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 const UPCOMING_DAYS = 30; // 아래 "다가오는 생일" 목록 범위
+const SWIPE_MIN_PX = 50; // 달력 위에서 이만큼 옆으로 밀면 달을 넘긴다
 
 interface Birthday {
   member: IMemberSummary;
@@ -57,6 +59,8 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
   const [failed, setFailed] = useState(false);
   const [view, setView] = useState({ year: today.getFullYear(), month: today.getMonth() + 1 });
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [slide, setSlide] = useState(0); // 마지막으로 넘긴 방향(1=다음 달, -1=이전 달) — 새 달이 그쪽에서 들어온다
+  const swipeStart = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     api<IMemberSummary[]>('/members', { admin: true })
@@ -108,6 +112,7 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
 
   const moveMonth = (delta: number) => {
     setSelectedDay(null);
+    setSlide(delta);
     setView((v) => {
       const index = v.year * 12 + (v.month - 1) + delta;
       return { year: Math.floor(index / 12), month: (index % 12) + 1 };
@@ -143,6 +148,7 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
               <button
                 onClick={() => {
                   setSelectedDay(null);
+                  setSlide(0);
                   setView({ year: today.getFullYear(), month: today.getMonth() + 1 });
                 }}
                 title="이번 달로"
@@ -155,8 +161,28 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
               </button>
             </div>
 
-            {/* 달력 — 칸엔 첫 사람 이름만, 같은 날 여러 명이면 +N */}
-            <div className="grid grid-cols-7 gap-1 text-center">
+            {/* 달력 — 칸엔 첫 사람 이름만, 같은 날 여러 명이면 +N. 좌우로 밀면 달 넘기기
+                세로가 더 크면 무시 — 시트 끌어내리기·스크롤 몫 */}
+            <motion.div
+              key={`${view.year}-${view.month}`}
+              initial={slide ? { x: slide * 24, opacity: 0 } : false}
+              animate={{ x: 0, opacity: 1 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              onTouchStart={(e) => {
+                const touch = e.touches[0];
+                swipeStart.current = e.touches.length === 1 ? { x: touch.clientX, y: touch.clientY } : null;
+              }}
+              onTouchEnd={(e) => {
+                const start = swipeStart.current;
+                swipeStart.current = null;
+                if (!start) return;
+                const touch = e.changedTouches[0];
+                const dx = touch.clientX - start.x;
+                const dy = touch.clientY - start.y;
+                if (Math.abs(dx) >= SWIPE_MIN_PX && Math.abs(dx) > Math.abs(dy) * 1.5) moveMonth(dx < 0 ? 1 : -1);
+              }}
+              className="grid touch-pan-y grid-cols-7 gap-1 text-center"
+            >
               {WEEKDAYS.map((w, i) => (
                 <span
                   key={w}
@@ -196,7 +222,7 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
                   </button>
                 );
               })}
-            </div>
+            </motion.div>
 
             {/* 아래 칸 하나 — 평소엔 다가오는 생일, 날짜를 고르면 같은 자리에 그날 생일자. 넘치면 이 칸만 스크롤 */}
             <div className="flex min-h-24 flex-1 flex-col gap-1.5 border-t border-line pt-3 scroll-area">
