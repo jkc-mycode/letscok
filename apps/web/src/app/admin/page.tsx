@@ -98,7 +98,9 @@ export default function AdminPage() {
 function Board({ onLogout }: { onLogout: () => void }) {
   const { snapshot, noSession, failed, loading, refetch } = useSnapshot();
   const { toast, showToast } = useToast();
-  const [busy, setBusy] = useState(false);
+  const [inFlight, setInFlight] = useState(0); // 진행 중인 요청 수 — 팝업 버튼은 이게 0일 때만 켠다
+  const busy = inFlight > 0;
+  const lockedKeys = useRef(new Set<string>()); // 같은 대상(게임·조합 순서 등)을 연달아 누른 것만 막는다
   // 방금 종료한 모임의 마무리 문구 — 종료하면 보드(BoardBody)가 사라지므로 상태는 여기서 들고 있다.
   // 문구 팝업을 닫아야 패스코드를 지우고 로그인 화면으로 간다(종료 = 그날 운영 끝)
   const [reportSessionId, setReportSessionId] = useState<string | null>(null);
@@ -112,31 +114,51 @@ function Board({ onLogout }: { onLogout: () => void }) {
     />
   );
 
-  // 모든 변경 액션의 공통 실행기 — 실패 시 서버의 한국어 메시지를 토스트로
-  // 성공 시 refetch: 소켓 룸 입장 전(세션 시작 직후)이나 연결 끊김 중에도 화면이 따라오게
-  const run = async (action: () => Promise<unknown>) => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      await action();
-      await refetch();
-    } catch (e) {
-      showToast(e instanceof ApiError ? e.message : '요청에 실패했습니다.');
-    } finally {
-      setBusy(false);
-    }
-  };
-  // 잠그지 않는 실행기 — 사람마다 따로인 빠른 동작(콕 확인)용. 연달아 눌러도 모두 처리하고, 실패만 알린다
-  // 새로고침은 마지막 요청 뒤 한 번만 — [모두 콕 확인]으로 20명이면 요청이 40개가 되어 분당 요청 제한에 가까워진다
+  // 성공 뒤 새로고침은 마지막 요청 뒤 한 번만 — 실시간 화면이 보통 먼저 오고, 이건 소켓 룸 입장 전·연결 끊김 대비.
+  // 요청마다 하면 [모두 콕 확인]으로 20명이면 요청이 40개가 되어 분당 요청 제한에 가까워진다
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     if (refetchTimer.current) clearTimeout(refetchTimer.current);
   }, []);
+  const scheduleRefetch = () => {
+    if (refetchTimer.current) clearTimeout(refetchTimer.current);
+    refetchTimer.current = setTimeout(() => void refetch(), 400);
+  };
+
+  // 모든 변경 액션의 공통 실행기 — 실패 시 서버의 한국어 메시지를 토스트로
+  // 화면 새로고침은 기다리지 않는다(서버를 두 번 오가는 동안 멈춘 것처럼 보였다). 전체 잠금도 없다 — 앞 동작이 끝나기 전
+  // 누른 다른 동작이 조용히 무시됐다. lockKey를 주면 같은 대상의 연타만 막는다(게임 종료 두 번 → 두 번째가 오류 토스트).
+  // 그 잠금은 새 화면을 받은 뒤 푼다 — 조합 순서(▲▼)처럼 화면 값을 보내는 동작이 옛 값으로 다시 나가지 않게
+  const run = async (action: () => Promise<unknown>, lockKey?: string) => {
+    if (lockKey) {
+      if (lockedKeys.current.has(lockKey)) return;
+      lockedKeys.current.add(lockKey);
+    }
+    setInFlight((n) => n + 1);
+    let ok = false;
+    const beforeBoard = noSession || !snapshot;
+    try {
+      await action();
+      ok = true;
+      // 모임 전 화면은 새로고침이 와야 보드로 넘어간다 — 그동안 [오늘 모임 시작]이 다시 켜지지 않게 여기서 기다린다
+      if (beforeBoard) await refetch();
+    } catch (e) {
+      showToast(e instanceof ApiError ? e.message : '요청에 실패했습니다.');
+    } finally {
+      setInFlight((n) => n - 1);
+    }
+    try {
+      if (lockKey) await refetch();
+      else if (ok && !beforeBoard) scheduleRefetch();
+    } finally {
+      if (lockKey) lockedKeys.current.delete(lockKey);
+    }
+  };
+  // 사람마다 따로인 빠른 동작(콕 확인·낙관적 반영)용 — 성공 여부를 돌려줘 실패하면 화면을 되돌릴 수 있게
   const runParallel = async (action: () => Promise<unknown>) => {
     try {
       await action();
-      if (refetchTimer.current) clearTimeout(refetchTimer.current);
-      refetchTimer.current = setTimeout(() => void refetch(), 400); // 화면은 이미 바뀌어 있고 실시간 화면도 곧 온다
+      scheduleRefetch(); // 화면은 이미 바뀌어 있고 실시간 화면도 곧 온다
       return true;
     } catch (e) {
       showToast(e instanceof ApiError ? e.message : '요청에 실패했습니다.');
@@ -189,7 +211,7 @@ function StartScreen({
   toast,
   onLogout,
 }: {
-  run: (a: () => Promise<unknown>) => Promise<void>;
+  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   busy: boolean;
   toast: ToastState | null;
   onLogout: () => void;
@@ -354,7 +376,7 @@ function BoardBody({
   onSessionClosed,
 }: {
   snapshot: ISessionSnapshot;
-  run: (a: () => Promise<unknown>) => Promise<void>;
+  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   runParallel: (a: () => Promise<unknown>) => Promise<boolean>;
   busy: boolean;
   toast: ToastState | null;
@@ -507,7 +529,7 @@ function BoardBody({
             setPendingOrder(null);
             throw error;
           }
-        });
+        }, 'queue-order');
         return;
       }
       const person = item;
@@ -611,7 +633,7 @@ function BoardBody({
       setFillNotice(lines.length > 0 ? lines.join(' · ') : '배정할 조합이 없어요');
       if (fillNoticeTimer.current) clearTimeout(fillNoticeTimer.current);
       fillNoticeTimer.current = setTimeout(() => setFillNotice(null), 5000);
-    });
+    }, 'fill-courts');
 
   // 콕 확인 대기 — 확인 전엔 게임 배정이 막히므로 대기 인원과 분리해 구역 맨 위에 모은다
   // (운영진은 이 섹션이 비었는지만 확인하면 된다)
@@ -1419,7 +1441,7 @@ function RecommendModal({
 }: {
   sessionId: string;
   attendances: IAttendance[];
-  run: (a: () => Promise<unknown>) => Promise<void>;
+  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   busy: boolean;
   onClose: () => void;
 }) {
@@ -1706,7 +1728,7 @@ function ReplacePlayerModal({
 }: {
   game: IGame;
   attendances: IAttendance[];
-  run: (a: () => Promise<unknown>) => Promise<void>;
+  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   busy: boolean;
   onClose: () => void;
 }) {
@@ -1833,7 +1855,7 @@ function MemoPanel({
   busy,
 }: {
   snapshot: ISessionSnapshot;
-  run: (a: () => Promise<unknown>) => Promise<void>;
+  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   busy: boolean;
 }) {
   const [memos, setMemos] = useState<IAdminMemo[]>([]);
@@ -2058,7 +2080,7 @@ function ManualCheckInModal({
 }: {
   sessionId: string;
   attendances: IAttendance[];
-  run: (a: () => Promise<unknown>) => Promise<void>;
+  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   busy: boolean;
   onClose: () => void;
 }) {
@@ -2733,7 +2755,7 @@ function MemberEditSheet({
   onClose,
 }: {
   member: IMemberSummary;
-  run: (a: () => Promise<unknown>) => Promise<void>;
+  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   busy: boolean;
   onShowHistory: () => void;
   onClose: () => void;
@@ -2978,7 +3000,7 @@ function StaleGuestCleanupSheet({
   onClose,
 }: {
   guests: IMemberSummary[];
-  run: (a: () => Promise<unknown>) => Promise<void>;
+  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   busy: boolean;
   onClose: () => void;
 }) {
@@ -3574,7 +3596,7 @@ function CourtCard({
   court: ICourt;
   game?: IGame;
   now: number;
-  run: (a: () => Promise<unknown>) => Promise<void>;
+  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   onMore: (game: IGame) => void; // [⋯] — 다시 알림·교체·취소 시트
   dragEnabled: boolean;
 }) {
@@ -3592,9 +3614,7 @@ function CourtCard({
   );
   // 공유 코트 차례 전환 — 우리→상대는 수동으로도 넘길 수 있고(양보 등), 상대→우리는 이 탭이 유일한 복귀로
   const setTurn = (ourTurn: boolean) =>
-    run(() =>
-      api(`/courts/${court.id}/turn`, { method: 'PATCH', admin: true, body: { ourTurn } }),
-    );
+    run(() => api(`/courts/${court.id}/turn`, { method: 'PATCH', admin: true, body: { ourTurn } }), `court:${court.id}`);
 
   if (!game) {
     // 상대 차례인 공유 코트 — 배정이 막히는 이유가 보이게 빈 코트와 구분해 크게 표시
@@ -3662,13 +3682,13 @@ function CourtCard({
       {/* 자주 쓰는 둘만 펼치고(게임 종료·대기로) 나머지(다시 알림·교체·취소)는 [⋯] 시트 */}
       <div className="mt-3 flex gap-1.5">
         <button
-          onClick={() => void run(() => api(`/games/${game.id}/finish`, { method: 'PATCH', admin: true }))}
+          onClick={() => void run(() => api(`/games/${game.id}/finish`, { method: 'PATCH', admin: true }), `game:${game.id}`)}
           className="h-10 flex-1 rounded-[10px] bg-court text-body-sm font-bold text-bg"
         >
           게임 종료
         </button>
         <button
-          onClick={() => void run(() => api(`/games/${game.id}/unassign`, { method: 'PATCH', admin: true }))}
+          onClick={() => void run(() => api(`/games/${game.id}/unassign`, { method: 'PATCH', admin: true }), `game:${game.id}`)}
           title="조합 유지한 채 대기 조합 맨 뒤로 (게임 수 미집계)"
           className="h-10 rounded-[10px] bg-panel px-3 text-body-sm font-medium text-amber"
         >
@@ -3747,7 +3767,7 @@ function BoardSlots({
 }: {
   game: IGame;
   overlapIds?: Set<string>;
-  run: (a: () => Promise<unknown>) => Promise<void>;
+  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   dragEnabled: boolean;
   onFillSlot?: () => void;
 }) {
@@ -3838,7 +3858,7 @@ function SlotPerson({
   player: NonNullable<IGame['players']>[number];
   overlap: boolean;
   removable: boolean;
-  run: (a: () => Promise<unknown>) => Promise<void>;
+  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   dragEnabled: boolean;
   picked: boolean; // 자리를 바꾸려고 길게 눌러 고른 사람
   pickTarget: boolean; // 다른 사람이 골라져 있어 이 칸을 누르면 자리가 바뀐다
@@ -3902,7 +3922,10 @@ function SlotPerson({
         <button
           onClick={(e) => {
             e.stopPropagation(); // 칸 누르기(자리 바꾸기)와 분리
-            void run(() => api(`/games/${game.id}/players/${player.attendanceId}`, { method: 'DELETE', admin: true }));
+            void run(
+              () => api(`/games/${game.id}/players/${player.attendanceId}`, { method: 'DELETE', admin: true }),
+              `player:${game.id}:${player.attendanceId}`,
+            );
           }}
           aria-label={`${member.name} 빼기`}
           className="tap ml-auto h-7 w-7 shrink-0 rounded text-xs text-dim hover:text-coral"
@@ -3991,7 +4014,7 @@ function SlotFillSheet({
   game: IGame | null;
   roster: IAttendance[];
   placeLabels: Map<string, string>;
-  run: (a: () => Promise<unknown>) => Promise<void>;
+  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   busy: boolean;
   onCreated: (game: IGame) => void;
   onClose: () => void;
@@ -4086,7 +4109,7 @@ function QueueCard({
   neighborDown?: IGame;
   idleCourts: ICourt[];
   overlapIds: Set<string>;
-  run: (a: () => Promise<unknown>) => Promise<void>;
+  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   onMore: (game: IGame) => void; // [⋯] — 교체·해체 시트(4명 조합)
   onPickCourt: (game: IGame) => void; // 빈 코트가 여럿이면 코트 고르기 시트
   onAssign: (gameId: string, courtId: string) => void; // 빈 코트가 하나면 바로 배정
@@ -4131,7 +4154,7 @@ function QueueCard({
         admin: true,
         body: { queueOrder: game.queueOrder },
       });
-    });
+    }, 'queue-order');
   };
 
   return (
@@ -4217,7 +4240,7 @@ function QueueCard({
             label="해체"
             confirmLabel="정말 해체"
             title="이 조합을 없애고 든 사람을 대기로 돌려보내요"
-            onConfirm={() => void run(() => api(`/games/${game.id}/cancel`, { method: 'PATCH', admin: true }))}
+            onConfirm={() => void run(() => api(`/games/${game.id}/cancel`, { method: 'PATCH', admin: true }), `game:${game.id}`)}
             className="h-10 rounded-[10px] px-3 text-body-sm"
             idleCls="text-coral"
           />
@@ -4237,7 +4260,7 @@ function ShuttleRow({
   onConfirm,
 }: {
   attendance: IAttendance;
-  run: (a: () => Promise<unknown>) => Promise<void>;
+  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   onConfirm: (attendanceId: string) => void; // 누르자마자 명단으로(잠금 없이 — 연달아 눌러도 모두 처리)
 }) {
   const member = attendance.member;
@@ -4384,7 +4407,7 @@ function WaitingRow({
   now: number;
   selected: boolean;
   onToggle: () => void;
-  run: (a: () => Promise<unknown>) => Promise<void>;
+  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   onMore: (attendance: IAttendance) => void; // 폰: 줄 버튼 대신 [⋯] → 동작 시트
   busyStatus?: 'PLAYING' | 'MATCHED'; // 조합·게임에 든 사람 — 흐리게 + 위치 칩, 휴식·퇴장 버튼 없음
   placeLabel?: string; // 위치 칩 문구("조합 2, 3"·"1번 코트")
@@ -4632,7 +4655,7 @@ function GameActionSheet({
 }: {
   game: IGame;
   title: string;
-  run: (a: () => Promise<unknown>) => Promise<void>;
+  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   onReplace: (game: IGame) => void;
   onClose: () => void;
 }) {
@@ -4642,7 +4665,7 @@ function GameActionSheet({
     void run(async () => {
       await api(`/games/${game.id}/cancel`, { method: 'PATCH', admin: true });
       onClose();
-    });
+    }, `game:${game.id}`);
   const row = 'h-12 w-full rounded-xl px-4 text-left text-body-sm font-medium';
   return (
     <Sheet
@@ -4692,7 +4715,7 @@ function WaitingActionSheet({
   onClose,
 }: {
   attendance: IAttendance;
-  run: (a: () => Promise<unknown>) => Promise<void>;
+  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   onClose: () => void;
 }) {
   const member = attendance.member;
@@ -4702,7 +4725,7 @@ function WaitingActionSheet({
     void run(async () => {
       await api(`/attendances/${attendance.id}/${path}`, { method: 'PATCH', ...(admin && { admin: true }) });
       onClose();
-    });
+    }, `attendance:${attendance.id}`);
   const row = 'h-12 w-full rounded-xl px-4 text-left text-sm font-medium';
   return (
     <Sheet
