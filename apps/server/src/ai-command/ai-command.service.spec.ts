@@ -36,6 +36,8 @@ const step = (over: Record<string, unknown> = {}) => ({
   feature: 'other',
   question: 'other',
   guests: [],
+  courtNos: [],
+  sharedCourt: false,
   ...over,
 });
 const command = (over: Record<string, unknown> = {}) => ({ commands: [step(over)] });
@@ -399,5 +401,26 @@ describe('AiCommandService.run — 대회 연습 파트너', () => {
 
     aiStub.extract.mockResolvedValueOnce(command({ action: 'partner', people: ['민수'] }));
     expect((await service.run(session.id, '민수 대회 연습')).kind).toBe('message');
+  });
+});
+
+describe('AiCommandService.run — 코트 추가', () => {
+  it('번호를 미리보기로 — 이미 있는 번호는 표시, 공유 여부 전달, 번호가 없으면 안내', async () => {
+    const session = await seedSession();
+    await prisma.court.create({ data: { sessionId: session.id, courtNo: 1 } });
+
+    aiStub.extract.mockResolvedValueOnce(command({ action: 'add_court', courtNos: [3, 1, 3], sharedCourt: true }));
+    expect(await service.run(session.id, '1번 3번 코트 공유로 추가')).toEqual({
+      kind: 'court_preview',
+      courts: [
+        { courtNo: 1, exists: true },
+        { courtNo: 3, exists: false },
+      ],
+      shared: true,
+    });
+
+    aiStub.extract.mockResolvedValueOnce(command({ action: 'add_court', courtNos: [] }));
+    const none = await service.run(session.id, '코트 추가해줘');
+    expect(none.kind).toBe('message');
   });
 });

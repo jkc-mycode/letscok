@@ -14,6 +14,7 @@ import {
   IGameRecommendation,
   IPushCallResult,
   RecommendationCategory,
+  ICourt,
 } from '@letscok/shared-types';
 import { useMemo, useRef, useState } from 'react';
 import { GradeBadge, PartnerNote } from '@/components/badges';
@@ -29,7 +30,7 @@ import { useSpeech } from '@/lib/use-speech';
 // AI 운영 명령 — 문장을 보내면 서버가 미리보기만 돌려주고, 운영진이 [확인]해야 기존 API로 실행한다
 // (체크인만 예외: 기존 AI 체크인 규칙대로 확실한 사람은 바로 체크인된다)
 
-const EXAMPLES = ['남복 짜줘', '민수랑 준호 넣어서 혼복', '3번 코트 끝났고 남복 하나 짜줘', '민수 휴식', '홍길동 출석', '게스트 홍길동 남자 C급 추가', '누가 제일 오래 기다렸어?', '메모 뭐 있어?'];
+const EXAMPLES = ['남복 짜줘', '민수랑 준호 넣어서 혼복', '3번 코트 끝났고 남복 하나 짜줘', '민수 휴식', '홍길동 출석', '게스트 홍길동 남자 C급 추가', '3번 코트 추가', '누가 제일 오래 기다렸어?', '메모 뭐 있어?'];
 
 const CATEGORY_LABEL: Record<RecommendationCategory, string> = {
   ALL: '전체',
@@ -278,6 +279,30 @@ export function CommandSheet({
       next(true);
     });
 
+  // 코트 추가 — 기존 코트 추가 API로(공유면 공유 설정까지). 이미 있는 번호는 미리보기에서 빠져 온다
+  const addCourts = (courtNos: number[], shared: boolean) =>
+    void run(async () => {
+      const failed: string[] = [];
+      for (const courtNo of courtNos) {
+        try {
+          const court = await api<ICourt>(`/sessions/${sessionId}/courts`, { method: 'POST', admin: true, body: { courtNo } });
+          if (shared) await api(`/courts/${court.id}/shared`, { method: 'PATCH', admin: true, body: { isShared: true } });
+        } catch (e) {
+          failed.push(`${courtNo}번(${e instanceof ApiError ? e.message : '실패'})`);
+        }
+      }
+      const ok = courtNos.length - failed.length;
+      setNotice(
+        [
+          ok > 0 ? `${courtNos.filter((n) => !failed.some((f) => f.startsWith(`${n}번`))).join(', ')}번 ${shared ? '공유 ' : ''}코트를 추가했어요` : '',
+          failed.length > 0 ? `못 한 코트: ${failed.join(', ')}` : '',
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      );
+      next(true);
+    });
+
   const addGame = (recommendation: IGameRecommendation) =>
     void run(async () => {
       await api(`/sessions/${sessionId}/games`, {
@@ -426,6 +451,7 @@ export function CommandSheet({
           onExecute={execute}
           onChosen={afterChoose}
           onAddGuests={addGuests}
+          onAddCourts={addCourts}
         />
       )}
     </Sheet>
@@ -439,6 +465,7 @@ function ResultView({
   onExecute,
   onChosen,
   onAddGuests,
+  onAddCourts,
 }: {
   result: IAiCommandResult;
   live: Live;
@@ -446,12 +473,31 @@ function ResultView({
   onExecute: (p: ActionPreview) => void;
   onChosen: (c: ChooseResult, picked: IAiCommandTarget[]) => void;
   onAddGuests: (guests: GuestPick[]) => void;
+  onAddCourts: (courtNos: number[], shared: boolean) => void;
 }) {
   switch (result.kind) {
     case 'multi':
       return null; // 시트가 단계로 풀어서 넘겨준다
     case 'guest_preview':
       return <GuestPreview guests={result.guests} onConfirm={onAddGuests} />;
+    case 'court_preview': {
+      const toAdd = result.courts.filter((c) => !c.exists).map((c) => c.courtNo);
+      const existing = result.courts.filter((c) => c.exists).map((c) => c.courtNo);
+      return (
+        <div className="flex flex-col gap-2 rounded-xl bg-court/5 p-4">
+          <p className="text-xs font-medium text-court">코트 추가{result.shared ? ' · 다른 모임과 같이 쓰는 공유 코트' : ''}</p>
+          {toAdd.length > 0 && <p className="text-base font-medium">{toAdd.join(', ')}번 코트</p>}
+          {existing.length > 0 && <p className="text-sm text-dim">{existing.join(', ')}번은 이미 있어요</p>}
+          <button
+            onClick={() => onAddCourts(toAdd, result.shared)}
+            disabled={toAdd.length === 0}
+            className="h-12 rounded-xl bg-court text-base font-bold text-bg disabled:bg-panel2 disabled:text-faint"
+          >
+            {toAdd.length === 0 ? '추가할 코트가 없어요' : `${toAdd.length}개 코트 추가`}
+          </button>
+        </div>
+      );
+    }
     case 'message':
       return <p className="rounded-xl bg-panel2 p-3 text-sm text-dim">{result.text}</p>;
     // 상황 질문 답 — 숫자는 서버가 지금 현황으로 계산(실행할 것이 없어 버튼 없음)
@@ -691,6 +737,8 @@ function stepSummary(step: IAiCommandStep): string {
       return '사람 고르기';
     case 'guest_preview':
       return '게스트 추가';
+    case 'court_preview':
+      return '코트 추가';
     case 'answer':
       return step.title;
     case 'check_in':

@@ -555,6 +555,8 @@ export type IAiCommandResult =
   | { kind: 'answer'; title: string; lines: string[] }
   // 게스트 추가 — 확인하면 웹이 기존 등록·수동 체크인 API로 실행(콕 확인은 따로)
   | { kind: 'guest_preview'; guests: IAiGuestDraft[] }
+  // 코트 추가 — 확인하면 웹이 기존 코트 추가 API로(공유면 공유 설정까지). exists = 이미 있는 번호(건너뜀)
+  | { kind: 'court_preview'; courts: { courtNo: number; exists: boolean }[]; shared: boolean }
   // 한 문장에 여러 명령("3번 코트 끝났고 남복 하나 짜줘") — 웹이 말한 순서대로 하나씩 보여 준다(최대 3개)
   | { kind: 'multi'; steps: IAiCommandStep[] };
 

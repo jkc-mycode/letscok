@@ -32,6 +32,7 @@ const commandSchema = z.strictObject({
       'unpartner',
       'ask',
       'add_guest',
+      'add_court',
       'known_unsupported',
       'unsupported',
       'unclear',
@@ -58,6 +59,8 @@ const commandSchema = z.strictObject({
       }),
     )
     .describe('add_guest일 때 새로 온 게스트들, 그 외 []'),
+  courtNos: z.array(z.number().int()).describe('add_court일 때 추가할 코트 번호들("3번 4번 코트"면 [3,4]), 그 외 []'),
+  sharedCourt: z.boolean().describe('add_court에서 "공유"·"다른 모임과 같이 쓰는" 코트라고 했으면 true, 그 외 false'),
 });
 type Command = z.infer<typeof commandSchema>;
 
@@ -86,7 +89,8 @@ const SYSTEM_PROMPT = `당신은 배드민턴 모임 관제판의 명령 해석�
   - 위에 없는 질문은 other
 - add_guest: 게스트를 새로 추가·등록해 달라는 요청. 예: "게스트 홍길동 남자 C급 추가해줘", "게스트 두 명 왔어 김철수 남자 D급 이영희 여자". guests에 사람마다 name, gender, grade(말 안 한 건 null)
   - "게스트 홍길동 체크인"처럼 성별·급수 없이 체크인만 말하면 check_in(guest=true)으로 둡니다. 추가·등록·새로·데려왔다는 말이 있거나 성별·급수를 함께 말하면 add_guest
-- known_unsupported: 관제판에 있는 기능이지만 위 목록에 없는 요청. feature: 코트 추가·공유=court_manage, 모임 종료=close_session, 선수 교체=replace_player, 퇴장=leave, 그 밖=other
+- add_court: 코트를 추가·열어 달라는 요청. 예: "3번 코트 추가해줘", "1번 2번 코트 열어줘"(courtNos=[1,2]), "5번 코트 공유 코트로 추가"(sharedCourt=true)
+- known_unsupported: 관제판에 있는 기능이지만 위 목록에 없는 요청. feature: 코트 삭제·공유 설정 바꾸기=court_manage, 모임 종료=close_session, 선수 교체=replace_player, 퇴장=leave, 그 밖=other
 - unsupported: 잡담·관제판과 무관한 요청
 - unclear: 문장이 깨져 무슨 뜻인지 모를 때(음성 인식 오류 등)
 
@@ -98,7 +102,7 @@ const SYSTEM_PROMPT = `당신은 배드민턴 모임 관제판의 명령 해석�
 const FALLBACK = '직접 눌러서 처리해주세요.';
 
 const FEATURE_GUIDE: Record<Command['feature'], string> = {
-  court_manage: '코트 추가·공유는 아직 말로 못 해요. 메뉴의 [코트 관리]에서 해 주세요.',
+  court_manage: '코트 삭제·공유 설정은 아직 말로 못 해요. [코트 관리]에서 해 주세요.',
   close_session: '모임 종료는 말로 못 해요. 메뉴의 [모임 종료]를 두 번 눌러 주세요.',
   replace_player: '선수 교체는 아직 말로 못 해요. 코트·조합 카드의 [교체]를 눌러 주세요.',
   leave: '퇴장은 말로 못 해요. 대기 줄의 [⋯] → [퇴장]으로 해 주세요.',
@@ -183,6 +187,8 @@ export class AiCommandService {
         return this.answer(sessionId, command);
       case 'add_guest':
         return this.guestPreview(sessionId, command);
+      case 'add_court':
+        return this.courtPreview(sessionId, command);
       case 'known_unsupported':
         return { kind: 'message', text: FEATURE_GUIDE[command.feature] || UNSUPPORTED_MESSAGE };
       case 'unclear':
@@ -280,6 +286,24 @@ export class AiCommandService {
 
   // 게스트 추가 미리보기 — 만들기·체크인은 하지 않는다(운영진이 성별·급수를 확인·보충한 뒤 웹이 실행)
   // 같은 이름 게스트가 있으면 그 사람으로(서버도 이름+생년월일 없음 중복을 막는다), 오늘 이미 왔으면 할 일 없음으로 표시
+  // 코트 추가 — 번호만 확인해 미리보기(이미 있는 번호는 표시만), 확인하면 웹이 기존 코트 추가 API로
+  private async courtPreview(sessionId: string, command: Command): Promise<IAiCommandStep> {
+    const numbers = [...new Set(command.courtNos)].filter((n) => Number.isInteger(n) && n >= 1 && n <= 99).slice(0, 8);
+    if (numbers.length === 0) {
+      return { kind: 'message', text: '몇 번 코트를 추가할지 함께 말해 주세요. 예: "3번 코트 추가해줘"' };
+    }
+    const existing = await this.prisma.court.findMany({
+      where: { sessionId, deletedAt: null, courtNo: { in: numbers } },
+      select: { courtNo: true },
+    });
+    const taken = new Set(existing.map((c) => c.courtNo));
+    return {
+      kind: 'court_preview',
+      courts: numbers.sort((a, b) => a - b).map((courtNo) => ({ courtNo, exists: taken.has(courtNo) })),
+      shared: command.sharedCourt,
+    };
+  }
+
   private async guestPreview(sessionId: string, command: Command): Promise<IAiCommandStep> {
     const spoken = [...new Map(command.guests.map((g) => [normalizeName(g.name), g])).values()]
       .filter((g) => normalizeName(g.name))
