@@ -12,8 +12,8 @@ import { IApiResponse, IReceiptReadResult } from '@letscok/shared-types';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { SettlementService } from './settlement.service';
 
-// 영수증 업로드 제한 — 웹이 긴 변 1568px JPEG로 줄여 보낸다(AI 체크인과 같은 기준). 1차·2차 영수증까지 2장
-const MAX_IMAGES = 2;
+// 영수증 업로드 제한 — 웹이 긴 변 1568px JPEG로 줄여 보낸다(AI 체크인과 같은 기준). 1차·2차에 길어서 나눠 찍은 영수증까지 5장
+const MAX_IMAGES = 5;
 const MAX_IMAGE_BYTES = 1.5 * 1024 * 1024;
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 

@@ -51,7 +51,7 @@ const monthDay = (value: string) => {
   return `${month}월 ${day}일`;
 };
 
-const MAX_RECEIPTS = 2; // 서버 한도 — 1차·2차 영수증
+const MAX_RECEIPTS = 5; // 서버 한도 — 1차·2차 영수증, 길어서 나눠 찍은 것까지
 
 // 분류 칩 — 누를 때마다 공통 → 술 → 음료 순서로 바뀐다
 const CATEGORY_LABEL: Record<ReceiptCategory, string> = { common: '공통', alcohol: '술', beverage: '음료' };
@@ -291,7 +291,7 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
         {/* 영수증으로 채우기 — AI가 품목을 공통·술·음료로 나누고, 칩을 눌러 고친다 */}
         {aiEnabled && (
           <div className="flex flex-col gap-2">
-            {/* 촬영 = 바로 후면 카메라(1장), 앨범 = 찍어 둔 사진 최대 2장(1차·2차) */}
+            {/* 촬영 = 바로 후면 카메라(1장), 앨범 = 찍어 둔 사진 최대 5장 */}
             <input
               ref={cameraInput}
               type="file"
