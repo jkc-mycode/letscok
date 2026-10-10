@@ -279,8 +279,7 @@ export const RecommendationCategory = {
   ALL: 'ALL', // 제한 없음 — 기존 동작 (미지정 포함, 표준 복식 소프트 선호)
   MENS: 'MENS', // 남복 4:0
   WOMENS: 'WOMENS', // 여복 0:4
-  MIXED: 'MIXED', // 혼복 2:2
-  OTHER: 'OTHER', // 기타 3:1 · 1:3
+  MIXED: 'MIXED', // 혼복 2:2 (3:1은 탭 없이 운영진이 직접 짠다)
 } as const;
 export type RecommendationCategory =
   (typeof RecommendationCategory)[keyof typeof RecommendationCategory];

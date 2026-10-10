@@ -144,27 +144,6 @@ describe('recommend — category 필터', () => {
     }
   });
 
-  it('OTHER: 모든 후보가 3:1 또는 1:3 (2:2·4:0은 제외)', async () => {
-    const session = await seedSession();
-    await Promise.all([
-      seedAttendance(session.id, 'MALE'),
-      seedAttendance(session.id, 'MALE'),
-      seedAttendance(session.id, 'MALE'),
-      seedAttendance(session.id, 'MALE'),
-      seedAttendance(session.id, 'FEMALE'),
-      seedAttendance(session.id, 'FEMALE'),
-    ]);
-
-    const results = await service.recommend(session.id, 'OTHER');
-
-    expect(results.length).toBeGreaterThan(0);
-    for (const rec of results) {
-      const { m, f, u } = composition(rec.players);
-      expect(u).toBe(0);
-      expect((m === 3 && f === 1) || (m === 1 && f === 3)).toBe(true);
-    }
-  });
-
   it('차용 모드에서도 종목 구성 유지 — 여복 탭은 여성만 차용한다', async () => {
     const session = await seedSession();
     // 미배정 여성 1명 + 게임 중 여성 3명 + 묶인 남성 2명 (차용은 게임 중인 사람만)

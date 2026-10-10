@@ -1288,7 +1288,6 @@ const CATEGORY_TABS: { value: RecommendationCategory; label: string }[] = [
   { value: 'MENS', label: '남복' },
   { value: 'WOMENS', label: '여복' },
   { value: 'MIXED', label: '혼복' },
-  { value: 'OTHER', label: '기타 3:1' },
 ];
 
 // 탭별 빈 결과 사유 — 스냅샷 출석 성별을 세어 구체적으로 안내 (추가 API 없음)
@@ -1300,8 +1299,6 @@ function emptyMessage(category: RecommendationCategory, attendances: IAttendance
   if (category === 'WOMENS' && f < 4) return `여성 인원이 ${f}명이라 여복 조합을 만들 수 없어요`;
   if (category === 'MIXED' && (m < 2 || f < 2))
     return `혼복은 남녀 2명씩 필요해요 (현재 남 ${m} · 여 ${f})`;
-  if (category === 'OTHER' && !((m >= 3 && f >= 1) || (m >= 1 && f >= 3)))
-    return `3:1 구성이 안 나오는 인원이에요 (현재 남 ${m} · 여 ${f})`;
   // 성별 인원은 충분한데 후보가 없는 경우 = 미배정 대기 부족 (성별 미지정은 종목 탭 제외)
   return category === 'ALL'
     ? '추천할 미배정 대기 인원이 없어요'

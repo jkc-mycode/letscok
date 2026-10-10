@@ -39,8 +39,8 @@ const commandSchema = z.strictObject({
     ])
     .describe('명령 종류. 규칙에 없는 요청은 unsupported, 알아듣기 어려우면 unclear'),
   category: z
-    .enum(['ALL', 'MENS', 'WOMENS', 'MIXED', 'OTHER'])
-    .describe('make_game의 종목. 남복=MENS, 여복=WOMENS, 혼복=MIXED, 3:1=OTHER, 말이 없으면 ALL'),
+    .enum(['ALL', 'MENS', 'WOMENS', 'MIXED'])
+    .describe('make_game의 종목. 남복=MENS, 여복=WOMENS, 혼복=MIXED, 말이 없으면 ALL'),
   people: z.array(z.string()).describe('make_game·rest·resume·call·finish_game에서 말한 사람 이름(조사·호칭 뗀 것). 없으면 []'),
   courtNo: z.number().int().nullable().describe('finish_game에서 말한 코트 번호. 없으면 null'),
   checkInTargets: z.array(extractedNameSchema).describe('check_in일 때만 체크인할 사람들, 그 외 []'),
@@ -75,7 +75,7 @@ const SYSTEM_PROMPT = `당신은 배드민턴 모임 관제판의 명령 해석�
 
 동작:
 - make_game: 다음 게임(4명 조합)을 짜 달라는 요청. 예: "남복 짜줘", "민수랑 준호 넣어서 혼복", "지은이 넣어서 한 게임"
-  - category: 남복·남자=MENS, 여복·여자=WOMENS, 혼복·혼성·섞어서=MIXED, 3대1=OTHER, 종목 말이 없으면 ALL
+  - category: 남복·남자=MENS, 여복·여자=WOMENS, 혼복·혼성·섞어서=MIXED, 종목 말이 없거나 3대1이면 ALL
   - people: 꼭 넣어 달라고 한 사람(0~4명)
 - check_in: 출석(체크인) 처리 요청. checkInTargets에 사람마다 raw(말한 그대로), name(이름 부분), kind(full=성+이름, given=이름만, nickname=별명, unclear), birthYear("97년생"이면 97, 없으면 null), guest("게스트" 표기면 true)를 적습니다. 확신이 없으면 kind=unclear
 - finish_game: 게임이 끝났다는 말. 예: "3번 코트 끝났어"(courtNo=3), "민수 게임 끝"(people=[민수])

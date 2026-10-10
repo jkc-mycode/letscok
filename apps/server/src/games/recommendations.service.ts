@@ -35,10 +35,9 @@ const CATEGORY_LABEL: Record<RecommendationCategory, string> = {
   MENS: '남복',
   WOMENS: '여복',
   MIXED: '혼복',
-  OTHER: '기타 3:1',
 };
 
-// 종목 탭 풀 필터: 남복/여복은 해당 성별만, 혼복/기타는 성별 확정자만 (미지정은 ALL 전용)
+// 종목 탭 풀 필터: 남복/여복은 해당 성별만, 혼복은 성별 확정자만 (미지정은 ALL 전용)
 function inCategory(a: Pooled, category: RecommendationCategory): boolean {
   if (category === 'ALL') return true;
   if (category === 'MENS') return a.member.gender === 'MALE';
@@ -151,9 +150,9 @@ export class RecommendationsService {
       combos = choose(borrowPool, lack).map((borrowed) => [...fixed, ...free, ...borrowed]);
     }
 
-    // 혼복/기타는 남녀 혼합 풀에서 나온 조합 중 구성이 맞는 것만 (남복/여복은 풀 필터로 이미 보장)
-    if (category === 'MIXED' || category === 'OTHER') {
-      combos = combos.filter((players) => matchesComposition(players, category));
+    // 혼복은 남녀 혼합 풀에서 나온 조합 중 2:2만 (남복/여복은 풀 필터로 이미 보장)
+    if (category === 'MIXED') {
+      combos = combos.filter(isMixedDoubles);
     }
     if (combos.length === 0) {
       if (fixed.length > 0) {
@@ -302,10 +301,9 @@ function waitingMinutes(since: Date, now: number): number {
   return Math.max(0, Math.floor((now - since.getTime()) / 60_000));
 }
 
-// 종목 탭 구성 판정 — 풀이 성별 확정자뿐이라 null 걱정 없이 남성 수만 세면 된다
-function matchesComposition(players: Pooled[], category: 'MIXED' | 'OTHER'): boolean {
-  const m = players.filter((p) => p.member.gender === 'MALE').length;
-  return category === 'MIXED' ? m === 2 : m === 1 || m === 3;
+// 혼복 탭 구성 판정 — 풀이 성별 확정자뿐이라 null 걱정 없이 남성 수만 세면 된다
+function isMixedDoubles(players: Pooled[]): boolean {
+  return players.filter((p) => p.member.gender === 'MALE').length === 2;
 }
 
 // 4인이 표준 복식(남복 4:0 / 여복 0:4 / 혼복 2:2)으로 떨어지는지.

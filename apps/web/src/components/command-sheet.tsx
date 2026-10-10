@@ -37,7 +37,6 @@ const CATEGORY_LABEL: Record<RecommendationCategory, string> = {
   MENS: '남복',
   WOMENS: '여복',
   MIXED: '혼복',
-  OTHER: '기타 3:1',
 };
 const ACTION_LABEL: Record<Exclude<AiCommandAction, 'make_game'>, string> = {
   finish_game: '게임 종료',
