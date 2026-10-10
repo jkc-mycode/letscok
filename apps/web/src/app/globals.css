@@ -154,6 +154,16 @@ body {
   margin-right: -8px;
 }
 
+/* 세로로 쌓고 넘치면 스크롤하는 상자 안의 요소는 줄어들지 않는다 — 내용이 화면보다 길면 flex가 스크롤 전에
+   버튼·입력칸 높이부터 줄여 글자 높이만큼 납작해졌다(모임원 수정 시트 [저장] 등).
+   @layer components라 일부러 늘이고 줄이게 지정한 유틸리티(flex-1 등)가 이긴다 */
+@layer components {
+  .scroll-area > *,
+  .no-shrink > * {
+    flex-shrink: 0;
+  }
+}
+
 /* 비밀번호 필드처럼 글자를 점으로 가린다 — type="password"를 쓰면 브라우저가
    "비밀번호를 저장하시겠습니까?"를 띄워서, 일반 입력란에 화면 가림만 입힌다 (WebKit·Chromium 계열) */
 .text-mask {

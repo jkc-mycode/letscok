@@ -3225,7 +3225,7 @@ function Zone({
         <span className="tabular font-mono text-caption text-faint">{count}</span>
         {headerExtra}
       </h2>
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3">
+      <div className="no-shrink flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3">
         {children}
       </div>
       {footer && <div className="flex gap-2 p-3">{footer}</div>}
