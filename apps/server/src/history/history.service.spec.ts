@@ -285,3 +285,58 @@ describe('getMemberSessions', () => {
     expect(await service.getMemberSessions(newbie.id, 1, 50)).toEqual({ items: [], total: 0, page: 1, limit: 50 });
   });
 });
+
+describe('getMemberSessionGames', () => {
+  it('그날 뛴 완료 게임을 시작 순으로, 자리 0·1과 2·3으로 팀을 나눠 준다', async () => {
+    const session = await seedClosedSession('2026-01-01');
+    const court = await prisma.court.create({ data: { sessionId: session.id, courtNo: 4 } });
+    const [me, mate, op1, op2] = await Promise.all(['본인', '짝', '상대1', '상대2'].map((n) => seedMember(n)));
+    const [a0, a1, a2, a3] = await Promise.all([me, mate, op1, op2].map((m) => seedAttendance(session.id, m.id, 1)));
+    // 본인은 자리 2 — 같은 팀은 자리 3
+    await prisma.game.create({
+      data: {
+        sessionId: session.id,
+        courtId: court.id,
+        status: 'FINISHED',
+        startedAt: new Date('2026-01-01T11:00:00Z'),
+        endedAt: new Date('2026-01-01T11:20:00Z'),
+        players: {
+          createMany: {
+            data: [
+              { attendanceId: a2.id, slot: 0 },
+              { attendanceId: a3.id, slot: 1 },
+              { attendanceId: a0.id, slot: 2 },
+              { attendanceId: a1.id, slot: 3 },
+            ],
+          },
+        },
+      },
+    });
+
+    const games = await service.getMemberSessionGames(me.id, session.id);
+
+    expect(games).toHaveLength(1);
+    expect(games[0]).toMatchObject({ courtNo: 4, teamsKnown: true });
+    expect(games[0].partners.map((p) => p.name)).toEqual(['짝']);
+    expect(games[0].opponents.map((p) => p.name).sort()).toEqual(['상대1', '상대2']);
+  });
+
+  it('자리 도입 전 게임은 팀 없이 함께 뛴 3명만', async () => {
+    const session = await seedClosedSession('2026-01-01');
+    const members = await Promise.all([seedMember('본인'), seedMember(), seedMember(), seedMember()]);
+    const atts = await Promise.all(members.map((m) => seedAttendance(session.id, m.id, 1)));
+    await seedFinishedGame(session.id, atts.map((a) => a.id));
+
+    const [game] = await service.getMemberSessionGames(members[0].id, session.id);
+
+    expect(game.teamsKnown).toBe(false);
+    expect(game.partners).toHaveLength(3);
+    expect(game.opponents).toEqual([]);
+  });
+
+  it('그날 출석하지 않았으면 404', async () => {
+    const session = await seedClosedSession('2026-01-01');
+    const me = await seedMember('본인');
+    await expect(service.getMemberSessionGames(me.id, session.id)).rejects.toThrow(NotFoundException);
+  });
+});

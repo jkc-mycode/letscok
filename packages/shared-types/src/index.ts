@@ -384,6 +384,17 @@ export interface IHistoryMemberSessionPage {
   limit: number;
 }
 
+// 개인 출석 이력에서 날짜를 펼치면 — 그날 이 사람이 뛴 게임(완료)을 시작 순으로
+export interface IHistoryMemberGame {
+  id: string;
+  courtNo: number | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  teamsKnown: boolean; // false = 자리(팀) 도입 전 게임 — partners에 함께 뛴 3명 전부, opponents는 빈 배열
+  partners: IHistoryGamePlayer[]; // 같은 팀(보통 1명)
+  opponents: IHistoryGamePlayer[];
+}
+
 // 참여 랭킹 한 줄 — 승패가 아니라 참여(출석·게임 수) 기준. 0회 멤버도 포함(멤버 색인 겸용)
 export interface IHistoryRankingEntry {
   memberId: string;

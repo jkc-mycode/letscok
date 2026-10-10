@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import {
+  IHistoryMemberGame,
   IHistoryMemberSessionPage,
   IHistoryMemberStats,
   IHistoryRankingEntry,
@@ -7,6 +8,7 @@ import {
   IHistorySessionListResponse,
 } from '@letscok/shared-types';
 import { toDateString } from '../common/utils/date.util';
+import { withSlots } from '../common/utils/game-slots';
 import { PrismaService } from '../prisma/prisma.service';
 
 // 히스토리/전적 조회 — 전부 읽기 전용. 이미 쌓인 데이터의 집계라 사전 집계 테이블 없이
@@ -259,5 +261,53 @@ export class HistoryService {
       page,
       limit,
     };
+  }
+
+  // 그날 이 사람이 뛴 완료 게임 — 자리 0·1이 한 팀, 2·3이 상대
+  async getMemberSessionGames(memberId: string, sessionId: string): Promise<IHistoryMemberGame[]> {
+    const attendance = await this.prisma.attendance.findFirst({
+      where: { memberId, sessionId },
+      select: { id: true },
+    });
+    if (!attendance) {
+      throw new NotFoundException('그날 출석 기록을 찾을 수 없습니다.');
+    }
+
+    const games = await this.prisma.game.findMany({
+      where: { sessionId, status: 'FINISHED', players: { some: { attendanceId: attendance.id } } },
+      include: {
+        court: true, // 해제(soft-delete)된 코트여도 번호 표시
+        // 자리 도입 전 데이터는 들어온 순서로 자리를 본다(withSlots) — id(cuid)가 생성 순
+        players: { include: { attendance: { include: { member: true } } }, orderBy: { id: 'asc' } },
+      },
+      orderBy: { startedAt: 'asc' },
+    });
+
+    return games.map((game) => {
+      const toPlayer = (p: (typeof game.players)[number]) => ({
+        name: p.attendance.member.name,
+        grade: p.attendance.member.grade,
+      });
+      const others = game.players.filter((p) => p.attendanceId !== attendance.id);
+      const base = {
+        id: game.id,
+        courtNo: game.court?.courtNo ?? null,
+        startedAt: game.startedAt?.toISOString() ?? null,
+        endedAt: game.endedAt?.toISOString() ?? null,
+      };
+      // 팀이 정해진 적 없는 옛 게임 — 들어온 순서로 나누면 틀린 팀을 보여 줄 수 있어 함께 뛴 사람만
+      if (game.players.some((p) => p.slot === null)) {
+        return { ...base, teamsKnown: false, partners: others.map(toPlayer), opponents: [] };
+      }
+      const slotted = withSlots(game.players);
+      const mySlot = slotted.find((p) => p.attendanceId === attendance.id)!.slot;
+      const sameTeam = (slot: number) => (slot < 2) === (mySlot < 2);
+      return {
+        ...base,
+        teamsKnown: true,
+        partners: slotted.filter((p) => p.attendanceId !== attendance.id && sameTeam(p.slot)).map(toPlayer),
+        opponents: slotted.filter((p) => !sameTeam(p.slot)).map(toPlayer),
+      };
+    });
   }
 }

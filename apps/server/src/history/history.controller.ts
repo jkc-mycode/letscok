@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import {
   IApiResponse,
+  IHistoryMemberGame,
   IHistoryMemberSessionPage,
   IHistoryMemberStats,
   IHistoryRankingEntry,
@@ -81,5 +82,14 @@ export class HistoryController {
         Math.min(50, Math.max(1, limit)),
       ),
     };
+  }
+
+  // 개인 출석 이력의 한 날짜 — 그날 이 사람이 뛴 게임과 팀원·상대
+  @Get('members/:id/sessions/:sessionId/games')
+  async getMemberSessionGames(
+    @Param('id') id: string,
+    @Param('sessionId') sessionId: string,
+  ): Promise<IApiResponse<IHistoryMemberGame[]>> {
+    return { success: true, data: await this.historyService.getMemberSessionGames(id, sessionId) };
   }
 }
