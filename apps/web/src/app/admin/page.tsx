@@ -2900,6 +2900,7 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
         <MemberSessionHistorySheet
           memberId={historyTarget.id}
           name={historyTarget.name}
+          grade={historyTarget.grade}
           onClose={() => setHistoryTarget(null)}
         />
       )}

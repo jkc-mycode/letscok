@@ -1,6 +1,6 @@
 'use client';
 
-import type { IHistoryGamePlayer, IHistoryMemberGame, IHistoryMemberSessionPage } from '@letscok/shared-types';
+import type { Grade, IHistoryGamePlayer, IHistoryMemberGame, IHistoryMemberSessionPage } from '@letscok/shared-types';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { GradeBadge } from '@/components/badges';
 import { Sheet } from '@/components/sheet';
@@ -12,9 +12,16 @@ const PAGE_SIZE = 50;
 type Item = IHistoryMemberSessionPage['items'][number];
 type DayGames = IHistoryMemberGame[] | 'loading' | 'error';
 
-function Names({ players }: { players: IHistoryGamePlayer[] }) {
+// me = 이 이력의 주인 — 같은 팀 줄 맨 왼쪽에 강조해서(4명이 다 보이게)
+function Names({ players, me }: { players: IHistoryGamePlayer[]; me?: IHistoryGamePlayer }) {
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+      {me && (
+        <span className="flex items-center gap-1 font-bold text-court">
+          <GradeBadge grade={me.grade} />
+          {me.name}
+        </span>
+      )}
       {players.map((player, i) => (
         <span key={i} className="flex items-center gap-1">
           <GradeBadge grade={player.grade} />
@@ -26,7 +33,7 @@ function Names({ players }: { players: IHistoryGamePlayer[] }) {
 }
 
 // 펼친 날짜의 게임들 — 판마다 코트·시간·같은 팀·상대
-function DayGameList({ games, onRetry }: { games: DayGames; onRetry: () => void }) {
+function DayGameList({ games, me, onRetry }: { games: DayGames; me: IHistoryGamePlayer; onRetry: () => void }) {
   if (games === 'loading') return <p className="py-2 text-center text-caption text-dim">불러오는 중...</p>;
   if (games === 'error') {
     return (
@@ -50,7 +57,7 @@ function DayGameList({ games, onRetry }: { games: DayGames; onRetry: () => void 
           {game.teamsKnown ? (
             <div className="mt-1 grid grid-cols-[3.5rem_1fr] gap-y-1 text-body-sm font-medium">
               <span className="text-caption text-court">같은 팀</span>
-              <Names players={game.partners} />
+              <Names players={game.partners} me={me} />
               <span className="text-caption text-coral">상대</span>
               <Names players={game.opponents} />
             </div>
@@ -58,7 +65,7 @@ function DayGameList({ games, onRetry }: { games: DayGames; onRetry: () => void 
             // 자리(팀) 기능 전에 한 게임 — 팀을 몰라 함께 뛴 사람만
             <div className="mt-1 grid grid-cols-[3.5rem_1fr] text-body-sm font-medium">
               <span className="text-caption text-faint">함께</span>
-              <Names players={game.partners} />
+              <Names players={game.partners} me={me} />
             </div>
           )}
         </div>
@@ -71,10 +78,12 @@ function DayGameList({ games, onRetry }: { games: DayGames; onRetry: () => void 
 export function MemberSessionHistorySheet({
   memberId,
   name,
+  grade,
   onClose,
 }: {
   memberId: string;
   name: string;
+  grade: Grade;
   onClose: () => void;
 }) {
   const [items, setItems] = useState<Item[] | null>(null); // null=첫 로딩
@@ -188,7 +197,7 @@ export function MemberSessionHistorySheet({
               </button>
               {open && games && (
                 <div className="px-2 pb-2">
-                  <DayGameList games={games} onRetry={() => loadDay(item.sessionId)} />
+                  <DayGameList games={games} me={{ name, grade }} onRetry={() => loadDay(item.sessionId)} />
                 </div>
               )}
             </div>
