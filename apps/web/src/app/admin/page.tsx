@@ -1924,6 +1924,7 @@ function ReplacePlayerModal({
 }) {
   const [outId, setOutId] = useState<string | null>(null);
   const [inId, setInId] = useState<string | null>(null);
+  const now = useNow(); // 후보 줄의 대기 시간
 
   const isPlaying = game.status === 'PLAYING';
   const playerIds = new Set((game.players ?? []).map((p) => p.attendanceId));
@@ -2015,8 +2016,10 @@ function ReplacePlayerModal({
                     {attendance.status === 'PLAYING' ? '게임 중' : '대기 조합'}
                   </span>
                 )}
+                {/* 대기 명단과 같은 표기 — 게임 중이면 0분 */}
                 <span className="tabular ml-auto shrink-0 font-mono text-caption text-dim">
-                  {attendance.gamesPlayed}게임
+                  {attendance.gamesPlayed}게임 ·{' '}
+                  {attendance.status === 'PLAYING' ? '0분' : formatWaitingMinutes(attendance.waitingSince, now)}
                 </span>
               </button>
             );
@@ -4212,6 +4215,7 @@ function SlotFillSheet({
 }) {
   const inGame = new Set((game?.players ?? []).map((p) => p.attendanceId));
   const candidates = roster.filter((a) => a.status !== 'RESTING' && !inGame.has(a.id));
+  const now = useNow(); // 후보 줄의 대기 시간
   const empty = GAME_SIZE - inGame.size;
 
   const pick = (attendanceId: string) =>
@@ -4270,8 +4274,10 @@ function SlotFillSheet({
                 {place}
               </span>
             )}
+            {/* 대기 명단과 같은 표기 — 게임 중이면 0분 */}
             <span className="tabular ml-auto shrink-0 font-mono text-caption text-dim">
-              {attendance.gamesPlayed}게임
+              {attendance.gamesPlayed}게임 ·{' '}
+              {attendance.status === 'PLAYING' ? '0분' : formatWaitingMinutes(attendance.waitingSince, now)}
             </span>
           </button>
         );
