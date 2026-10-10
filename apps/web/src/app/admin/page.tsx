@@ -1149,7 +1149,7 @@ function BoardBody({
           sessionId={session.id}
           courts={courts}
           playingByCourt={playingByCourt}
-          run={run}
+          runParallel={runParallel}
           onClose={() => setCourtsOpen(false)}
         />
       )}
@@ -3247,28 +3247,72 @@ function CourtsManager({
   sessionId,
   courts,
   playingByCourt,
-  run,
+  runParallel,
   onClose,
 }: {
   sessionId: string;
   courts: ICourt[];
   playingByCourt: Map<string, IGame>;
-  run: (a: () => Promise<unknown>) => Promise<void>;
+  runParallel: (a: () => Promise<unknown>) => Promise<boolean>;
   onClose: () => void;
 }) {
   const [courtNo, setCourtNo] = useState('');
+  // 누르자마자 반영 — 서버 응답·화면 새로고침(두 번 오감)을 기다리면 느리고, 공통 잠금 때문에 다른 버튼도 막혔다.
+  // 서버 화면에 실리면 표시를 지우고, 실패하면 되돌린다(알림은 runParallel)
+  const [sharedOverride, setSharedOverride] = useState<Map<string, boolean>>(new Map());
+  const [removing, setRemoving] = useState<Set<string>>(new Set());
+  const [adding, setAdding] = useState<number[]>([]);
+  useEffect(() => {
+    setSharedOverride((prev) => {
+      const next = new Map([...prev].filter(([id, v]) => courts.find((c) => c.id === id)?.isShared !== v && courts.some((c) => c.id === id)));
+      return next.size === prev.size ? prev : next;
+    });
+    setRemoving((prev) => {
+      const next = new Set([...prev].filter((id) => courts.some((c) => c.id === id)));
+      return next.size === prev.size ? prev : next;
+    });
+    setAdding((prev) => {
+      const next = prev.filter((no) => !courts.some((c) => c.courtNo === no));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [courts]);
+  const view = courts
+    .filter((c) => !removing.has(c.id))
+    .map((c) => (sharedOverride.has(c.id) ? { ...c, isShared: sharedOverride.get(c.id)! } : c));
 
   const add = () => {
     const no = Number(courtNo);
-    if (!no) return;
-    void run(async () => {
-      await api(`/sessions/${sessionId}/courts`, {
-        method: 'POST',
-        admin: true,
-        body: { courtNo: no },
-      });
-      setCourtNo('');
-    });
+    if (!no || adding.includes(no)) return;
+    setCourtNo('');
+    setAdding((prev) => [...prev, no]);
+    void runParallel(() => api(`/sessions/${sessionId}/courts`, { method: 'POST', admin: true, body: { courtNo: no } })).then(
+      (ok) => !ok && setAdding((prev) => prev.filter((n) => n !== no)),
+    );
+  };
+  const toggleShared = (court: ICourt) => {
+    const isShared = !court.isShared;
+    setSharedOverride((prev) => new Map(prev).set(court.id, isShared));
+    void runParallel(() => api(`/courts/${court.id}/shared`, { method: 'PATCH', admin: true, body: { isShared } })).then(
+      (ok) =>
+        !ok &&
+        setSharedOverride((prev) => {
+          const next = new Map(prev);
+          next.delete(court.id);
+          return next;
+        }),
+    );
+  };
+  const remove = (court: ICourt) => {
+    setRemoving((prev) => new Set(prev).add(court.id));
+    void runParallel(() => api(`/courts/${court.id}`, { method: 'DELETE', admin: true })).then(
+      (ok) =>
+        !ok &&
+        setRemoving((prev) => {
+          const next = new Set(prev);
+          next.delete(court.id);
+          return next;
+        }),
+    );
   };
 
   return (
@@ -3294,10 +3338,10 @@ function CourtsManager({
         </div>
       }
     >
-      {courts.length === 0 && (
+      {view.length === 0 && adding.length === 0 && (
         <p className="py-6 text-center text-sm text-faint">오늘 쓰는 코트 번호를 아래에서 추가해주세요</p>
       )}
-      {courts.map((court) => {
+      {view.map((court) => {
         const inGame = playingByCourt.has(court.id);
         return (
           <div
@@ -3308,15 +3352,7 @@ function CourtsManager({
             {inGame && <span className="text-xs text-court">게임 중</span>}
             {/* 공유 토글 — 다른 모임과 콕 걸고 번갈아 쓰는 코트. 게임 중에도 전환 가능(치는 도중 공유가 시작되기도) */}
             <button
-              onClick={() =>
-                void run(() =>
-                  api(`/courts/${court.id}/shared`, {
-                    method: 'PATCH',
-                    admin: true,
-                    body: { isShared: !court.isShared },
-                  }),
-                )
-              }
+              onClick={() => toggleShared(court)}
               title="다른 모임과 번갈아 쓰는 코트 지정/해제"
               className={`ml-auto h-9 rounded-lg border px-3 text-xs font-medium ${
                 court.isShared ? 'border-sky/50 bg-sky/15 text-sky' : 'border-line text-dim'
@@ -3325,7 +3361,7 @@ function CourtsManager({
               {court.isShared ? '공유 중' : '공유'}
             </button>
             <button
-              onClick={() => void run(() => api(`/courts/${court.id}`, { method: 'DELETE', admin: true }))}
+              onClick={() => remove(court)}
               disabled={inGame}
               title={inGame ? '게임 진행 중' : '코트 해제'}
               className="h-9 rounded-lg bg-panel2 px-3 text-xs text-dim disabled:opacity-30"
@@ -3335,6 +3371,15 @@ function CourtsManager({
           </div>
         );
       })}
+      {/* 추가 중 — 서버 응답 전에도 바로 보이게(응답이 오면 진짜 코트 줄로 바뀐다) */}
+      {adding
+        .filter((no) => !courts.some((c) => c.courtNo === no))
+        .map((no) => (
+          <div key={`adding-${no}`} className="flex items-center gap-2 rounded-xl bg-panel2 p-3 opacity-70">
+            <span className="font-bold">{no}번 코트</span>
+            <span className="ml-auto text-xs text-dim">추가하는 중…</span>
+          </div>
+        ))}
     </Sheet>
   );
 }
