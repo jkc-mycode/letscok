@@ -355,6 +355,14 @@ const SWIPE_EDGE_GUARD = 20; // 화면 가장자리 시작 스와이프는 시�
 
 // 누르자마자 보여 주는 새 조합 — 서버 id가 오기 전 임시 id. realId = 빈칸 조합을 한 명씩 채우는 중인 서버 조합
 const TEMP_GAME_PREFIX = 'temp:';
+type GamePlayer = NonNullable<IGame['players']>[number];
+// 조합 카드 안 조작(자리 바꾸기·빼기) — 누르자마자 반영하는 BoardBody의 함수를 카드 칸까지 내려 준다
+interface SlotActions {
+  moveSlot: (gameId: string, attendanceId: string, slot: number) => void;
+  removePlayer: (gameId: string, attendanceId: string) => void;
+}
+const playersSignature = (players: GamePlayer[] = []) =>
+  players.map((p) => `${p.attendanceId}:${p.slot}`).sort().join(',');
 type OptimisticGame = { game: IGame; ids: string[]; realId?: string };
 
 // 서버 화면에 같은 조합이 실렸는지 — 같은 4명 조합은 서버가 중복으로 막아서 사람 묶음으로 알아볼 수 있다
@@ -436,6 +444,23 @@ function BoardBody({
   // 서버 화면에 실리면 이 표시는 지우고, 실패하면 되돌린다(알림은 runParallel)
   const [optAssign, setOptAssign] = useState<Map<string, { courtId: string; startedAt: string }>>(new Map());
   const [optCreated, setOptCreated] = useState<OptimisticGame[]>([]);
+  // 조합 안 사람 빼기·자리 바꾸기 — 바뀐 사람 목록을 대신 보여 준다. base=처음 누를 때 서버 목록, pending=아직 안 끝난 요청 수
+  // 요청이 다 끝났고 서버 목록이 base와 달라지면(반영됨) 지운다 — 연달아 누르는 중엔 지우지 않아 앞 단계로 깜빡이지 않게
+  const [optPlayers, setOptPlayers] = useState<Map<string, { players: GamePlayer[]; base: string; pending: number }>>(
+    new Map(),
+  );
+  useEffect(() => {
+    setOptPlayers((prev) => {
+      const next = new Map(
+        [...prev].filter(([id, patch]) => {
+          if (patch.pending > 0) return true;
+          const server = snapshot.games.find((g) => g.id === id);
+          return !!server && (server.status === 'QUEUED' || server.status === 'PLAYING') && playersSignature(server.players) === patch.base;
+        }),
+      );
+      return next.size === prev.size ? prev : next;
+    });
+  }, [snapshot.games]);
   // 게임 종료·대기로도 누르자마자 — 서버 화면에서 그 게임이 더는 '게임 중'이 아니면 지운다
   const [optEnded, setOptEnded] = useState<Map<string, { kind: 'FINISHED' | 'UNASSIGNED'; at: string }>>(new Map());
   useEffect(() => {
@@ -455,7 +480,7 @@ function BoardBody({
     });
   }, [snapshot.games]);
   const games = useMemo(() => {
-    if (optAssign.size === 0 && optCreated.length === 0 && optEnded.size === 0) return snapshot.games;
+    if (optAssign.size === 0 && optCreated.length === 0 && optEnded.size === 0 && optPlayers.size === 0) return snapshot.games;
     const pending = optCreated.filter((t) => !isSettled(t, snapshot.games));
     // 대기로 돌린 조합은 서버처럼 대기 조합 맨 뒤
     let lastOrder = Math.max(0, ...snapshot.games.map((g) => (g.status === 'QUEUED' ? (g.queueOrder ?? 0) : 0)));
@@ -463,6 +488,11 @@ function BoardBody({
       // 빈칸 조합을 한 명씩 채우는 중엔 서버 쪽 반쪽 조합 대신 고른 사람 전부를 보여 준다
       .filter((g) => !pending.some((t) => t.realId === g.id))
       .map((g) => {
+        const patch = optPlayers.get(g.id);
+        if (patch && (g.status === 'QUEUED' || g.status === 'PLAYING')) {
+          // 마지막 한 명까지 빼면 서버처럼 조합 해체
+          g = patch.players.length === 0 ? { ...g, status: 'CANCELED' as const, queueOrder: null, players: [] } : { ...g, players: patch.players };
+        }
         const ended = g.status === 'PLAYING' ? optEnded.get(g.id) : undefined;
         if (ended?.kind === 'FINISHED') return { ...g, status: 'FINISHED' as const, endedAt: ended.at };
         if (ended) return { ...g, status: 'QUEUED' as const, courtId: null, startedAt: null, queueOrder: ++lastOrder };
@@ -473,9 +503,9 @@ function BoardBody({
     const back = base.filter((g) => g.status === 'QUEUED' && optEnded.get(g.id)?.kind === 'UNASSIGNED');
     const rest = back.length ? base.filter((g) => !back.includes(g)) : base;
     return [...rest, ...back, ...pending.map((t) => t.game)];
-  }, [snapshot.games, optAssign, optCreated, optEnded]);
+  }, [snapshot.games, optAssign, optCreated, optEnded, optPlayers]);
   const attendances = useMemo(() => {
-    if (optAssign.size === 0 && optCreated.length === 0 && optEnded.size === 0) return snapshot.attendances;
+    if (optAssign.size === 0 && optCreated.length === 0 && optEnded.size === 0 && optPlayers.size === 0) return snapshot.attendances;
     const playing = new Set(
       games.filter((g) => optAssign.has(g.id)).flatMap((g) => (g.players ?? []).map((p) => p.attendanceId)),
     );
@@ -495,6 +525,12 @@ function BoardBody({
     const inOtherGame = new Set(
       games.filter((g) => g.status === 'QUEUED' || g.status === 'PLAYING').flatMap((g) => (g.players ?? []).map((p) => p.attendanceId)),
     );
+    // 조합에서 뺀 사람 — 다른 조합에도 없으면 서버처럼 대기로(대기 시간은 그대로)
+    const removed = new Set<string>();
+    for (const [id, patch] of optPlayers) {
+      const kept = new Set(patch.players.map((p) => p.attendanceId));
+      for (const p of snapshot.games.find((g) => g.id === id)?.players ?? []) if (!kept.has(p.attendanceId)) removed.add(p.attendanceId);
+    }
     return snapshot.attendances.map((a) => {
       if (playing.has(a.id)) return { ...a, status: 'PLAYING' as const };
       const finishedAt = finished.get(a.id);
@@ -507,9 +543,10 @@ function BoardBody({
         };
       }
       if (unassigned.has(a.id)) return { ...a, status: 'MATCHED' as const };
+      if (removed.has(a.id) && a.status === 'MATCHED' && !inOtherGame.has(a.id)) return { ...a, status: 'CHECKED_IN' as const };
       return a.status === 'CHECKED_IN' && matched.has(a.id) ? { ...a, status: 'MATCHED' as const } : a;
     });
-  }, [snapshot.attendances, snapshot.games, games, optAssign, optCreated, optEnded]);
+  }, [snapshot.attendances, snapshot.games, games, optAssign, optCreated, optEnded, optPlayers]);
   // 종료한 공유 코트는 서버처럼 '다른 모임 차례'로
   const courts = useMemo(() => {
     if (optEnded.size === 0) return snapshot.courts;
@@ -534,6 +571,72 @@ function BoardBody({
       });
     },
     [optEnded, optAssign, runParallel],
+  );
+  const gamesRef = useRef(games);
+  gamesRef.current = games;
+  const snapshotRef = useRef(snapshot); // 순서 요청이 줄을 서 있다 나갈 때 그때의 서버 화면을 보려고
+  snapshotRef.current = snapshot;
+  const patchPlayers = useCallback(
+    (gameId: string, change: (players: GamePlayer[]) => GamePlayer[], request: () => Promise<unknown>) => {
+      const server = snapshot.games.find((g) => g.id === gameId);
+      const shown = gamesRef.current.find((g) => g.id === gameId);
+      if (!server || !shown || gameId.startsWith(TEMP_GAME_PREFIX)) return;
+      const players = change(shown.players ?? []);
+      setOptPlayers((prev) => {
+        const old = prev.get(gameId);
+        return new Map(prev).set(gameId, {
+          players,
+          base: old?.base ?? playersSignature(server.players),
+          pending: (old?.pending ?? 0) + 1,
+        });
+      });
+      void runParallel(request).then((ok) => {
+        setOptPlayers((prev) => {
+          const patch = prev.get(gameId);
+          if (!patch) return prev;
+          const next = new Map(prev);
+          if (!ok) next.delete(gameId); // 실패 — 서버 화면대로(알림은 runParallel)
+          else next.set(gameId, { ...patch, pending: patch.pending - 1 });
+          return next;
+        });
+        // 서버 목록이 결국 처음과 같아졌으면(바꿨다 되돌림) 지울 계기가 없다 — 새로고침이 올 만큼 기다렸다 지운다
+        setTimeout(
+          () =>
+            setOptPlayers((prev) => {
+              if (prev.get(gameId)?.pending !== 0) return prev;
+              const next = new Map(prev);
+              next.delete(gameId);
+              return next;
+            }),
+          2000,
+        );
+      });
+    },
+    [snapshot.games, runParallel],
+  );
+  const slotActions = useMemo(
+    () => ({
+      // 그 자리에 사람이 있으면 맞바꾸고, 비어 있으면 그 자리로(서버 moveSlot과 같은 규칙)
+      moveSlot: (gameId: string, attendanceId: string, slot: number) =>
+        patchPlayers(
+          gameId,
+          (players) => {
+            const mover = players.find((p) => p.attendanceId === attendanceId);
+            if (!mover || mover.slot === slot) return players;
+            return players.map((p) =>
+              p.attendanceId === attendanceId ? { ...p, slot } : p.slot === slot ? { ...p, slot: mover.slot } : p,
+            );
+          },
+          () => api(`/games/${gameId}/slots`, { method: 'PATCH', admin: true, body: { attendanceId, slot } }),
+        ),
+      removePlayer: (gameId: string, attendanceId: string) =>
+        patchPlayers(
+          gameId,
+          (players) => players.filter((p) => p.attendanceId !== attendanceId),
+          () => api(`/games/${gameId}/players/${attendanceId}`, { method: 'DELETE', admin: true }),
+        ),
+    }),
+    [patchPlayers],
   );
   const assignToCourt = useCallback(
     (gameId: string, courtId: string) => {
@@ -561,7 +664,12 @@ function BoardBody({
   }, [games]);
   // 끌어서 바꾼 순서 — 다음 실시간 화면이 오면 버린다(그때는 서버 순서가 같아져 있다)
   const [pendingOrder, setPendingOrder] = useState<string[] | null>(null);
-  useEffect(() => setPendingOrder(null), [snapshot.games]);
+  // 순서 요청은 누른 순서대로 한 줄로 보낸다(늦게 보낸 게 먼저 닿아 순서가 뒤집히지 않게). 보내는 중엔 보여 주던 순서를 유지
+  const orderChain = useRef<Promise<unknown>>(Promise.resolve());
+  const orderPending = useRef(0);
+  useEffect(() => {
+    if (orderPending.current === 0) setPendingOrder(null);
+  }, [snapshot.games]);
   const queuedGames = useMemo(() => {
     const list = games.filter((g) => g.status === 'QUEUED');
     if (!pendingOrder) return list;
@@ -569,6 +677,30 @@ function BoardBody({
     return [...list].sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity));
   }, [games, pendingOrder]);
 
+  // 대기 조합 순서 바꾸기(끌기·▲▼) — 바로 그 순서로 보여 주고 서버엔 전체 순서를 보낸다.
+  // 서버는 대기 조합 전체가 맞아야 받으므로, 아직 서버에 없는 조합(만드는 중·대기로 돌리는 중)은 빼고 서버에만 있는 건 뒤에 붙인다
+  const reorderQueue = (next: string[]) => {
+    setPendingOrder(next);
+    orderPending.current += 1;
+    orderChain.current = orderChain.current.then(async () => {
+      const serverQueued = snapshotRef.current.games.filter((g) => g.status === 'QUEUED').map((g) => g.id);
+      const known = new Set(serverQueued);
+      const ids = next.filter((id) => known.has(id));
+      ids.push(...serverQueued.filter((id) => !ids.includes(id)));
+      const ok = await runParallel(() =>
+        api(`/sessions/${session.id}/games/order`, { method: 'PATCH', admin: true, body: { gameIds: ids } }),
+      );
+      orderPending.current -= 1;
+      if (!ok) setPendingOrder(null);
+    });
+  };
+  const moveQueue = (gameId: string, delta: -1 | 1) => {
+    const ids = queuedGames.map((g) => g.id);
+    const from = ids.indexOf(gameId);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= ids.length) return;
+    reorderQueue(arrayMove(ids, from, to));
+  };
   // 끌어다 놓기 → 서버 호출. 카드에서 끌어낸 사람은 자석을 옮기듯 원래 조합에서 빠진다
   const onDrop = useCallback(
     (item: DragItem, target: DropTarget | null) => {
@@ -583,16 +715,7 @@ function BoardBody({
         const from = ids.indexOf(item.gameId);
         const to = ids.indexOf(target.gameId);
         if (from < 0 || to < 0 || from === to) return;
-        const next = arrayMove(ids, from, to);
-        setPendingOrder(next); // 서버 응답·실시간 화면을 기다리지 않고 바로 그 순서로 보여 준다
-        void run(async () => {
-          try {
-            await api(`/sessions/${session.id}/games/order`, { method: 'PATCH', admin: true, body: { gameIds: next } });
-          } catch (error) {
-            setPendingOrder(null);
-            throw error;
-          }
-        }, 'queue-order');
+        reorderQueue(arrayMove(ids, from, to));
         return;
       }
       const person = item;
@@ -604,7 +727,7 @@ function BoardBody({
           : Promise.resolve();
       // 아무 데도 아닌 곳·명단 = 카드에서 떼어 내기(명단에서 끈 거면 아무 일 없음)
       if (!target || target.kind === 'roster') {
-        if (from) void run(leaveOrigin);
+        if (from) slotActions.removePlayer(from, person.attendanceId);
         return;
       }
       if (target.kind === 'new-game') {
@@ -617,7 +740,7 @@ function BoardBody({
       // 같은 카드 안에 놓으면 자리 바꾸기(팀) — 사람 위면 맞바꾸고 빈칸이면 그 자리로
       const moveSlot = (slot: number | undefined) => {
         if (slot === undefined || !from) return;
-        void run(() => api(`/games/${from}/slots`, { method: 'PATCH', admin: true, body: { attendanceId: person.attendanceId, slot } }));
+        slotActions.moveSlot(from, person.attendanceId, slot);
       };
       if (target.kind === 'player' && target.gameId === from) {
         if (target.attendanceId === person.attendanceId) return;
@@ -650,7 +773,7 @@ function BoardBody({
         await leaveOrigin();
       });
     },
-    [run, session.id, queuedGames, assignToCourt],
+    [run, session.id, queuedGames, assignToCourt, slotActions],
   );
   // 폰: 조합 카드를 끄는 동안 구역 좌우 넘기기가 끼어들지 않게
   const dndDragging = useRef(false);
@@ -1099,6 +1222,7 @@ function BoardBody({
                 game={playingByCourt.get(court.id)}
                 now={now}
                 run={run}
+                slotActions={slotActions}
                 onEnd={endGame}
                 onMore={(g) => setCardMenuId(g.id)}
                 dragEnabled={dragEnabled}
@@ -1144,9 +1268,11 @@ function BoardBody({
                 idleCourts={idleCourts}
                 overlapIds={overlapIds}
                 run={run}
+                slotActions={slotActions}
                 onMore={(g) => setCardMenuId(g.id)}
                 onPickCourt={(g) => setAssignGameId(g.id)}
                 onAssign={assignToCourt}
+                onMove={moveQueue}
                 onFillSlot={(g) => setSlotTarget({ gameId: g.id })}
                 dragEnabled={dragEnabled}
               />
@@ -3654,6 +3780,7 @@ function CourtCard({
   game,
   now,
   run,
+  slotActions,
   onEnd,
   onMore,
   dragEnabled,
@@ -3662,6 +3789,7 @@ function CourtCard({
   game?: IGame;
   now: number;
   run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
+  slotActions: SlotActions;
   onEnd: (gameId: string, kind: 'FINISHED' | 'UNASSIGNED') => void; // 게임 종료·대기로 — 누르자마자 반영
   onMore: (game: IGame) => void; // [⋯] — 다시 알림·교체·취소 시트
   dragEnabled: boolean;
@@ -3744,7 +3872,7 @@ function CourtCard({
           {game.startedAt ? formatElapsed(game.startedAt, now) : '--:--'}
         </span>
       </div>
-      <BoardSlots game={game} run={run} dragEnabled={dragEnabled} />
+      <BoardSlots game={game} slotActions={slotActions} dragEnabled={dragEnabled} />
       {/* 자주 쓰는 둘만 펼치고(게임 종료·대기로) 나머지(다시 알림·교체·취소)는 [⋯] 시트 */}
       <div className="mt-3 flex gap-1.5">
         <button
@@ -3827,13 +3955,13 @@ function buildPlaceLabels(
 function BoardSlots({
   game,
   overlapIds,
-  run,
+  slotActions,
   dragEnabled,
   onFillSlot,
 }: {
   game: IGame;
   overlapIds?: Set<string>;
-  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
+  slotActions: SlotActions;
   dragEnabled: boolean;
   onFillSlot?: () => void;
 }) {
@@ -3849,7 +3977,7 @@ function BoardSlots({
     const attendanceId = picked;
     setPicked(null);
     if (!attendanceId) return;
-    void run(() => api(`/games/${game.id}/slots`, { method: 'PATCH', admin: true, body: { attendanceId, slot } }));
+    slotActions.moveSlot(game.id, attendanceId, slot);
   };
   // 자리 순서대로 — 윗줄(자리 0·1)이 한 팀, 아랫줄(2·3)이 상대
   const cell = (slot: number) => {
@@ -3863,7 +3991,7 @@ function BoardSlots({
           player={player}
           overlap={overlapIds?.has(player.attendanceId) ?? false}
           removable={draft}
-          run={run}
+          onRemove={() => slotActions.removePlayer(game.id, player.attendanceId)}
           dragEnabled={dragEnabled}
           picked={isPicked}
           pickTarget={picked !== null && !isPicked}
@@ -3913,7 +4041,7 @@ function SlotPerson({
   player,
   overlap,
   removable,
-  run,
+  onRemove,
   dragEnabled,
   picked,
   pickTarget,
@@ -3924,7 +4052,7 @@ function SlotPerson({
   player: NonNullable<IGame['players']>[number];
   overlap: boolean;
   removable: boolean;
-  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
+  onRemove: () => void; // ✕ — 누르자마자 반영
   dragEnabled: boolean;
   picked: boolean; // 자리를 바꾸려고 길게 눌러 고른 사람
   pickTarget: boolean; // 다른 사람이 골라져 있어 이 칸을 누르면 자리가 바뀐다
@@ -3988,10 +4116,7 @@ function SlotPerson({
         <button
           onClick={(e) => {
             e.stopPropagation(); // 칸 누르기(자리 바꾸기)와 분리
-            void run(
-              () => api(`/games/${game.id}/players/${player.attendanceId}`, { method: 'DELETE', admin: true }),
-              `player:${game.id}:${player.attendanceId}`,
-            );
+            onRemove();
           }}
           aria-label={`${member.name} 빼기`}
           className="tap ml-auto h-7 w-7 shrink-0 rounded text-xs text-dim hover:text-coral"
@@ -4163,9 +4288,11 @@ function QueueCard({
   idleCourts,
   overlapIds,
   run,
+  slotActions,
   onMore,
   onPickCourt,
   onAssign,
+  onMove,
   onFillSlot,
   dragEnabled,
 }: {
@@ -4176,9 +4303,11 @@ function QueueCard({
   idleCourts: ICourt[];
   overlapIds: Set<string>;
   run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
+  slotActions: SlotActions;
   onMore: (game: IGame) => void; // [⋯] — 교체·해체 시트(4명 조합)
   onPickCourt: (game: IGame) => void; // 빈 코트가 여럿이면 코트 고르기 시트
   onAssign: (gameId: string, courtId: string) => void; // 빈 코트가 하나면 바로 배정
+  onMove: (gameId: string, delta: -1 | 1) => void; // ▲▼ 순서 — 누르자마자 반영
   onFillSlot: (game: IGame) => void; // 빈칸 → 사람 고르기 시트
   dragEnabled: boolean;
 }) {
@@ -4206,22 +4335,6 @@ function QueueCard({
     .map((player) => player.attendance?.member?.name)
     .filter(Boolean);
 
-  // 순서 변경 = 이웃 조합과 queueOrder 맞교환
-  const swapWith = (neighbor?: IGame) => {
-    if (!neighbor || game.queueOrder === null || neighbor.queueOrder === null) return;
-    void run(async () => {
-      await api(`/games/${game.id}/order`, {
-        method: 'PATCH',
-        admin: true,
-        body: { queueOrder: neighbor.queueOrder },
-      });
-      await api(`/games/${neighbor.id}/order`, {
-        method: 'PATCH',
-        admin: true,
-        body: { queueOrder: game.queueOrder },
-      });
-    }, 'queue-order');
-  };
 
   return (
     <MotionCard
@@ -4246,7 +4359,7 @@ function QueueCard({
         </span>
         <div className="flex gap-1">
           <button
-            onClick={() => swapWith(neighborUp)}
+            onClick={() => onMove(game.id, -1)}
             disabled={!neighborUp}
             aria-label="위로"
             className="tap h-8 w-8 rounded-lg bg-panel text-dim disabled:opacity-30"
@@ -4254,7 +4367,7 @@ function QueueCard({
             ▲
           </button>
           <button
-            onClick={() => swapWith(neighborDown)}
+            onClick={() => onMove(game.id, 1)}
             disabled={!neighborDown}
             aria-label="아래로"
             className="tap h-8 w-8 rounded-lg bg-panel text-dim disabled:opacity-30"
@@ -4266,7 +4379,7 @@ function QueueCard({
       <BoardSlots
         game={game}
         overlapIds={overlapIds}
-        run={run}
+        slotActions={slotActions}
         dragEnabled={dragEnabled}
         onFillSlot={() => onFillSlot(game)}
       />
