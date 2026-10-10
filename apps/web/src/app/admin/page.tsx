@@ -54,6 +54,7 @@ import { CommandSheet } from '@/components/command-sheet';
 import { ConnectionError } from '@/components/connection-error';
 import { SessionReportModal } from '@/components/session-report-modal';
 import { EntryFeeSheet } from '@/components/entry-fee-sheet';
+import { MemberSessionHistorySheet } from '@/components/member-session-history-sheet';
 import { SettlementModal } from '@/components/settlement-modal';
 import { Sheet } from '@/components/sheet';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -2396,6 +2397,7 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
   const listRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [editTarget, setEditTarget] = useState<IMemberSummary | null>(null);
+  const [historyTarget, setHistoryTarget] = useState<IMemberSummary | null>(null); // 전체 출석 이력 — 수정 시트 위에 겹쳐 뜬다
   const [registerOpen, setRegisterOpen] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const { toast, showToast } = useToast();
@@ -2649,7 +2651,15 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
           member={editTarget}
           run={run}
           busy={busy}
+          onShowHistory={() => setHistoryTarget(editTarget)}
           onClose={() => setEditTarget(null)}
+        />
+      )}
+      {historyTarget && (
+        <MemberSessionHistorySheet
+          memberId={historyTarget.id}
+          name={historyTarget.name}
+          onClose={() => setHistoryTarget(null)}
         />
       )}
       {cleanupOpen && (
@@ -2719,11 +2729,13 @@ function MemberEditSheet({
   member,
   run,
   busy,
+  onShowHistory,
   onClose,
 }: {
   member: IMemberSummary;
   run: (a: () => Promise<unknown>) => Promise<void>;
   busy: boolean;
+  onShowHistory: () => void;
   onClose: () => void;
 }) {
   const [name, setName] = useState(member.name);
@@ -2778,10 +2790,16 @@ function MemberEditSheet({
         </>
       }
     >
-      <p className="text-caption text-faint">
-        출석 {member.totalSessions}회 · {member.totalGames}게임 · 최근{' '}
-        {formatLastAttended(member.lastAttendedAt)}
-      </p>
+      {/* 누르면 날짜별 전체 출석·게임 이력 */}
+      <button
+        onClick={onShowHistory}
+        className="flex min-h-10 items-center gap-1 rounded-lg bg-panel2 px-3 text-left text-caption text-dim"
+      >
+        <span className="min-w-0 truncate">
+          출석 {member.totalSessions}회 · {member.totalGames}게임 · 최근 {formatLastAttended(member.lastAttendedAt)}
+        </span>
+        <span className="ml-auto shrink-0 font-bold text-court">이력 ›</span>
+      </button>
 
       {!deleted && (
         <>
