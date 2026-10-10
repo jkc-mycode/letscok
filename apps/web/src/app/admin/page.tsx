@@ -2591,14 +2591,14 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {/* 남는 높이를 다 쓰고 이 안에서만 스크롤 — 태블릿은 두 줄 */}
+        {/* 남는 높이를 다 쓰고 이 안에서만 스크롤 — 태블릿도 한 줄에 한 명(두 칸이면 카드가 좁아 정보가 겹친다) */}
         <div
           ref={listRef}
-          className="grid min-h-0 flex-1 grid-cols-1 content-start gap-1.5 scroll-area sm:grid-cols-2"
+          className="flex min-h-0 flex-1 flex-col gap-1.5 scroll-area"
         >
-          {data === null && <p className="py-8 text-center text-body-sm text-dim sm:col-span-2">불러오는 중...</p>}
+          {data === null && <p className="py-8 text-center text-body-sm text-dim">불러오는 중...</p>}
           {data !== null && visible.length === 0 && (
-            <p className="py-8 text-center text-body-sm text-faint sm:col-span-2">
+            <p className="py-8 text-center text-body-sm text-faint">
               {keyword ? '검색 결과가 없어요' : filter === 'DELETED' ? '삭제된 모임원이 없어요' : '아직 아무도 없어요'}
             </p>
           )}
@@ -2611,7 +2611,7 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
               }`}
             >
               <GradeBadge grade={member.grade} />
-              {/* 윗줄·아랫줄을 각각 한 줄로 — 좌우 두 덩어리로 두면 태블릿 두 칸(좁은 카드)에서 이름이 0폭으로 줄고
+              {/* 윗줄·아랫줄을 각각 한 줄로 — 좌우 두 덩어리로 두면 좁은 화면에서 이름이 0폭으로 줄고
                   생년월일이 오른쪽 출석 수 밑으로 겹쳐 보였다. 이름은 줄이지 않고, 모자라면 배지·생년월일이 줄어든다 */}
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="flex min-w-0 items-center gap-1.5">
@@ -2635,7 +2635,7 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
           ))}
           {/* 목록 끝 표시 — 보이면 다음 100명 */}
           {hasMore && (
-            <div ref={sentinelRef} className="py-4 text-center text-body-sm text-faint sm:col-span-2">
+            <div ref={sentinelRef} className="py-4 text-center text-body-sm text-faint">
               {loadingMore ? '더 불러오는 중...' : ''}
             </div>
           )}
