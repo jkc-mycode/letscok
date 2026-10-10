@@ -167,11 +167,11 @@ describe('recommend — category 필터', () => {
 
   it('차용 모드에서도 종목 구성 유지 — 여복 탭은 여성만 차용한다', async () => {
     const session = await seedSession();
-    // 미배정 여성 1명 + 게임/조합에 묶인 여성 3명 + 묶인 남성 2명
+    // 미배정 여성 1명 + 게임 중 여성 3명 + 묶인 남성 2명 (차용은 게임 중인 사람만)
     const freeFemale = await seedAttendance(session.id, 'FEMALE', 'CHECKED_IN');
     await Promise.all([
       seedAttendance(session.id, 'FEMALE', 'PLAYING'),
-      seedAttendance(session.id, 'FEMALE', 'MATCHED'),
+      seedAttendance(session.id, 'FEMALE', 'PLAYING'),
       seedAttendance(session.id, 'FEMALE', 'PLAYING'),
       seedAttendance(session.id, 'MALE', 'PLAYING'),
       seedAttendance(session.id, 'MALE', 'MATCHED'),
@@ -186,6 +186,46 @@ describe('recommend — category 필터', () => {
       expect(rec.players.some((p) => p.attendanceId === freeFemale.id)).toBe(true);
       expect(rec.players.filter((p) => p.borrowedFrom !== null)).toHaveLength(3);
     }
+  });
+});
+
+describe('recommend — 잔여 모드 차용 범위', () => {
+  // 대기 조합을 순서대로 만든다 — queueOrder로 새 조합(맨 끝)과의 간격이 정해진다
+  async function seedQueued(sessionId: string, queueOrder: number, ids: string[]) {
+    await prisma.game.create({
+      data: { sessionId, status: 'QUEUED', queueOrder, players: { create: ids.map((attendanceId, slot) => ({ attendanceId, slot })) } },
+    });
+  }
+
+  it('맨 끝 조합(새 조합 바로 앞)에 든 사람은 빌리지 않고, 조합에 없는 게임 중 인원 → 먼 조합 순으로 빌린다', async () => {
+    const session = await seedSession();
+    const free = await Promise.all(Array.from({ length: 3 }, () => seedAttendance(session.id, 'MALE')));
+    const far = await seedAttendance(session.id, 'MALE', 'MATCHED'); // 조합 1(새 조합까지 3칸)
+    const mid = await seedAttendance(session.id, 'MALE', 'MATCHED'); // 조합 2(2칸)
+    const last = await seedAttendance(session.id, 'MALE', 'MATCHED'); // 조합 3(1칸, 바로 앞)
+    await seedQueued(session.id, 1, [far.id]);
+    await seedQueued(session.id, 2, [mid.id]);
+    await seedQueued(session.id, 3, [last.id]);
+
+    // 조합에 든 사람만 있을 때 — 바로 앞은 빼고, 먼 조합(far)부터
+    const onlyQueued = await service.recommend(session.id);
+    const borrowedIds = new Set(onlyQueued.flatMap((r) => r.players.filter((p) => p.borrowedFrom !== null).map((p) => p.attendanceId)));
+    expect(borrowedIds.has(last.id)).toBe(false);
+    expect(onlyQueued[0].players.find((p) => p.borrowedFrom !== null)?.attendanceId).toBe(far.id);
+    expect(onlyQueued[0].players.filter((p) => free.some((f) => f.id === p.attendanceId))).toHaveLength(3);
+
+    // 조합에 없는 게임 중 인원이 있으면 그 사람이 가장 먼저
+    const playing = await seedAttendance(session.id, 'MALE', 'PLAYING');
+    const withPlaying = await service.recommend(session.id);
+    expect(withPlaying[0].players.find((p) => p.borrowedFrom !== null)?.attendanceId).toBe(playing.id);
+  });
+
+  it('빌릴 수 있는 사람이 바로 앞 조합에만 있으면 추천하지 않는다', async () => {
+    const session = await seedSession();
+    await Promise.all(Array.from({ length: 3 }, () => seedAttendance(session.id, 'MALE')));
+    const queued = await Promise.all(Array.from({ length: 4 }, () => seedAttendance(session.id, 'MALE', 'MATCHED')));
+    await seedQueued(session.id, 1, queued.map((a) => a.id));
+    expect(await service.recommend(session.id)).toEqual([]);
   });
 });
 

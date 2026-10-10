@@ -25,6 +25,10 @@ const W_PARTNER = 40; // 대회 연습 파트너 두 사람이 같은 게임에 
 const GRADE_ORDER = ['A', 'B', 'C', 'D', 'E', 'F'];
 const POOL_CAP = 30; // 전수 탐색 상한 — C(30,4)=27,405 조합
 const BORROW_CAP = 12; // 잔여 모드 차용 풀 상한
+// 잔여 모드에서 대기 조합에 든 사람을 빌려도 되는 최소 간격 — 새 조합은 대기 줄 맨 끝이라, 2면 바로 앞(맨 끝) 조합만 피한다.
+// 바로 붙은 조합끼리 겹치면 앞 조합이 코트에 들어가는 순간 뒤 조합이 막혀 순서가 꼬인다. 멀리 떨어진 겹침(조합 1·4)은
+// 미리 짜 두는 운영에서 흔하고 괜찮다(10/10 사용자)
+const MIN_QUEUE_GAP = 2;
 
 const CATEGORY_LABEL: Record<RecommendationCategory, string> = {
   ALL: '전체',
@@ -60,7 +64,7 @@ export class RecommendationsService {
   ): Promise<IGameRecommendation[]> {
     await this.sessionsService.findOpenSessionOrThrow(sessionId);
 
-    const [allAttendances, playedGames] = await Promise.all([
+    const [allAttendances, playedGames, queuedGames] = await Promise.all([
       this.prisma.attendance.findMany({
         // 콕 미확인은 추천 후보에서 아예 제외 — 고른 뒤 서버가 거부하면 운영진이 헛수고한다
         where: {
@@ -73,9 +77,27 @@ export class RecommendationsService {
       // 오늘 "같이 뛴" 이력 = 종료된 게임 + 지금 뛰는 게임 (QUEUED 조합은 아직 안 뛰었으므로 제외)
       this.prisma.game.findMany({
         where: { sessionId, status: { in: ['FINISHED', 'PLAYING'] } },
+        select: { status: true, startedAt: true, players: { select: { attendanceId: true } } },
+      }),
+      // 대기 조합 순서 — 잔여 모드에서 빌릴 사람이 새 조합(맨 끝)과 얼마나 떨어져 있는지 본다
+      this.prisma.game.findMany({
+        where: { sessionId, status: 'QUEUED' },
+        orderBy: [{ queueOrder: 'asc' }, { queuedAt: 'asc' }],
         select: { players: { select: { attendanceId: true } } },
       }),
     ]);
+    // 사람마다 새 조합까지의 간격 — 든 조합 중 가장 뒤의 것 기준. 대기 조합에 없으면 무한대
+    const gapToNew = new Map<string, number>();
+    queuedGames.forEach((game, index) => {
+      for (const p of game.players) gapToNew.set(p.attendanceId, queuedGames.length - index);
+    });
+    const gapOf = (id: string) => gapToNew.get(id) ?? Infinity;
+    // 게임 중인 사람의 게임 시작 시각 — 먼저 시작한(곧 끝날) 게임의 사람을 먼저 빌린다
+    const playingSince = new Map<string, number>();
+    for (const game of playedGames) {
+      if (game.status !== 'PLAYING' || !game.startedAt) continue;
+      for (const p of game.players) playingSince.set(p.attendanceId, game.startedAt.getTime());
+    }
 
     const attendances = allAttendances.filter((a) => inCategory(a, category));
     const fixed = this.resolveFixed(allAttendances, fixedIds, category);
@@ -108,13 +130,16 @@ export class RecommendationsService {
     } else if (free.length >= need) {
       combos = choose(free, need).map((chosen) => [...fixed, ...chosen]);
     } else {
-      // 잔여 모드: 미배정 전원 고정 + 부족분은 조합·게임 중 인원에서 차용
+      // 잔여 모드: 미배정 전원 고정 + 부족분은 조합·게임 중 인원에서 차용(중복 대기)
+      // 맨 끝 조합(새 조합 바로 앞)에 든 사람은 빼고, 새 조합에서 멀리 떨어진 사람부터 — 조합에 없는 게임 중 인원이 가장 먼저.
+      // 같은 간격이면 먼저 시작한(곧 끝날) 게임의 사람, 그다음 게임을 적게 한 사람
       const borrowPool = rest
-        .filter((a) => a.status === 'MATCHED' || a.status === 'PLAYING')
+        .filter((a) => (a.status === 'MATCHED' || a.status === 'PLAYING') && gapOf(a.id) >= MIN_QUEUE_GAP)
         .sort(
           (a, b) =>
-            a.gamesPlayed - b.gamesPlayed ||
-            a.waitingSince.getTime() - b.waitingSince.getTime(),
+            gapOf(b.id) - gapOf(a.id) ||
+            (playingSince.get(a.id) ?? Infinity) - (playingSince.get(b.id) ?? Infinity) ||
+            a.gamesPlayed - b.gamesPlayed,
         )
         .slice(0, BORROW_CAP);
       const lack = need - free.length;
