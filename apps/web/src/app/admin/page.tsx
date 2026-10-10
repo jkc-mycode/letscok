@@ -2340,7 +2340,7 @@ function RoleBadge({ role }: { role: MemberRole }) {
   if (role === 'MEMBER') return null; // 대다수가 모임원 — 배지는 예외(모임장·운영진)만
   return (
     <span
-      className={`shrink-0 rounded px-1.5 py-0.5 text-caption font-medium ${
+      className={`min-w-0 truncate rounded px-1.5 py-0.5 text-caption font-medium ${
         role === 'LEADER' ? 'bg-amber/15 text-amber' : 'bg-court/15 text-court'
       }`}
     >
@@ -2603,20 +2603,24 @@ function MembersManagerModal({ onClose }: { onClose: () => void }) {
               }`}
             >
               <GradeBadge grade={member.grade} />
-              <span className="flex min-w-0 flex-col">
+              {/* 윗줄·아랫줄을 각각 한 줄로 — 좌우 두 덩어리로 두면 태블릿 두 칸(좁은 카드)에서 이름이 0폭으로 줄고
+                  생년월일이 오른쪽 출석 수 밑으로 겹쳐 보였다. 이름은 줄이지 않고, 모자라면 배지·생년월일이 줄어든다 */}
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="flex min-w-0 items-center gap-1.5">
-                  <span className="truncate text-body font-medium">{member.name}</span>
+                  <span className="shrink-0 text-body font-medium whitespace-nowrap">{member.name}</span>
                   <GenderMarker gender={member.gender} />
-                  <RoleBadge role={member.role} />
+                  <span className="flex min-w-0">
+                    <RoleBadge role={member.role} />
+                  </span>
+                  <span className="ml-auto shrink-0 text-caption text-dim">{formatLastAttended(member.lastAttendedAt)}</span>
                 </span>
-                <span className={`text-caption ${member.isGuest ? 'text-sky' : 'tabular font-mono text-faint'}`}>
-                  {member.isGuest ? '게스트' : (member.birthDate ?? '생년월일 없음')}
-                </span>
-              </span>
-              <span className="ml-auto flex shrink-0 flex-col items-end text-caption leading-tight">
-                <span className="text-dim">{formatLastAttended(member.lastAttendedAt)}</span>
-                <span className="tabular font-mono text-faint">
-                  출석 {member.totalSessions} · {member.totalGames}게임
+                <span className="flex min-w-0 items-center gap-2 text-caption">
+                  <span className={`min-w-0 truncate ${member.isGuest ? 'text-sky' : 'tabular font-mono text-faint'}`}>
+                    {member.isGuest ? '게스트' : (member.birthDate ?? '생년월일 없음')}
+                  </span>
+                  <span className="tabular ml-auto shrink-0 font-mono text-faint">
+                    출석 {member.totalSessions} · {member.totalGames}게임
+                  </span>
                 </span>
               </span>
             </button>
