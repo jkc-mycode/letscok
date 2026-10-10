@@ -1422,7 +1422,11 @@ function RecommendModal({
                       <GenderMarker gender={player.gender} />
                       {player.isGuest && <span className="text-caption text-sky">G</span>}
                       {player.borrowedFrom && (
-                        <span className="shrink-0 rounded bg-court/15 px-1 py-0.5 text-caption font-medium text-court">
+                        <span
+                          className={`shrink-0 rounded px-1 py-0.5 text-caption font-medium ${
+                            player.borrowedFrom === 'PLAYING' ? 'bg-coral/15 text-coral' : 'bg-amber/15 text-amber'
+                          }`}
+                        >
                           {player.borrowedFrom === 'PLAYING' ? '게임 중' : '대기 조합'}
                         </span>
                       )}
@@ -1687,7 +1691,7 @@ function ReplacePlayerModal({
                   <span
                     className={`shrink-0 rounded px-1.5 py-0.5 text-caption font-medium ${
                       attendance.status === 'PLAYING'
-                        ? 'bg-court/15 text-court'
+                        ? 'bg-coral/15 text-coral'
                         : 'bg-amber/15 text-amber'
                     }`}
                   >
@@ -3346,7 +3350,7 @@ function CourtsManager({
             className="flex items-center gap-2 rounded-xl bg-panel2 p-3"
           >
             <span className="font-bold">{court.courtNo}번 코트</span>
-            {inGame && <span className="text-xs text-court">게임 중</span>}
+            {inGame && <span className="text-xs text-coral">게임 중</span>}
             {/* 공유 토글 — 다른 모임과 콕 걸고 번갈아 쓰는 코트. 게임 중에도 전환 가능(치는 도중 공유가 시작되기도) */}
             <button
               onClick={() => toggleShared(court)}
@@ -3764,7 +3768,7 @@ function SlotPerson({
       <GenderMarker gender={member.gender} />
       {member.isGuest && <span className="shrink-0 text-caption text-sky">G</span>}
       {busyElsewhere && (
-        <span className="min-w-0 truncate rounded bg-court/15 px-1 py-0.5 text-caption font-medium text-court">게임 중</span>
+        <span className="min-w-0 truncate rounded bg-coral/15 px-1 py-0.5 text-caption font-medium text-coral">게임 중</span>
       )}
       {!busyElsewhere && overlap && (
         <span
@@ -3926,7 +3930,7 @@ function SlotFillSheet({
             {place && (
               <span
                 className={`min-w-0 truncate rounded px-1.5 py-0.5 text-caption font-medium ${
-                  attendance.status === 'PLAYING' ? 'bg-court/15 text-court' : 'bg-amber/15 text-amber'
+                  attendance.status === 'PLAYING' ? 'bg-coral/15 text-coral' : 'bg-amber/15 text-amber'
                 }`}
               >
                 {place}
@@ -4308,7 +4312,7 @@ function WaitingRow({
       {busyStatus && (
         <span
           className={`min-w-0 truncate rounded-md px-1.5 py-0.5 text-caption font-medium ${
-            busyStatus === 'PLAYING' ? 'bg-court/15 text-court' : 'bg-amber/15 text-amber'
+            busyStatus === 'PLAYING' ? 'bg-coral/15 text-coral' : 'bg-amber/15 text-amber'
           }`}
         >
           {placeLabel ?? (busyStatus === 'PLAYING' ? '게임 중' : '대기 조합')}

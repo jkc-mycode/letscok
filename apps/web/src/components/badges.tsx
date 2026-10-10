@@ -78,7 +78,7 @@ export function PlayerGrid({
             {isMe && <MeChip />}
             {member.isGuest && <span className="shrink-0 text-caption text-sky">G</span>}
             {isBusy && (
-              <span className="min-w-0 truncate rounded bg-court/15 px-1 py-0.5 text-caption font-medium text-court">
+              <span className="min-w-0 truncate rounded bg-coral/15 px-1 py-0.5 text-caption font-medium text-coral">
                 게임 중
               </span>
             )}
