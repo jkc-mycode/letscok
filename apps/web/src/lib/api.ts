@@ -52,7 +52,7 @@ export class ApiError extends Error {
 }
 
 interface ApiOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   admin?: boolean; // true면 저장된 출입증(없으면 패스코드)을 헤더에 실어 보낸다
   passcode?: string; // 저장 전 검증용 — 지정하면 저장된 값 대신 이 값을 보낸다

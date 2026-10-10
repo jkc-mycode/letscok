@@ -53,6 +53,7 @@ import { arrayMove } from '@dnd-kit/sortable';
 import { CommandSheet } from '@/components/command-sheet';
 import { ConnectionError } from '@/components/connection-error';
 import { SessionReportModal } from '@/components/session-report-modal';
+import { EntryFeeSheet } from '@/components/entry-fee-sheet';
 import { SettlementModal } from '@/components/settlement-modal';
 import { Sheet } from '@/components/sheet';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -318,7 +319,7 @@ const IconCard = () => (
 
 // 폰 더보기 시트의 묶음 — 자주 쓰는 것 위, 관리 기능 아래(잠금·모임 종료는 시트 맨 아래 따로)
 const MORE_GROUPS: { title: string; keys: string[] }[] = [
-  { title: '모임 중', keys: ['code', 'log', 'courts'] },
+  { title: '모임 중', keys: ['code', 'log', 'entryFee', 'courts'] },
   { title: '관리', keys: ['members', 'history', 'birthday', 'settlement', 'help'] },
 ];
 
@@ -371,6 +372,7 @@ function BoardBody({
   const [membersOpen, setMembersOpen] = useState(false); // 모임원 관리 (명단 조회·수정·정리)
   const [birthdayOpen, setBirthdayOpen] = useState(false); // 생일 캘린더
   const [settlementOpen, setSettlementOpen] = useState(false); // 뒤풀이 정산
+  const [entryFeeOpen, setEntryFeeOpen] = useState(false); // 오늘의 입장비(계좌·받았는지 체크)
 
   // 이스터에그 — 대기 인원 헤더의 [수동 체크인] 왼쪽 빈 영역 13연타 (현장 태블릿용 서프라이즈)
   // 연타 카운트는 리렌더와 무관한 ref로, 1초 이상 쉬면 리셋(누적 탭 우연 발동 방지)
@@ -829,6 +831,11 @@ function BoardBody({
       onClick: () => setBirthdayOpen(true),
     },
     {
+      key: 'entryFee',
+      label: '입장비',
+      onClick: () => setEntryFeeOpen(true),
+    },
+    {
       key: 'settlement',
       label: '정산',
       onClick: () => setSettlementOpen(true),
@@ -1222,6 +1229,7 @@ function BoardBody({
       {membersOpen && <MembersManagerModal onClose={() => setMembersOpen(false)} />}
       {birthdayOpen && <BirthdayCalendarModal onClose={() => setBirthdayOpen(false)} />}
       {settlementOpen && <SettlementModal onClose={() => setSettlementOpen(false)} />}
+      {entryFeeOpen && <EntryFeeSheet sessionId={session.id} onClose={() => setEntryFeeOpen(false)} />}
       {cheer && <CheerEasterEgg onDone={closeCheer} />}
       {manualOpen && (
         <ManualCheckInModal
