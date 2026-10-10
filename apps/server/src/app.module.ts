@@ -18,6 +18,7 @@ import { PushModule } from './push/push.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { SessionsModule } from './sessions/sessions.module';
 import { SettlementModule } from './settlement/settlement.module';
+import { EntryFeesModule } from './entry-fees/entry-fees.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { SettlementModule } from './settlement/settlement.module';
     AiCheckInModule,
     AiCommandModule,
     SettlementModule,
+    EntryFeesModule,
   ],
   controllers: [HealthController, AuthController],
   providers: [

@@ -117,6 +117,10 @@ model Session {
   checkInCode String? // 현장 체크인 코드 — 세션 생성 시 발급. 공개 응답엔 절대 미노출(운영진 전용 조회)
   openedAt    DateTime      @default(now())
   closedAt    DateTime?
+  // 오늘의 입장비 — 한 사람이 체육관에 몰아서 내고 나머지가 송금. 계좌는 운영진 전용 응답에만(공개 스냅샷 X)
+  entryFee               Int? // 1인 금액(원)
+  entryPayeeAttendanceId String? // 받는 사람(먼저 낸 사람)의 출석 — 본인은 자동으로 "냄"
+  entryAccount           String? // 받을 계좌 한 줄("국민 123-456-789 홍길동")
 
   courts      Court[]
   attendances Attendance[]
@@ -162,6 +166,7 @@ model Attendance {
   status       AttendanceStatus @default(CHECKED_IN)
   checkedInAt  DateTime         @default(now())
   waitingSince DateTime         @default(now()) // 게임 종료·재입장·콕 확인 시 갱신
+  entryPaidAt  DateTime? // 입장비 받은 시각 — 운영진이 입금 확인 후 체크(운영진 전용 응답에만)
   gamesPlayed  Int              @default(0) // FINISHED 트랜잭션에서 증가
   leftAt       DateTime?
 

@@ -591,3 +591,35 @@ export type SocketClientEvent =
 export interface IJoinSessionPayload {
   sessionId: string;
 }
+
+// ===== 오늘의 입장비 (운영진 전용) =====
+
+export interface IEntryFeeRow {
+  attendanceId: string;
+  memberId: string;
+  name: string;
+  isGuest: boolean;
+  paid: boolean; // 받는 사람 본인은 항상 true
+  paidAt: string | null;
+  isPayee: boolean;
+}
+
+export interface IEntryFee {
+  sessionId: string;
+  date: string; // YYYY-MM-DD — 안내 문구용
+  fee: number | null;
+  payeeAttendanceId: string | null;
+  account: string | null;
+  previous: { fee: number | null; account: string; payeeMemberId: string | null; payeeName: string | null } | null; // 직전 모임 값(불러오기)
+  rows: IEntryFeeRow[];
+}
+
+export interface IUpdateEntryFeeDto {
+  fee: number | null;
+  payeeAttendanceId: string | null;
+  account: string | null;
+}
+
+export interface ISetEntryPaidDto {
+  paid: boolean;
+}
