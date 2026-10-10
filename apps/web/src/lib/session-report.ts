@@ -46,3 +46,10 @@ export function sessionReportText({
   if (closing.trim()) blocks.push(closing.trim());
   return blocks.join('\n\n');
 }
+
+// "11:20" — 게임 시각은 그날 안에서만 의미 있으므로 시:분만
+export function timeLabel(iso: string | null) {
+  if (!iso) return '--:--';
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}

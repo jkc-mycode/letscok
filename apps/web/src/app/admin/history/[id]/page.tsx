@@ -10,6 +10,7 @@ import { EntryFeeSheet } from '@/components/entry-fee-sheet';
 import { SessionReportModal } from '@/components/session-report-modal';
 import { InstallPrompt } from '@/components/install-prompt';
 import { api, ApiError } from '@/lib/api';
+import { timeLabel } from '@/lib/session-report';
 
 export default function HistoryDetailPage() {
   return (
@@ -17,13 +18,6 @@ export default function HistoryDetailPage() {
       <HistoryDetail />
     </AdminGate>
   );
-}
-
-// "11:20" — 게임 시각은 그날 안에서만 의미 있으므로 시:분만
-function timeLabel(iso: string | null) {
-  if (!iso) return '--:--';
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 function HistoryDetail() {

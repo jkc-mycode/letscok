@@ -1,13 +1,71 @@
 'use client';
 
-import type { IHistoryMemberSessionPage } from '@letscok/shared-types';
+import type { IHistoryGamePlayer, IHistoryMemberGame, IHistoryMemberSessionPage } from '@letscok/shared-types';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { GradeBadge } from '@/components/badges';
 import { Sheet } from '@/components/sheet';
 import { api } from '@/lib/api';
+import { timeLabel } from '@/lib/session-report';
 
 const PAGE_SIZE = 50;
 
 type Item = IHistoryMemberSessionPage['items'][number];
+type DayGames = IHistoryMemberGame[] | 'loading' | 'error';
+
+function Names({ players }: { players: IHistoryGamePlayer[] }) {
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+      {players.map((player, i) => (
+        <span key={i} className="flex items-center gap-1">
+          <GradeBadge grade={player.grade} />
+          {player.name}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+// 펼친 날짜의 게임들 — 판마다 코트·시간·같은 팀·상대
+function DayGameList({ games, onRetry }: { games: DayGames; onRetry: () => void }) {
+  if (games === 'loading') return <p className="py-2 text-center text-caption text-dim">불러오는 중...</p>;
+  if (games === 'error') {
+    return (
+      <button onClick={onRetry} className="py-2 text-center text-caption text-coral">
+        불러오지 못했어요 — 눌러서 다시 시도
+      </button>
+    );
+  }
+  if (games.length === 0) return <p className="py-2 text-center text-caption text-faint">완료된 게임이 없어요</p>;
+  return (
+    <div className="flex flex-col gap-1.5">
+      {games.map((game, index) => (
+        <div key={game.id} className="rounded-lg bg-panel px-3 py-2">
+          <div className="flex items-center gap-2 text-caption text-dim">
+            <span className="font-bold text-amber">{index + 1}게임</span>
+            <span>{game.courtNo ? `${game.courtNo}번 코트` : '코트 미상'}</span>
+            <span className="tabular ml-auto font-mono">
+              {timeLabel(game.startedAt)}~{timeLabel(game.endedAt)}
+            </span>
+          </div>
+          {game.teamsKnown ? (
+            <div className="mt-1 grid grid-cols-[3.5rem_1fr] gap-y-1 text-body-sm font-medium">
+              <span className="text-caption text-court">같은 팀</span>
+              <Names players={game.partners} />
+              <span className="text-caption text-coral">상대</span>
+              <Names players={game.opponents} />
+            </div>
+          ) : (
+            // 자리(팀) 기능 전에 한 게임 — 팀을 몰라 함께 뛴 사람만
+            <div className="mt-1 grid grid-cols-[3.5rem_1fr] text-body-sm font-medium">
+              <span className="text-caption text-faint">함께</span>
+              <Names players={game.partners} />
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 // 한 사람의 전체 출석 이력 — 최신순 50개씩, 목록 끝이 보이면 다음 쪽(모임원 관리 목록과 같은 무한 스크롤)
 export function MemberSessionHistorySheet({
@@ -24,6 +82,8 @@ export function MemberSessionHistorySheet({
   const [page, setPage] = useState(0); // 지금까지 받은 쪽 수
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null); // 펼친 날짜(모임) — 한 번에 하나
+  const [dayGames, setDayGames] = useState<Map<string, DayGames>>(new Map()); // 한 번 받은 날은 다시 펼쳐도 그대로
   const listRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -70,6 +130,22 @@ export function MemberSessionHistorySheet({
     return () => observer.disconnect();
   }, [hasMore, loadedCount]);
 
+  const loadDay = (sessionId: string) => {
+    setDayGames((prev) => new Map(prev).set(sessionId, 'loading'));
+    api<IHistoryMemberGame[]>(`/history/members/${memberId}/sessions/${sessionId}/games`, { admin: true })
+      .then((games) => setDayGames((prev) => new Map(prev).set(sessionId, games)))
+      .catch(() => setDayGames((prev) => new Map(prev).set(sessionId, 'error')));
+  };
+  const toggleDay = (sessionId: string) => {
+    if (openId === sessionId) {
+      setOpenId(null);
+      return;
+    }
+    setOpenId(sessionId);
+    const known = dayGames.get(sessionId);
+    if (!known || known === 'error') loadDay(sessionId);
+  };
+
   const totalGames = items?.reduce((sum, item) => sum + item.gamesPlayed, 0) ?? 0;
 
   return (
@@ -92,14 +168,32 @@ export function MemberSessionHistorySheet({
         {items !== null && items.length === 0 && (
           <p className="py-8 text-center text-body-sm text-faint">출석 기록이 없어요</p>
         )}
-        {items?.map((item) => (
-          <div key={item.sessionId} className="flex items-center rounded-xl bg-panel2 px-3 py-2.5 text-sm">
-            <span className="tabular font-mono">{item.date}</span>
-            <span className={`tabular ml-auto font-mono text-xs ${item.gamesPlayed ? 'text-dim' : 'text-faint'}`}>
-              {item.gamesPlayed}게임
-            </span>
-          </div>
-        ))}
+        {items?.map((item) => {
+          const open = openId === item.sessionId;
+          const games = dayGames.get(item.sessionId);
+          return (
+            <div key={item.sessionId} className="shrink-0 rounded-xl bg-panel2">
+              {/* 0게임인 날은 펼칠 게 없다 */}
+              <button
+                onClick={() => toggleDay(item.sessionId)}
+                disabled={item.gamesPlayed === 0}
+                aria-expanded={open}
+                className="flex min-h-11 w-full items-center px-3 text-left text-sm"
+              >
+                <span className="tabular font-mono">{item.date}</span>
+                <span className={`tabular ml-auto font-mono text-xs ${item.gamesPlayed ? 'text-dim' : 'text-faint'}`}>
+                  {item.gamesPlayed}게임
+                </span>
+                {item.gamesPlayed > 0 && <span className="ml-2 w-3 text-xs text-faint">{open ? '▾' : '▸'}</span>}
+              </button>
+              {open && games && (
+                <div className="px-2 pb-2">
+                  <DayGameList games={games} onRetry={() => loadDay(item.sessionId)} />
+                </div>
+              )}
+            </div>
+          );
+        })}
         {error && (
           <button onClick={() => void load(page + 1)} className="py-4 text-center text-body-sm text-coral">
             불러오지 못했어요 — 눌러서 다시 시도
