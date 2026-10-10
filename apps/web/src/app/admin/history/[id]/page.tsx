@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
 import { GenderMarker, GradeBadge } from '@/components/badges';
+import { EntryFeeSheet } from '@/components/entry-fee-sheet';
 import { SessionReportModal } from '@/components/session-report-modal';
 import { InstallPrompt } from '@/components/install-prompt';
 import { api, ApiError } from '@/lib/api';
@@ -30,6 +31,7 @@ function HistoryDetail() {
   const [detail, setDetail] = useState<IHistorySessionDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false); // 마무리 문구 — 모임 종료 직후에 못 만들었을 때 여기서 다시
+  const [entryFeeOpen, setEntryFeeOpen] = useState(false); // 입장비 — 모임이 끝난 뒤 늦게 보낸 사람 체크
 
   useEffect(() => {
     api<IHistorySessionDetail>(`/history/sessions/${id}`, { admin: true })
@@ -51,8 +53,14 @@ function HistoryDetail() {
               출석 {detail.session.attendeeCount}명 · 게임 {detail.session.finishedGameCount}판
             </p>
             <button
-              onClick={() => setReportOpen(true)}
+              onClick={() => setEntryFeeOpen(true)}
               className="ml-auto h-9 shrink-0 rounded-lg bg-court/10 px-3 text-sm font-medium text-court"
+            >
+              입장비
+            </button>
+            <button
+              onClick={() => setReportOpen(true)}
+              className="h-9 shrink-0 rounded-lg bg-court/10 px-3 text-sm font-medium text-court"
             >
               마무리 문구
             </button>
@@ -60,6 +68,7 @@ function HistoryDetail() {
         )}
       </header>
       {reportOpen && <SessionReportModal sessionId={id} onClose={() => setReportOpen(false)} />}
+      {entryFeeOpen && <EntryFeeSheet sessionId={id} onClose={() => setEntryFeeOpen(false)} />}
 
       {error && <p className="py-10 text-center text-sm text-coral">{error}</p>}
       {!error && detail === null && (
