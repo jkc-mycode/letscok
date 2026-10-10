@@ -329,6 +329,19 @@ const SWIPE_LOCK_PX = 8; // 이만큼 움직인 뒤 가로·세로 중 큰 쪽�
 const SWIPE_COMMIT_PX = 70; // 손을 뗐을 때 이 이상(또는 화면 폭 25% 이상) 밀었으면 옆 탭으로
 const SWIPE_EDGE_GUARD = 20; // 화면 가장자리 시작 스와이프는 시스템 제스처에 양보
 
+// 누르자마자 보여 주는 새 조합 — 서버 id가 오기 전 임시 id. realId = 빈칸 조합을 한 명씩 채우는 중인 서버 조합
+const TEMP_GAME_PREFIX = 'temp:';
+type OptimisticGame = { game: IGame; ids: string[]; realId?: string };
+
+// 서버 화면에 같은 조합이 실렸는지 — 같은 4명 조합은 서버가 중복으로 막아서 사람 묶음으로 알아볼 수 있다
+function isSettled(t: OptimisticGame, games: IGame[]): boolean {
+  return games.some((g) => {
+    const ids = (g.players ?? []).map((p) => p.attendanceId);
+    if (g.id === t.realId) return ids.length >= t.ids.length;
+    return g.status === 'QUEUED' && ids.length === t.ids.length && t.ids.every((id) => ids.includes(id));
+  });
+}
+
 function BoardBody({
   snapshot,
   run,
@@ -391,8 +404,64 @@ function BoardBody({
   // pending = 방금 만든 조합(실시간 화면이 도착하기 전까지 대신 보여 줘서 시트가 깜빡 닫히지 않게)
   const [slotTarget, setSlotTarget] = useState<{ gameId: string | null; pending?: IGame } | null>(null);
 
-  const { session, courts, attendances, games } = snapshot;
+  const { session, courts } = snapshot;
   const dragEnabled = useBoardDragEnabled(); // 태블릿 이상 — 자석판처럼 끌어다 놓기
+
+  // 코트 배정·조합 만들기는 누르자마자 보여 준다 — 서버 응답과 화면 새로고침(두 번 오감)을 기다리면 멈춘 것처럼 보였다.
+  // 서버 화면에 실리면 이 표시는 지우고, 실패하면 되돌린다(알림은 runParallel)
+  const [optAssign, setOptAssign] = useState<Map<string, { courtId: string; startedAt: string }>>(new Map());
+  const [optCreated, setOptCreated] = useState<OptimisticGame[]>([]);
+  useEffect(() => {
+    setOptAssign((prev) => {
+      const next = new Map([...prev].filter(([id]) => snapshot.games.find((g) => g.id === id)?.status === 'QUEUED'));
+      return next.size === prev.size ? prev : next;
+    });
+    setOptCreated((prev) => {
+      const next = prev.filter((t) => !isSettled(t, snapshot.games));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [snapshot.games]);
+  const games = useMemo(() => {
+    if (optAssign.size === 0 && optCreated.length === 0) return snapshot.games;
+    const pending = optCreated.filter((t) => !isSettled(t, snapshot.games));
+    const base = snapshot.games
+      // 빈칸 조합을 한 명씩 채우는 중엔 서버 쪽 반쪽 조합 대신 고른 사람 전부를 보여 준다
+      .filter((g) => !pending.some((t) => t.realId === g.id))
+      .map((g) => {
+        const assigned = g.status === 'QUEUED' ? optAssign.get(g.id) : undefined;
+        return assigned ? { ...g, status: 'PLAYING' as const, courtId: assigned.courtId, startedAt: assigned.startedAt } : g;
+      });
+    return [...base, ...pending.map((t) => t.game)];
+  }, [snapshot.games, optAssign, optCreated]);
+  const attendances = useMemo(() => {
+    if (optAssign.size === 0 && optCreated.length === 0) return snapshot.attendances;
+    const playing = new Set(
+      games.filter((g) => optAssign.has(g.id)).flatMap((g) => (g.players ?? []).map((p) => p.attendanceId)),
+    );
+    const matched = new Set(optCreated.flatMap((t) => t.ids));
+    return snapshot.attendances.map((a) =>
+      playing.has(a.id)
+        ? { ...a, status: 'PLAYING' as const }
+        : a.status === 'CHECKED_IN' && matched.has(a.id)
+          ? { ...a, status: 'MATCHED' as const }
+          : a,
+    );
+  }, [snapshot.attendances, games, optAssign, optCreated]);
+  const assignToCourt = useCallback(
+    (gameId: string, courtId: string) => {
+      if (gameId.startsWith(TEMP_GAME_PREFIX) || optAssign.has(gameId)) return; // 아직 서버에 없는 조합·이미 누른 조합
+      setOptAssign((prev) => new Map(prev).set(gameId, { courtId, startedAt: new Date().toISOString() }));
+      void runParallel(() => api(`/games/${gameId}/assign`, { method: 'PATCH', admin: true, body: { courtId } })).then((ok) => {
+        if (ok) return;
+        setOptAssign((prev) => {
+          const next = new Map(prev);
+          next.delete(gameId);
+          return next;
+        });
+      });
+    },
+    [optAssign, runParallel],
+  );
 
 
   const playingByCourt = useMemo(() => {
@@ -404,7 +473,7 @@ function BoardBody({
   }, [games]);
   // 끌어서 바꾼 순서 — 다음 실시간 화면이 오면 버린다(그때는 서버 순서가 같아져 있다)
   const [pendingOrder, setPendingOrder] = useState<string[] | null>(null);
-  useEffect(() => setPendingOrder(null), [games]);
+  useEffect(() => setPendingOrder(null), [snapshot.games]);
   const queuedGames = useMemo(() => {
     const list = games.filter((g) => g.status === 'QUEUED');
     if (!pendingOrder) return list;
@@ -417,7 +486,7 @@ function BoardBody({
     (item: DragItem, target: DropTarget | null) => {
       if (item.kind === 'game') {
         if (target?.kind === 'court') {
-          void run(() => api(`/games/${item.gameId}/assign`, { method: 'PATCH', admin: true, body: { courtId: target.courtId } }));
+          assignToCourt(item.gameId, target.courtId);
           return;
         }
         if (target?.kind !== 'card') return;
@@ -493,7 +562,7 @@ function BoardBody({
         await leaveOrigin();
       });
     },
-    [run, session.id, queuedGames],
+    [run, session.id, queuedGames, assignToCourt],
   );
   // 폰: 조합 카드를 끄는 동안 구역 좌우 넘기기가 끼어들지 않게
   const dndDragging = useRef(false);
@@ -658,27 +727,53 @@ function BoardBody({
   };
 
   // 4명이면 바로 조합, 1~3명이면 빈칸 있는 조합(나머지는 빈칸을 눌러 채우거나 끌어다 놓는다)
-  const createGame = () =>
-    run(async () => {
-      const ids = [...selected];
-      if (ids.length === GAME_SIZE) {
-        await api(`/sessions/${session.id}/games`, {
-          method: 'POST',
-          admin: true,
-          body: { attendanceIds: ids },
-        });
-      } else {
-        const draft = await api<IGame>(`/sessions/${session.id}/games/draft`, {
-          method: 'POST',
-          admin: true,
-          body: { attendanceId: ids[0] },
-        });
-        for (const attendanceId of ids.slice(1)) {
-          await api(`/games/${draft.id}/players`, { method: 'POST', admin: true, body: { attendanceId } });
+  // 누르면 선택을 비우고 대기 조합 맨 끝에 바로 보여 준 뒤 서버에 보낸다
+  const createGame = () => {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    setSelected(new Set());
+    const tempId = `${TEMP_GAME_PREFIX}${Date.now()}`;
+    const temp: IGame = {
+      id: tempId,
+      sessionId: session.id,
+      courtId: null,
+      status: 'QUEUED',
+      queuedAt: new Date().toISOString(),
+      startedAt: null,
+      endedAt: null,
+      queueOrder: null,
+      players: ids.map((attendanceId, slot) => ({
+        id: `${tempId}:${slot}`,
+        gameId: tempId,
+        attendanceId,
+        slot,
+        attendance: snapshot.attendances.find((a) => a.id === attendanceId),
+      })),
+    };
+    setOptCreated((prev) => [...prev, { game: temp, ids }]);
+    const drop = () => setOptCreated((prev) => prev.filter((t) => t.game.id !== tempId));
+    void runParallel(async () => {
+      try {
+        if (ids.length === GAME_SIZE) {
+          await api(`/sessions/${session.id}/games`, { method: 'POST', admin: true, body: { attendanceIds: ids } });
+        } else {
+          const draft = await api<IGame>(`/sessions/${session.id}/games/draft`, {
+            method: 'POST',
+            admin: true,
+            body: { attendanceId: ids[0] },
+          });
+          setOptCreated((prev) => prev.map((t) => (t.game.id === tempId ? { ...t, realId: draft.id } : t)));
+          for (const attendanceId of ids.slice(1)) {
+            await api(`/games/${draft.id}/players`, { method: 'POST', admin: true, body: { attendanceId } });
+          }
         }
+      } catch (error) {
+        drop(); // 실패 — 대기로 되돌린다(빈칸 조합이 일부만 만들어졌으면 그 조합이 서버 화면대로 남는다)
+        throw error;
       }
-      setSelected(new Set());
+      setTimeout(drop, 5000); // 실시간 화면을 못 받아도 새로고침으로 실린 뒤엔 대신 보여 주던 것을 버린다
     });
+  };
 
   const closeSession = () => {
     if (!confirmClose) {
@@ -957,6 +1052,7 @@ function BoardBody({
                 run={run}
                 onMore={(g) => setCardMenuId(g.id)}
                 onPickCourt={(g) => setAssignGameId(g.id)}
+                onAssign={assignToCourt}
                 onFillSlot={(g) => setSlotTarget({ gameId: g.id })}
                 dragEnabled={dragEnabled}
               />
@@ -1012,7 +1108,7 @@ function BoardBody({
                 게임 추천
               </button>
               <button
-                onClick={() => void createGame()}
+                onClick={createGame}
                 disabled={selected.size === 0 || busy}
                 className="h-13 flex-1 rounded-xl bg-amber text-body font-bold text-bg disabled:bg-panel2 disabled:text-faint"
               >
@@ -1158,7 +1254,7 @@ function BoardBody({
         <CourtPickSheet
           game={assignTarget}
           idleCourts={idleCourts}
-          run={run}
+          onAssign={assignToCourt}
           onClose={() => setAssignGameId(null)}
         />
       )}
@@ -3389,12 +3485,12 @@ function CourtsManager({
 function CourtPickSheet({
   game,
   idleCourts,
-  run,
+  onAssign,
   onClose,
 }: {
   game: IGame;
   idleCourts: ICourt[];
-  run: (a: () => Promise<unknown>) => Promise<void>;
+  onAssign: (gameId: string, courtId: string) => void;
   onClose: () => void;
 }) {
   const names = (game.players ?? []).map((p) => p.attendance?.member?.name).filter(Boolean);
@@ -3411,16 +3507,10 @@ function CourtPickSheet({
           return (
             <button
               key={court.id}
-              onClick={() =>
-                void run(async () => {
-                  await api(`/games/${game.id}/assign`, {
-                    method: 'PATCH',
-                    admin: true,
-                    body: { courtId: court.id },
-                  });
-                  onClose();
-                })
-              }
+              onClick={() => {
+                onAssign(game.id, court.id);
+                onClose();
+              }}
               disabled={theirTurn}
               className="flex h-16 flex-col items-center justify-center rounded-xl bg-amber text-lg font-bold text-bg disabled:bg-panel2 disabled:text-faint"
             >
@@ -3956,6 +4046,7 @@ function QueueCard({
   run,
   onMore,
   onPickCourt,
+  onAssign,
   onFillSlot,
   dragEnabled,
 }: {
@@ -3968,6 +4059,7 @@ function QueueCard({
   run: (a: () => Promise<unknown>) => Promise<void>;
   onMore: (game: IGame) => void; // [⋯] — 교체·해체 시트(4명 조합)
   onPickCourt: (game: IGame) => void; // 빈 코트가 여럿이면 코트 고르기 시트
+  onAssign: (gameId: string, courtId: string) => void; // 빈 코트가 하나면 바로 배정
   onFillSlot: (game: IGame) => void; // 빈칸 → 사람 고르기 시트
   dragEnabled: boolean;
 }) {
@@ -4075,15 +4167,7 @@ function QueueCard({
           </span>
         ) : available.length === 1 ? (
           <button
-            onClick={() =>
-              void run(() =>
-                api(`/games/${game.id}/assign`, {
-                  method: 'PATCH',
-                  admin: true,
-                  body: { courtId: available[0].id },
-                }),
-              )
-            }
+            onClick={() => onAssign(game.id, available[0].id)}
             className="h-10 flex-1 rounded-[10px] bg-amber text-body-sm font-bold text-bg"
           >
             {available[0].courtNo}번 코트로 배정
