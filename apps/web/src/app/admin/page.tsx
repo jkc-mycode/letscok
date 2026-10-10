@@ -429,13 +429,21 @@ function BoardBody({
   // pending = 방금 만든 조합(실시간 화면이 도착하기 전까지 대신 보여 줘서 시트가 깜빡 닫히지 않게)
   const [slotTarget, setSlotTarget] = useState<{ gameId: string | null; pending?: IGame } | null>(null);
 
-  const { session, courts } = snapshot;
+  const { session } = snapshot;
   const dragEnabled = useBoardDragEnabled(); // 태블릿 이상 — 자석판처럼 끌어다 놓기
 
   // 코트 배정·조합 만들기는 누르자마자 보여 준다 — 서버 응답과 화면 새로고침(두 번 오감)을 기다리면 멈춘 것처럼 보였다.
   // 서버 화면에 실리면 이 표시는 지우고, 실패하면 되돌린다(알림은 runParallel)
   const [optAssign, setOptAssign] = useState<Map<string, { courtId: string; startedAt: string }>>(new Map());
   const [optCreated, setOptCreated] = useState<OptimisticGame[]>([]);
+  // 게임 종료·대기로도 누르자마자 — 서버 화면에서 그 게임이 더는 '게임 중'이 아니면 지운다
+  const [optEnded, setOptEnded] = useState<Map<string, { kind: 'FINISHED' | 'UNASSIGNED'; at: string }>>(new Map());
+  useEffect(() => {
+    setOptEnded((prev) => {
+      const next = new Map([...prev].filter(([id]) => snapshot.games.find((g) => g.id === id)?.status === 'PLAYING'));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [snapshot.games]);
   useEffect(() => {
     setOptAssign((prev) => {
       const next = new Map([...prev].filter(([id]) => snapshot.games.find((g) => g.id === id)?.status === 'QUEUED'));
@@ -447,31 +455,86 @@ function BoardBody({
     });
   }, [snapshot.games]);
   const games = useMemo(() => {
-    if (optAssign.size === 0 && optCreated.length === 0) return snapshot.games;
+    if (optAssign.size === 0 && optCreated.length === 0 && optEnded.size === 0) return snapshot.games;
     const pending = optCreated.filter((t) => !isSettled(t, snapshot.games));
+    // 대기로 돌린 조합은 서버처럼 대기 조합 맨 뒤
+    let lastOrder = Math.max(0, ...snapshot.games.map((g) => (g.status === 'QUEUED' ? (g.queueOrder ?? 0) : 0)));
     const base = snapshot.games
       // 빈칸 조합을 한 명씩 채우는 중엔 서버 쪽 반쪽 조합 대신 고른 사람 전부를 보여 준다
       .filter((g) => !pending.some((t) => t.realId === g.id))
       .map((g) => {
+        const ended = g.status === 'PLAYING' ? optEnded.get(g.id) : undefined;
+        if (ended?.kind === 'FINISHED') return { ...g, status: 'FINISHED' as const, endedAt: ended.at };
+        if (ended) return { ...g, status: 'QUEUED' as const, courtId: null, startedAt: null, queueOrder: ++lastOrder };
         const assigned = g.status === 'QUEUED' ? optAssign.get(g.id) : undefined;
         return assigned ? { ...g, status: 'PLAYING' as const, courtId: assigned.courtId, startedAt: assigned.startedAt } : g;
       });
-    return [...base, ...pending.map((t) => t.game)];
-  }, [snapshot.games, optAssign, optCreated]);
+    // 대기 조합 목록은 배열 순서대로 그려진다 — 대기로 돌린 조합을 배열에서도 맨 뒤로
+    const back = base.filter((g) => g.status === 'QUEUED' && optEnded.get(g.id)?.kind === 'UNASSIGNED');
+    const rest = back.length ? base.filter((g) => !back.includes(g)) : base;
+    return [...rest, ...back, ...pending.map((t) => t.game)];
+  }, [snapshot.games, optAssign, optCreated, optEnded]);
   const attendances = useMemo(() => {
-    if (optAssign.size === 0 && optCreated.length === 0) return snapshot.attendances;
+    if (optAssign.size === 0 && optCreated.length === 0 && optEnded.size === 0) return snapshot.attendances;
     const playing = new Set(
       games.filter((g) => optAssign.has(g.id)).flatMap((g) => (g.players ?? []).map((p) => p.attendanceId)),
     );
     const matched = new Set(optCreated.flatMap((t) => t.ids));
-    return snapshot.attendances.map((a) =>
-      playing.has(a.id)
-        ? { ...a, status: 'PLAYING' as const }
-        : a.status === 'CHECKED_IN' && matched.has(a.id)
-          ? { ...a, status: 'MATCHED' as const }
-          : a,
+    // 종료: 전원 대기 시간 리셋 + 게임 수 +1, 다른 조합에 들어 있으면 '대기 조합', 아니면 대기로(서버 finish와 같은 규칙)
+    // 대기로: 조합이 그대로 대기 조합에 남으니 전원 '대기 조합'
+    const finished = new Map<string, string>();
+    const unassigned = new Set<string>();
+    for (const g of snapshot.games) {
+      const ended = g.status === 'PLAYING' ? optEnded.get(g.id) : undefined;
+      if (!ended) continue;
+      for (const p of g.players ?? []) {
+        if (ended.kind === 'FINISHED') finished.set(p.attendanceId, ended.at);
+        else unassigned.add(p.attendanceId);
+      }
+    }
+    const inOtherGame = new Set(
+      games.filter((g) => g.status === 'QUEUED' || g.status === 'PLAYING').flatMap((g) => (g.players ?? []).map((p) => p.attendanceId)),
     );
-  }, [snapshot.attendances, games, optAssign, optCreated]);
+    return snapshot.attendances.map((a) => {
+      if (playing.has(a.id)) return { ...a, status: 'PLAYING' as const };
+      const finishedAt = finished.get(a.id);
+      if (finishedAt) {
+        return {
+          ...a,
+          status: inOtherGame.has(a.id) ? ('MATCHED' as const) : ('CHECKED_IN' as const),
+          waitingSince: finishedAt,
+          gamesPlayed: a.gamesPlayed + 1,
+        };
+      }
+      if (unassigned.has(a.id)) return { ...a, status: 'MATCHED' as const };
+      return a.status === 'CHECKED_IN' && matched.has(a.id) ? { ...a, status: 'MATCHED' as const } : a;
+    });
+  }, [snapshot.attendances, snapshot.games, games, optAssign, optCreated, optEnded]);
+  // 종료한 공유 코트는 서버처럼 '다른 모임 차례'로
+  const courts = useMemo(() => {
+    if (optEnded.size === 0) return snapshot.courts;
+    const yielded = new Set(
+      snapshot.games.filter((g) => g.status === 'PLAYING' && optEnded.get(g.id)?.kind === 'FINISHED').map((g) => g.courtId),
+    );
+    return snapshot.courts.map((c) => (c.isShared && yielded.has(c.id) ? { ...c, ourTurn: false } : c));
+  }, [snapshot.courts, snapshot.games, optEnded]);
+  const endGame = useCallback(
+    (gameId: string, kind: 'FINISHED' | 'UNASSIGNED') => {
+      // 이미 누른 게임·배정이 서버에 아직 안 닿은 게임(종료하면 409)은 무시
+      if (optEnded.has(gameId) || optAssign.has(gameId)) return;
+      setOptEnded((prev) => new Map(prev).set(gameId, { kind, at: new Date().toISOString() }));
+      const path = kind === 'FINISHED' ? 'finish' : 'unassign';
+      void runParallel(() => api(`/games/${gameId}/${path}`, { method: 'PATCH', admin: true })).then((ok) => {
+        if (ok) return;
+        setOptEnded((prev) => {
+          const next = new Map(prev);
+          next.delete(gameId);
+          return next;
+        });
+      });
+    },
+    [optEnded, optAssign, runParallel],
+  );
   const assignToCourt = useCallback(
     (gameId: string, courtId: string) => {
       if (gameId.startsWith(TEMP_GAME_PREFIX) || optAssign.has(gameId)) return; // 아직 서버에 없는 조합·이미 누른 조합
@@ -1036,6 +1099,7 @@ function BoardBody({
                 game={playingByCourt.get(court.id)}
                 now={now}
                 run={run}
+                onEnd={endGame}
                 onMore={(g) => setCardMenuId(g.id)}
                 dragEnabled={dragEnabled}
               />
@@ -3590,6 +3654,7 @@ function CourtCard({
   game,
   now,
   run,
+  onEnd,
   onMore,
   dragEnabled,
 }: {
@@ -3597,6 +3662,7 @@ function CourtCard({
   game?: IGame;
   now: number;
   run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
+  onEnd: (gameId: string, kind: 'FINISHED' | 'UNASSIGNED') => void; // 게임 종료·대기로 — 누르자마자 반영
   onMore: (game: IGame) => void; // [⋯] — 다시 알림·교체·취소 시트
   dragEnabled: boolean;
 }) {
@@ -3682,13 +3748,13 @@ function CourtCard({
       {/* 자주 쓰는 둘만 펼치고(게임 종료·대기로) 나머지(다시 알림·교체·취소)는 [⋯] 시트 */}
       <div className="mt-3 flex gap-1.5">
         <button
-          onClick={() => void run(() => api(`/games/${game.id}/finish`, { method: 'PATCH', admin: true }), `game:${game.id}`)}
+          onClick={() => onEnd(game.id, 'FINISHED')}
           className="h-10 flex-1 rounded-[10px] bg-court text-body-sm font-bold text-bg"
         >
           게임 종료
         </button>
         <button
-          onClick={() => void run(() => api(`/games/${game.id}/unassign`, { method: 'PATCH', admin: true }), `game:${game.id}`)}
+          onClick={() => onEnd(game.id, 'UNASSIGNED')}
           title="조합 유지한 채 대기 조합 맨 뒤로 (게임 수 미집계)"
           className="h-10 rounded-[10px] bg-panel px-3 text-body-sm font-medium text-amber"
         >
