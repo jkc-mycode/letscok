@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Put, UseGuards } from '@nestjs/common';
 import { IApiResponse, IEntryFee } from '@letscok/shared-types';
 import { AdminGuard } from '../common/guards/admin.guard';
-import { SetEntryPaidDto, UpdateEntryFeeDto } from './dto/entry-fee.dto';
+import { SetEntryMembersDto, SetEntryPaidDto, UpdateEntryFeeDto } from './dto/entry-fee.dto';
 import { EntryFeesService } from './entry-fees.service';
 
 // 오늘의 입장비 — 계좌·납부 여부가 담겨 전부 운영진 전용
@@ -18,6 +18,11 @@ export class EntryFeesController {
   @Put('sessions/:id/entry-fee')
   async update(@Param('id') id: string, @Body() dto: UpdateEntryFeeDto): Promise<IApiResponse<IEntryFee>> {
     return { success: true, data: await this.entryFees.update(id, dto) };
+  }
+
+  @Patch('sessions/:id/entry-fee/members')
+  async setMembers(@Param('id') id: string, @Body() dto: SetEntryMembersDto): Promise<IApiResponse<IEntryFee>> {
+    return { success: true, data: await this.entryFees.setMembers(id, dto) };
   }
 
   @Patch('attendances/:id/entry-paid')

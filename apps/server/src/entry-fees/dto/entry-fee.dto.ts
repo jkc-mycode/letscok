@@ -1,5 +1,17 @@
-import { ISetEntryPaidDto, IUpdateEntryFeeDto } from '@letscok/shared-types';
-import { IsBoolean, IsInt, IsOptional, IsString, Length, Max, Min, ValidateIf } from 'class-validator';
+import { ISetEntryMembersDto, ISetEntryPaidDto, IUpdateEntryFeeDto } from '@letscok/shared-types';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  Length,
+  Max,
+  Min,
+  ValidateIf,
+} from 'class-validator';
 
 // 입장비 설정 — 비우면(null) 아직 안 정함
 export class UpdateEntryFeeDto implements IUpdateEntryFeeDto {
@@ -24,4 +36,15 @@ export class UpdateEntryFeeDto implements IUpdateEntryFeeDto {
 export class SetEntryPaidDto implements ISetEntryPaidDto {
   @IsBoolean({ message: '받음 여부를 지정해주세요.' })
   paid: boolean;
+}
+
+export class SetEntryMembersDto implements ISetEntryMembersDto {
+  @IsArray()
+  @ArrayMinSize(1, { message: '사람을 골라주세요.' })
+  @ArrayMaxSize(200)
+  @IsString({ each: true })
+  attendanceIds: string[];
+
+  @IsBoolean({ message: '넣을지 뺄지 지정해주세요.' })
+  included: boolean;
 }

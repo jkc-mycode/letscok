@@ -620,6 +620,7 @@ export interface IEntryFeeRow {
   paid: boolean; // 받는 사람 본인은 항상 true
   paidAt: string | null;
   isPayee: boolean;
+  included: boolean; // 입장비 목록에 넣었나 — 받는 사람은 항상 true. false인 행은 [명단에서 고르기] 후보
 }
 
 export interface IEntryFee {
@@ -640,4 +641,10 @@ export interface IUpdateEntryFeeDto {
 
 export interface ISetEntryPaidDto {
   paid: boolean;
+}
+
+// 입장비 목록에 넣기·빼기 — 여러 명을 한 번에
+export interface ISetEntryMembersDto {
+  attendanceIds: string[];
+  included: boolean;
 }

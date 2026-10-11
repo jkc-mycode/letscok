@@ -167,6 +167,7 @@ model Attendance {
   checkedInAt  DateTime         @default(now())
   waitingSince DateTime         @default(now()) // 게임 종료·재입장·콕 확인 시 갱신
   entryPaidAt  DateTime? // 입장비 받은 시각 — 운영진이 입금 확인 후 체크(운영진 전용 응답에만)
+  entryIncluded Boolean  @default(false) // 입장비 목록에 넣었나 — 다 같이 한 사람에게 내는 게 아니라 운영진이 출석자 중 골라 넣는다
   gamesPlayed  Int              @default(0) // FINISHED 트랜잭션에서 증가
   leftAt       DateTime?
 
