@@ -10,6 +10,7 @@ const receiptSchema = z.strictObject({
       z.strictObject({
         name: z.string().describe('영수증에 적힌 품목명 그대로'),
         amount: z.number().int().describe('그 줄의 금액(수량 × 단가). 할인 줄은 음수'),
+        quantity: z.number().int().describe('수량. 적혀 있지 않으면 1'),
         category: z
           .enum(['common', 'alcohol', 'beverage'])
           .describe('alcohol=술, beverage=술이 아닌 음료, common=그 밖의 모든 것(안주·식사·봉사료). 애매하면 common'),
@@ -33,7 +34,8 @@ const MAX_ITEMS = 100;
 const RECEIPT_SYSTEM_PROMPT = `당신은 한국 음식점·술집 영수증 사진에서 품목과 금액을 읽는 판독기입니다.
 
 규칙:
-- 품목 줄마다 name(적힌 그대로), amount(그 줄의 금액 = 수량 × 단가, 원 단위 정수)를 적습니다.
+- 품목 줄마다 name(적힌 그대로), amount(그 줄의 금액 = 수량 × 단가, 원 단위 정수), quantity(수량)를 적습니다.
+- "->중", "->곱빼기", "->1단계"처럼 "->"나 "+"로 시작하는 옵션 줄은 따로 적지 않고, 그 금액을 바로 위 메뉴 줄의 amount에 더합니다. 0원 옵션은 버립니다.
 - 할인 줄은 amount를 음수로 적습니다. 봉사료·추가 요금 줄은 품목으로 적고 category=common입니다.
 - 소계·합계·부가세·받은 금액·거스름돈·카드 승인 정보는 품목이 아니므로 적지 않습니다.
 - category:
@@ -64,7 +66,8 @@ export class SettlementService {
     );
 
     const items = result.items
-      .map((item) => ({ ...item, name: item.name.trim() }))
+      // 수량을 못 읽었거나 0 이하면 1 — 웹의 [N줄로 나누기]는 2 이상일 때만 보인다
+      .map((item) => ({ ...item, name: item.name.trim(), quantity: Math.max(1, item.quantity) }))
       .filter((item) => item.name && item.amount !== 0)
       .slice(0, MAX_ITEMS);
     if (!result.readable || items.length === 0) {

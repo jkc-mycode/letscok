@@ -7,11 +7,12 @@ const aiStub = { isEnabled: () => true, extract: jest.fn() };
 const service = new SettlementService(aiStub as unknown as AiClient);
 
 const image = (text = 'receipt') => ({ buffer: Buffer.from(text), mimetype: 'image/jpeg' });
-const item = (name: string, amount: number, category: 'common' | 'alcohol' | 'beverage' = 'common') => ({
-  name,
-  amount,
-  category,
-});
+const item = (
+  name: string,
+  amount: number,
+  category: 'common' | 'alcohol' | 'beverage' = 'common',
+  quantity = 1,
+) => ({ name, amount, quantity, category });
 
 describe('SettlementService.readReceipt', () => {
   beforeEach(() => aiStub.extract.mockReset());
@@ -45,6 +46,18 @@ describe('SettlementService.readReceipt', () => {
     await expect(service.readReceipt([image()])).resolves.toEqual({
       items: [item('감자튀김', 12000), item('할인', -2000)],
       total: 10000,
+    });
+  });
+
+  it('수량은 그대로 두고, 0 이하로 읽었으면 1로 바꾼다', async () => {
+    aiStub.extract.mockResolvedValue({
+      items: [item('크림짬뽕(곱)', 64000, 'common', 4), item('공깃밥', 1000, 'common', 0)],
+      total: 65000,
+      readable: true,
+    });
+
+    await expect(service.readReceipt([image()])).resolves.toMatchObject({
+      items: [item('크림짬뽕(곱)', 64000, 'common', 4), item('공깃밥', 1000, 'common', 1)],
     });
   });
 

@@ -512,6 +512,7 @@ export type ReceiptCategory = 'common' | 'alcohol' | 'beverage';
 export interface IReceiptItem {
   name: string; // 영수증에 적힌 그대로
   amount: number; // 그 줄의 금액(수량 × 단가), 할인 줄은 음수
+  quantity: number; // 수량(1 이상) — 웹에서 개인 메뉴를 한 개씩 나눌 때 쓴다
   category: ReceiptCategory;
 }
 
