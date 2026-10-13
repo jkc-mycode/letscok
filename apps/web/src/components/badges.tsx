@@ -138,6 +138,11 @@ export function Toast({ toast }: { toast: ToastState }) {
     >
       {toast.tone === 'success' ? '✓ ' : ''}
       {toast.message}
+      {toast.action && (
+        <button onClick={toast.action.onClick} className="tap ml-3 font-bold underline underline-offset-2">
+          {toast.action.label}
+        </button>
+      )}
     </motion.div>
   );
 }

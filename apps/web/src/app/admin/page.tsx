@@ -97,7 +97,7 @@ export default function AdminPage() {
 
 function Board({ onLogout }: { onLogout: () => void }) {
   const { snapshot, noSession, failed, loading, refetch } = useSnapshot();
-  const { toast, showToast } = useToast();
+  const { toast, showToast, hideToast } = useToast();
   const [inFlight, setInFlight] = useState(0); // 진행 중인 요청 수 — 팝업 버튼은 이게 0일 때만 켠다
   const busy = inFlight > 0;
   const lockedKeys = useRef(new Set<string>()); // 같은 대상(게임·조합 순서 등)을 연달아 누른 것만 막는다
@@ -197,6 +197,8 @@ function Board({ onLogout }: { onLogout: () => void }) {
         runParallel={runParallel}
         busy={busy}
         toast={toast}
+        showToast={showToast}
+        hideToast={hideToast}
         onLogout={onLogout}
         onSessionClosed={setReportSessionId}
       />
@@ -380,6 +382,8 @@ function BoardBody({
   runParallel,
   busy,
   toast,
+  showToast,
+  hideToast,
   onLogout,
   onSessionClosed,
 }: {
@@ -388,6 +392,8 @@ function BoardBody({
   runParallel: (a: () => Promise<unknown>) => Promise<boolean>;
   busy: boolean;
   toast: ToastState | null;
+  showToast: ReturnType<typeof useToast>['showToast'];
+  hideToast: () => void;
   onLogout: () => void;
   onSessionClosed: (sessionId: string) => void; // 모임 종료 성공 → 마무리 문구 띄우기
 }) {
@@ -562,16 +568,29 @@ function BoardBody({
       if (optEnded.has(gameId) || optAssign.has(gameId)) return;
       setOptEnded((prev) => new Map(prev).set(gameId, { kind, at: new Date().toISOString() }));
       const path = kind === 'FINISHED' ? 'finish' : 'unassign';
-      void runParallel(() => api(`/games/${gameId}/${path}`, { method: 'PATCH', admin: true })).then((ok) => {
-        if (ok) return;
+      const clearEnded = () =>
         setOptEnded((prev) => {
           const next = new Map(prev);
           next.delete(gameId);
           return next;
         });
+      const courtNo = snapshot.courts.find((c) => c.id === games.find((g) => g.id === gameId)?.courtId)?.courtNo;
+      void runParallel(() => api(`/games/${gameId}/${path}`, { method: 'PATCH', admin: true })).then((ok) => {
+        if (!ok) return clearEnded();
+        if (kind !== 'FINISHED') return;
+        // 잘못 누른 종료는 보통 바로 알아챈다 — 10초 동안 [되돌리기](서버는 30초까지 받는다)
+        showToast(`${courtNo ? `${courtNo}번 코트 ` : ''}게임 종료`, 'success', 10_000, {
+          label: '되돌리기',
+          onClick: () => {
+            hideToast();
+            // 종료 덧씌움은 서버 화면이 '게임 중'인 동안 남는다 — 되돌린 게임이 계속 끝난 것처럼 보이지 않게 먼저 지운다
+            clearEnded();
+            void run(() => api(`/games/${gameId}/reopen`, { method: 'PATCH', admin: true }), `game:${gameId}`);
+          },
+        });
       });
     },
-    [optEnded, optAssign, runParallel],
+    [optEnded, optAssign, runParallel, run, snapshot.courts, games, showToast, hideToast],
   );
   const gamesRef = useRef(games);
   gamesRef.current = games;
