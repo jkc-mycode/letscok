@@ -31,6 +31,9 @@ const GAME_INCLUDE = {
   players: { include: { attendance: { include: { member: true } } } },
 } as const;
 
+// 종료 되돌리기 허용 시간 — 웹 토스트는 10초, 느린 망에서 늦게 닿는 요청까지 받도록 여유를 둔다
+const REOPEN_WINDOW_MS = 30_000;
+
 // 코트 [다시 알림] — 같은 게임을 30초 안에 다시 보내면 막는다 (운영진 호출과 같은 기준)
 const renotifyCooldown = createCooldown(30_000);
 
@@ -243,6 +246,13 @@ export class GamesService {
         where: { id: court.id },
         data: { status: 'IDLE', ...(court.isShared ? { ourTurn: false } : {}) },
       });
+      // 대기 시간을 덮어쓰기 전 값을 남겨 둔다 — 종료 되돌리기가 되살린다
+      for (const player of game.players) {
+        await tx.gamePlayer.update({
+          where: { id: player.id },
+          data: { waitingSinceBefore: player.attendance.waitingSince },
+        });
+      }
       // 전원 공통: 방금 뛰었으므로 대기 시간 리셋(대기 목록 맨 뒤) + 게임 횟수 +1
       await tx.attendance.updateMany({
         where: { id: { in: attendanceIds } },
@@ -270,6 +280,60 @@ export class GamesService {
     });
     this.realtime.broadcastSnapshot(game.sessionId);
     return toGameResponse(finished);
+  }
+
+  // 종료 되돌리기: [게임 종료]를 잘못 눌렀을 때 직후에만 — 코트·게임 수·대기 시간·상태를 종료 전으로
+  // 그사이 코트에 다른 게임이 들어갔거나 4명 중 누가 다른 게임·휴식·퇴장으로 갔으면 409
+  async reopen(id: string): Promise<IGame> {
+    const game = await this.findGameOrThrow(id);
+    if (game.status !== 'FINISHED' || !game.endedAt || !game.courtId) {
+      throw new ConflictException('끝난 게임만 되돌릴 수 있어요.');
+    }
+    await this.sessionsService.findOpenSessionOrThrow(game.sessionId);
+    if (Date.now() - game.endedAt.getTime() > REOPEN_WINDOW_MS) {
+      throw new ConflictException('종료한 지 오래돼 되돌릴 수 없어요.');
+    }
+    const moved = game.players.filter(
+      (player) => player.attendance.status !== 'CHECKED_IN' && player.attendance.status !== 'MATCHED',
+    );
+    if (moved.length > 0) {
+      const names = moved.map((player) => player.attendance.member.name).join(', ');
+      throw new ConflictException(`${names} 님이 이미 다른 상태라 되돌릴 수 없어요.`);
+    }
+    const courtId = game.courtId;
+
+    const reopened = await this.prisma.$transaction(async (tx) => {
+      // 두 기기가 동시에 눌러도 한 번만 — 아직 FINISHED일 때만 바꾼다
+      const flipped = await tx.game.updateMany({
+        where: { id, status: 'FINISHED' },
+        data: { status: 'PLAYING', endedAt: null },
+      });
+      if (flipped.count === 0) throw new ConflictException('끝난 게임만 되돌릴 수 있어요.');
+      const court = await tx.court.findUniqueOrThrow({ where: { id: courtId } });
+      const occupied = await tx.game.count({ where: { courtId, status: 'PLAYING', id: { not: id } } });
+      if (court.deletedAt || occupied > 0) {
+        throw new ConflictException(`${court.courtNo}번 코트에 이미 다른 게임이 들어가 되돌릴 수 없어요.`);
+      }
+      // 공유 코트는 종료 때 넘긴 차례도 다시 우리 것으로
+      await tx.court.update({
+        where: { id: courtId },
+        data: { status: 'IN_GAME', ...(court.isShared ? { ourTurn: true } : {}) },
+      });
+      for (const player of game.players) {
+        await tx.attendance.update({
+          where: { id: player.attendanceId },
+          data: {
+            status: 'PLAYING',
+            gamesPlayed: { decrement: 1 },
+            ...(player.waitingSinceBefore ? { waitingSince: player.waitingSinceBefore } : {}),
+          },
+        });
+      }
+      await tx.gamePlayer.updateMany({ where: { gameId: id }, data: { waitingSinceBefore: null } });
+      return tx.game.findUniqueOrThrow({ where: { id }, include: GAME_INCLUDE });
+    });
+    this.realtime.broadcastSnapshot(game.sessionId);
+    return toGameResponse(reopened);
   }
 
   // 배정 취소: 조합은 유지한 채 게임 중 → 대기 조합(큐 맨 뒤)으로 되돌린다

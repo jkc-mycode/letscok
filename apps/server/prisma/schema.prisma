@@ -213,6 +213,7 @@ model GamePlayer {
   gameId       String
   attendanceId String
   slot         Int? // 게임 안 자리 0~3 — 0·1이 한 팀, 2·3이 상대. null = 도입 전 데이터(들어온 순서로 자리를 본다)
+  waitingSinceBefore DateTime? // 종료 직전 대기 시작 시각 — 종료가 '지금'으로 덮어써서, 종료 되돌리기 때 되살린다
 
   game       Game       @relation(fields: [gameId], references: [id])
   attendance Attendance @relation(fields: [attendanceId], references: [id])

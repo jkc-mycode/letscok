@@ -413,6 +413,82 @@ describe('finish', () => {
   });
 });
 
+// ===== reopen (종료 되돌리기) =====
+
+describe('reopen', () => {
+  async function playAndFinish(sessionId: string, courtId: string) {
+    const players = await seedFour(sessionId);
+    const [a, b, c, d] = players;
+    const game = await service.create(sessionId, { attendanceIds: [a.id, b.id, c.id, d.id] });
+    await service.assign(game.id, { courtId });
+    await service.finish(game.id);
+    return { game, players };
+  }
+
+  it('게임 중으로 복귀 — 게임 수 −1, 대기 시작 시각 원래대로, 코트 게임 중, 공유 코트는 우리 차례로', async () => {
+    const session = await seedSession();
+    const court = await prisma.court.create({
+      data: { sessionId: session.id, courtNo: 3, isShared: true, ourTurn: true },
+    });
+    const { game, players } = await playAndFinish(session.id, court.id);
+
+    const reopened = await service.reopen(game.id);
+
+    expect(reopened.status).toBe('PLAYING');
+    expect(reopened.endedAt).toBeNull();
+    for (const att of players) {
+      const row = await prisma.attendance.findUniqueOrThrow({ where: { id: att.id } });
+      expect(row.status).toBe('PLAYING');
+      expect(row.gamesPlayed).toBe(0);
+      expect(row.waitingSince.getTime()).toBe(att.waitingSince.getTime());
+    }
+    const courtAfter = await prisma.court.findUniqueOrThrow({ where: { id: court.id } });
+    expect(courtAfter.status).toBe('IN_GAME');
+    expect(courtAfter.ourTurn).toBe(true);
+  });
+
+  it('두 번 되돌리면 두 번째는 409', async () => {
+    const session = await seedSession();
+    const court = await seedCourt(session.id);
+    const { game } = await playAndFinish(session.id, court.id);
+
+    await service.reopen(game.id);
+    await expect(service.reopen(game.id)).rejects.toThrow(ConflictException);
+  });
+
+  it('그 코트에 다른 게임이 들어갔으면 409', async () => {
+    const session = await seedSession();
+    const court = await seedCourt(session.id);
+    const { game } = await playAndFinish(session.id, court.id);
+    const [e, f, g, h] = await seedFour(session.id);
+    const next = await service.create(session.id, { attendanceIds: [e.id, f.id, g.id, h.id] });
+    await service.assign(next.id, { courtId: court.id });
+
+    await expect(service.reopen(game.id)).rejects.toThrow('이미 다른 게임이 들어가');
+    expect((await prisma.game.findUniqueOrThrow({ where: { id: game.id } })).status).toBe('FINISHED');
+  });
+
+  it('4명 중 누가 다른 게임에 들어갔으면 409', async () => {
+    const session = await seedSession();
+    const [court, court2] = [await seedCourt(session.id, 1), await seedCourt(session.id, 2)];
+    const { game, players } = await playAndFinish(session.id, court.id);
+    const [e, f, g] = await seedFour(session.id);
+    const next = await service.create(session.id, { attendanceIds: [players[0].id, e.id, f.id, g.id] });
+    await service.assign(next.id, { courtId: court2.id });
+
+    await expect(service.reopen(game.id)).rejects.toThrow(ConflictException);
+  });
+
+  it('종료한 지 30초가 지났으면 409', async () => {
+    const session = await seedSession();
+    const court = await seedCourt(session.id);
+    const { game } = await playAndFinish(session.id, court.id);
+    await prisma.game.update({ where: { id: game.id }, data: { endedAt: new Date(Date.now() - 31_000) } });
+
+    await expect(service.reopen(game.id)).rejects.toThrow('오래돼');
+  });
+});
+
 // ===== unassign (대기로) =====
 
 describe('unassign', () => {
