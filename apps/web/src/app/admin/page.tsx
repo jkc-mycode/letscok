@@ -397,6 +397,7 @@ function BoardBody({
   const [courtsOpen, setCourtsOpen] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
   const [recommendOpen, setRecommendOpen] = useState(false);
+  const [recommendFillId, setRecommendFillId] = useState<string | null>(null); // 짜는 중 조합의 빈자리 추천
   const [codeOpen, setCodeOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false); // 운영진 수동 체크인 (사전 등록·현장 대리 등 예외용)
@@ -1284,6 +1285,7 @@ function BoardBody({
                 onAssign={assignToCourt}
                 onMove={moveQueue}
                 onFillSlot={(g) => setSlotTarget({ gameId: g.id })}
+                onRecommend={(g) => setRecommendFillId(g.id)}
                 dragEnabled={dragEnabled}
               />
             ))}
@@ -1449,6 +1451,23 @@ function BoardBody({
           onClose={() => setRecommendOpen(false)}
         />
       )}
+      {/* 빈자리 추천 — 실시간 화면 기준으로 찾아서, 조합이 다 차거나 없어지면 저절로 닫힌다 */}
+      {(() => {
+        const fillGame = recommendFillId ? queuedGames.find((g) => g.id === recommendFillId) : undefined;
+        return (
+          fillGame &&
+          !isFullGame(fillGame) && (
+            <RecommendModal
+              sessionId={session.id}
+              attendances={attendances}
+              fillGame={fillGame}
+              run={run}
+              busy={busy}
+              onClose={() => setRecommendFillId(null)}
+            />
+          )
+        );
+      })()}
       {codeOpen && <CheckInCodeModal onClose={() => setCodeOpen(false)} />}
       {membersOpen && <MembersManagerModal onClose={() => setMembersOpen(false)} />}
       {birthdayOpen && <BirthdayCalendarModal onClose={() => setBirthdayOpen(false)} />}
@@ -1640,12 +1659,14 @@ function emptyMessage(category: RecommendationCategory, attendances: IAttendance
 function RecommendModal({
   sessionId,
   attendances,
+  fillGame,
   run,
   busy,
   onClose,
 }: {
   sessionId: string;
   attendances: IAttendance[];
+  fillGame?: IGame; // 있으면 이 짜는 중 조합의 사람을 고정하고 빈자리만 추천
   run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   busy: boolean;
   onClose: () => void;
@@ -1653,6 +1674,8 @@ function RecommendModal({
   const [category, setCategory] = useState<RecommendationCategory>('ALL');
   const [candidates, setCandidates] = useState<IGameRecommendation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const fixedIds = (fillGame?.players ?? []).map((p) => p.attendanceId);
+  const fixedKey = fixedIds.join(','); // 조합 사람이 바뀌면 다시 추천
 
   const load = useCallback(async () => {
     setCandidates(null);
@@ -1660,38 +1683,47 @@ function RecommendModal({
     try {
       setCandidates(
         await api<IGameRecommendation[]>(
-          `/sessions/${sessionId}/game-recommendations?category=${category}`,
+          `/sessions/${sessionId}/game-recommendations?category=${category}${fixedKey ? `&fixed=${fixedKey}` : ''}`,
           { admin: true },
         ),
       );
     } catch (e) {
       setError(e instanceof ApiError ? e.message : '추천을 불러오지 못했습니다.');
     }
-  }, [sessionId, category]);
+  }, [sessionId, category, fixedKey]);
   useEffect(() => {
     void load();
   }, [load]);
 
   // 추천은 참고용 초안 — 대기 추가는 기존 게임 생성 API 그대로
+  // 빈자리 추천은 조합에 없는 사람만 기존 [빈칸 채우기] API로 한 명씩 넣는다
   const addToQueue = (rec: IGameRecommendation) =>
     run(async () => {
-      await api(`/sessions/${sessionId}/games`, {
-        method: 'POST',
-        admin: true,
-        body: { attendanceIds: rec.players.map((p) => p.attendanceId) },
-      });
+      if (fillGame) {
+        for (const p of rec.players.filter((p) => !fixedIds.includes(p.attendanceId))) {
+          await api(`/games/${fillGame.id}/players`, { method: 'POST', admin: true, body: { attendanceId: p.attendanceId } });
+        }
+      } else {
+        await api(`/sessions/${sessionId}/games`, {
+          method: 'POST',
+          admin: true,
+          body: { attendanceIds: rec.players.map((p) => p.attendanceId) },
+        });
+      }
       onClose();
-    });
+    }, fillGame && `game:${fillGame.id}`);
 
   return (
     <Sheet
-      ariaLabel="게임 추천"
+      ariaLabel={fillGame ? '빈자리 추천' : '게임 추천'}
       onClose={onClose}
       width="sm:max-w-4xl"
       bodyClassName="flex min-h-0 flex-1 flex-col"
       header={
         <>
-          <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">게임 추천</h2>
+          <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">
+            {fillGame ? '빈자리 추천' : '게임 추천'}
+          </h2>
           <p className="min-w-0 text-xs text-faint">참고용이에요 — 넣을지는 운영진 마음!</p>
           <button
             onClick={() => void load()}
@@ -1752,6 +1784,9 @@ function RecommendModal({
                       {/* 이름이 핵심 정보 — 뱃지·통계에 밀려도 최소 한글 4자는 보장 */}
                       <span className="min-w-[4em] truncate font-medium">{player.name}</span>
                       <GenderMarker gender={player.gender} />
+                      {fixedIds.includes(player.attendanceId) && (
+                        <span className="shrink-0 rounded bg-panel px-1 py-0.5 text-caption text-faint">이미 넣음</span>
+                      )}
                       {player.isGuest && <span className="text-caption text-sky">G</span>}
                       {player.borrowedFrom && (
                         <span
@@ -1785,7 +1820,7 @@ function RecommendModal({
                   disabled={busy}
                   className="mt-3 h-11 rounded-lg bg-court text-sm font-bold text-bg disabled:opacity-50"
                 >
-                  대기에 추가
+                  {fillGame ? '빈자리에 넣기' : '대기에 추가'}
                 </button>
               </div>
             );
@@ -4388,6 +4423,7 @@ function QueueCard({
   onAssign,
   onMove,
   onFillSlot,
+  onRecommend,
   dragEnabled,
 }: {
   game: IGame;
@@ -4403,6 +4439,7 @@ function QueueCard({
   onAssign: (gameId: string, courtId: string) => void; // 빈 코트가 하나면 바로 배정
   onMove: (gameId: string, delta: -1 | 1) => void; // ▲▼ 순서 — 누르자마자 반영
   onFillSlot: (game: IGame) => void; // 빈칸 → 사람 고르기 시트
+  onRecommend: (game: IGame) => void; // 짜는 중 조합 → 빈자리 추천
   dragEnabled: boolean;
 }) {
   const full = isFullGame(game);
@@ -4480,9 +4517,12 @@ function QueueCard({
       {/* 4명 조합: 배정 + [⋯](교체·해체) / 빈칸 조합: 할 일이 해체뿐이라 바로 둔다 */}
       <div className="mt-3 flex gap-1.5">
         {!full ? (
-          <span className="flex h-10 flex-1 items-center justify-center rounded-[10px] bg-panel px-2 text-center text-caption text-faint">
-            {GAME_SIZE - (game.players?.length ?? 0)}명 더 필요
-          </span>
+          <button
+            onClick={() => onRecommend(game)}
+            className="h-10 flex-1 rounded-[10px] bg-court/10 px-2 text-body-sm font-bold text-court"
+          >
+            빈자리 {GAME_SIZE - (game.players?.length ?? 0)}명 추천
+          </button>
         ) : busyNames.length > 0 ? (
           <span className="flex h-10 flex-1 items-center justify-center rounded-[10px] bg-panel px-2 text-center text-caption text-faint">
             {busyNames.join(', ')} 게임 종료 후 배정 가능
