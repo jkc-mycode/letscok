@@ -26,7 +26,6 @@ import {
   ReorderGamesDto,
   RecommendGamesQueryDto,
   ReplaceGamePlayerDto,
-  UpdateGameOrderDto,
 } from './dto/game.dtos';
 import { GamesService } from './games.service';
 import { RecommendationsService } from './recommendations.service';
@@ -163,13 +162,5 @@ export class GamesController {
   @Patch('games/:id/slots')
   async moveSlot(@Param('id') id: string, @Body() dto: MoveGameSlotDto): Promise<IApiResponse<IGame>> {
     return { success: true, data: await this.gamesService.moveSlot(id, dto) };
-  }
-
-  @Patch('games/:id/order')
-  async updateOrder(
-    @Param('id') id: string,
-    @Body() dto: UpdateGameOrderDto,
-  ): Promise<IApiResponse<IGame>> {
-    return { success: true, data: await this.gamesService.updateOrder(id, dto) };
   }
 }

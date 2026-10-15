@@ -23,7 +23,6 @@ import {
   CreateGameDto,
   ReorderGamesDto,
   ReplaceGamePlayerDto,
-  UpdateGameOrderDto,
 } from './dto/game.dtos';
 
 // 게임 조회 시 항상 플레이어+회원까지 포함 (보드 렌더링 단위)
@@ -689,21 +688,6 @@ export class GamesService {
       throw new HttpException('방금 알렸어요. 30초 뒤에 다시 시도해주세요.', HttpStatus.TOO_MANY_REQUESTS);
     }
     return { devices: await this.push.resendGame(id) };
-  }
-
-  // 대기 조합 순서 변경 — 클라이언트가 계산한 목표 순서를 그대로 반영
-  async updateOrder(id: string, dto: UpdateGameOrderDto): Promise<IGame> {
-    const game = await this.findGameOrThrow(id);
-    if (game.status !== 'QUEUED') {
-      throw new ConflictException('대기 조합 상태의 게임만 순서를 바꿀 수 있습니다.');
-    }
-    const updated = await this.prisma.game.update({
-      where: { id },
-      data: { queueOrder: dto.queueOrder },
-      include: GAME_INCLUDE,
-    });
-    this.realtime.broadcastSnapshot(game.sessionId);
-    return toGameResponse(updated);
   }
 
   // 같은 모임의 조합 변경을 한 줄로 세운다(트랜잭션이 끝나면 풀림) — 동시에 눌러도 중복·5명째가 생기지 않게

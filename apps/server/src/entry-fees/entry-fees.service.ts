@@ -1,9 +1,8 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { IEntryFee } from '@letscok/shared-types';
+import { toDateString } from '../common/utils/date.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { SetEntryMembersDto, SetEntryPaidDto, UpdateEntryFeeDto } from './dto/entry-fee.dto';
-
-const toDateString = (date: Date) => date.toISOString().slice(0, 10);
 
 // 오늘의 입장비 — 한 사람이 몰아서 내고 나머지가 송금, 운영진이 받은 사람을 체크한다
 // 다 같이 한 사람에게 내는 게 아니라(각자 내는 사람도 있다) 운영진이 출석자 중 고른 사람만 목록에 든다(entryIncluded)

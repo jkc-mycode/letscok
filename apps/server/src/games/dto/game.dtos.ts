@@ -6,7 +6,6 @@ import {
   IReorderGamesDto,
   IMoveGameSlotDto,
   IReplaceGamePlayerDto,
-  IUpdateGameOrderDto,
   RecommendationCategory,
 } from '@letscok/shared-types';
 import {
@@ -47,13 +46,6 @@ export class RecommendGamesQueryDto {
 export class AssignGameDto implements IAssignGameDto {
   @IsString({ message: '배정할 코트를 선택해주세요.' })
   courtId: string;
-}
-
-// 대기 조합 순서 변경 — 클라이언트가 계산한 목표 queueOrder를 그대로 반영 (이웃과 맞교환)
-export class UpdateGameOrderDto implements IUpdateGameOrderDto {
-  @IsInt({ message: '순서 값이 올바르지 않습니다.' })
-  @Min(1, { message: '순서는 1 이상이어야 합니다.' })
-  queueOrder: number;
 }
 
 // 빈칸 있는 조합 시작 — 첫 사람의 출석 id

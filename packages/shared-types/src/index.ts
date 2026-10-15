@@ -231,10 +231,6 @@ export interface IAssignGameDto {
   courtId: string;
 }
 
-export interface IUpdateGameOrderDto {
-  queueOrder: number;
-}
-
 // 빈칸 있는 조합(1~3명) — 관제판에서 사람을 한 명씩 끌어다 놓아 짠다. 4명이 차면 일반 조합
 // 모임원 앱·코트 배정·빈 코트 채우기는 4명 다 찬 조합만 다룬다
 export const GAME_SIZE = 4;
@@ -265,10 +261,6 @@ export interface IReorderGamesDto {
 export interface IReplaceGamePlayerDto {
   outAttendanceId: string; // 빠지는 사람 (이 게임의 플레이어)
   inAttendanceId: string; // 들어오는 사람
-}
-
-export interface IAdminLoginDto {
-  passcode: string;
 }
 
 // ===== 게임 추천 (GET /sessions/:id/game-recommendations) =====
