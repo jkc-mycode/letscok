@@ -8,6 +8,7 @@ import {
   IHistorySessionListResponse,
 } from '@letscok/shared-types';
 import { toDateString } from '../common/utils/date.util';
+import { memberAttendanceStats } from '../common/utils/member-stats';
 import { withSlots } from '../common/utils/game-slots';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -118,37 +119,15 @@ export class HistoryService {
       since.setMonth(since.getMonth() - months);
     }
 
-    const [members, attendances] = await Promise.all([
+    const [members, byMember] = await Promise.all([
       // 삭제(익명화 포함) 회원 제외 — 명단 삭제 기능이 생기며 표면화된 기존 버그 수정.
       // 지난 모임 상세의 게임 기록에는 계속 남는다(기록 보존, attendance 경유라 이 필터와 무관)
       this.prisma.member.findMany({
         where: { deletedAt: null },
         orderBy: { name: 'asc' },
       }),
-      this.prisma.attendance.findMany({
-        where: since ? { session: { date: { gte: since } } } : {},
-        include: { session: { select: { date: true } } },
-      }),
+      memberAttendanceStats(this.prisma, { since }),
     ]);
-
-    // 멤버별 집계 — 규모(수십 명 × 주 1~2회)상 DB groupBy 없이 병합으로 충분
-    const byMember = new Map<
-      string,
-      { totalSessions: number; totalGames: number; lastDate: Date | null }
-    >();
-    for (const attendance of attendances) {
-      const entry = byMember.get(attendance.memberId) ?? {
-        totalSessions: 0,
-        totalGames: 0,
-        lastDate: null,
-      };
-      entry.totalSessions += 1;
-      entry.totalGames += attendance.gamesPlayed;
-      if (!entry.lastDate || attendance.session.date > entry.lastDate) {
-        entry.lastDate = attendance.session.date;
-      }
-      byMember.set(attendance.memberId, entry);
-    }
 
     return members
       .map((member) => {

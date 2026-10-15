@@ -15,6 +15,7 @@ import {
 import { normalizeName } from '../common/utils/name.util';
 import { toMemberResponse, toPublicMemberResponse } from '../common/mappers/entity.mappers';
 import { toDateString } from '../common/utils/date.util';
+import { memberAttendanceStats } from '../common/utils/member-stats';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { CreateMemberDto } from './dto/create-member.dto';
@@ -59,11 +60,11 @@ export class MembersService {
       take: 20, // 한 글자 검색 등 과다 결과 방지
     });
     // 최근 출석순 정렬 — 자주 오는 사람이 위로, 한 번 오고 만 게스트는 아래로 (게스트 일괄 숨김 대신 택한 해법)
-    const lastDates = await this.lastAttendedByMember(members.map((m) => m.id));
+    const stats = await memberAttendanceStats(this.prisma, { memberIds: members.map((m) => m.id) });
     return members
       .sort((a, b) => {
-        const dateA = lastDates.get(a.id)?.getTime() ?? 0;
-        const dateB = lastDates.get(b.id)?.getTime() ?? 0;
+        const dateA = stats.get(a.id)?.lastDate.getTime() ?? 0;
+        const dateB = stats.get(b.id)?.lastDate.getTime() ?? 0;
         if (dateA !== dateB) return dateB - dateA;
         return a.name.localeCompare(b.name, 'ko');
       })
@@ -122,20 +123,9 @@ export class MembersService {
     );
   }
 
-  // 회원 + 출석 집계, 최근 출석순 — 출석 기록을 다 불러오지 않고 DB에서 사람별로 한 번에 집계한다(기록이 쌓여도 가볍게)
+  // 회원 + 출석 집계, 최근 출석순
   private async summaries(): Promise<IMemberSummary[]> {
-    const [members, stats] = await Promise.all([
-      this.prisma.member.findMany(),
-      this.prisma.$queryRaw<{ memberId: string; totalSessions: number; totalGames: number; lastDate: Date }[]>`
-        SELECT a."memberId" AS "memberId",
-               COUNT(*)::int AS "totalSessions",
-               COALESCE(SUM(a."gamesPlayed"), 0)::int AS "totalGames",
-               MAX(s."date") AS "lastDate"
-        FROM attendances a
-        JOIN sessions s ON s.id = a."sessionId"
-        GROUP BY a."memberId"`,
-    ]);
-    const byMember = new Map(stats.map((row) => [row.memberId, row]));
+    const [members, byMember] = await Promise.all([this.prisma.member.findMany(), memberAttendanceStats(this.prisma)]);
 
     return members
       .map((member) => {
@@ -359,23 +349,6 @@ export class MembersService {
       throw new NotFoundException('등록되지 않은 모임원입니다.');
     }
     return member;
-  }
-
-  // 회원별 마지막 출석 세션 날짜 — 검색 정렬용 (N+1 없이 한 번에)
-  private async lastAttendedByMember(memberIds: string[]) {
-    if (memberIds.length === 0) return new Map<string, Date>();
-    const rows = await this.prisma.attendance.findMany({
-      where: { memberId: { in: memberIds } },
-      include: { session: { select: { date: true } } },
-    });
-    const map = new Map<string, Date>();
-    for (const row of rows) {
-      const current = map.get(row.memberId);
-      if (!current || row.session.date > current) {
-        map.set(row.memberId, row.session.date);
-      }
-    }
-    return map;
   }
 }
 
