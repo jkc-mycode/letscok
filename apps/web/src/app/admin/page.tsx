@@ -344,7 +344,7 @@ const IconCard = () => (
 
 // 폰 더보기 시트의 묶음 — 자주 쓰는 것 위, 관리 기능 아래(잠금·모임 종료는 시트 맨 아래 따로)
 const MORE_GROUPS: { title: string; keys: string[] }[] = [
-  { title: '모임 중', keys: ['code', 'log', 'entryFee', 'courts'] },
+  { title: '모임 중', keys: ['code', 'log', 'entryFee', 'courts', 'display'] },
   { title: '관리', keys: ['members', 'history', 'birthday', 'settlement', 'help'] },
 ];
 
@@ -1089,6 +1089,12 @@ function BoardBody({
       key: 'courts',
       label: '코트 관리',
       onClick: () => setCourtsOpen(true),
+    },
+    {
+      key: 'display',
+      label: '전광판 열기 — 모임원에게 보여 줄 화면',
+      // 새 창(설치본이면 브라우저)으로 — 관제판은 그대로 두고 태블릿·TV에 띄운다. 운영진 로그인 없이 열리는 보기 전용 화면
+      onClick: () => window.open('/board', '_blank', 'noopener'),
     },
     {
       key: 'help',
