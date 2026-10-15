@@ -110,20 +110,9 @@ export class GamesService {
       throw new ConflictException('4명이 다 차야 코트에 배정할 수 있어요.');
     }
 
-    const court = await this.prisma.court.findFirst({
-      where: { id: dto.courtId, sessionId: game.sessionId, deletedAt: null },
-    });
-    if (!court) {
-      throw new NotFoundException('등록된 코트를 찾을 수 없습니다.');
-    }
+    const court = await this.findOurCourt(game.sessionId, dto.courtId);
     if (court.status !== 'IDLE') {
       throw new ConflictException('이미 게임이 진행 중인 코트입니다.');
-    }
-    // 공유 코트는 차례를 지킨다 — 상대 게임이 끝났으면 코트 카드의 [우리 차례] 탭이 먼저
-    if (court.isShared && !court.ourTurn) {
-      throw new ConflictException(
-        '다른 모임 차례인 코트입니다. 상대 게임이 끝났다면 코트의 [우리 차례]를 먼저 눌러주세요.',
-      );
     }
 
     // 중복 대기 정책상 다른 코트에서 게임 중인 사람이 이 조합에 있을 수 있다 — PLAYING은 동시에 한 곳만
@@ -152,17 +141,7 @@ export class GamesService {
     if (game.courtId === dto.courtId) {
       throw new BadRequestException('지금 코트와 같은 코트예요.');
     }
-    const court = await this.prisma.court.findFirst({
-      where: { id: dto.courtId, sessionId: game.sessionId, deletedAt: null },
-    });
-    if (!court) {
-      throw new NotFoundException('등록된 코트를 찾을 수 없습니다.');
-    }
-    if (court.isShared && !court.ourTurn) {
-      throw new ConflictException(
-        '다른 모임 차례인 코트입니다. 상대 게임이 끝났다면 코트의 [우리 차례]를 먼저 눌러주세요.',
-      );
-    }
+    const court = await this.findOurCourt(game.sessionId, dto.courtId); // 비어 있는지는 트랜잭션 안에서
     const fromCourtId = game.courtId;
 
     const moved = await this.prisma.$transaction(async (tx) => {
@@ -302,20 +281,7 @@ export class GamesService {
         where: { id: { in: attendanceIds } },
         data: { waitingSince: new Date(), gamesPlayed: { increment: 1 } },
       });
-      // 중복 대기 허용 — 다른 QUEUED 조합에 남아있으면 MATCHED 유지, 아니면 대기 복귀
-      const buckets = await this.splitByRemainingActiveGames(tx, attendanceIds, id);
-      if (buckets.matched.length > 0) {
-        await tx.attendance.updateMany({
-          where: { id: { in: buckets.matched } },
-          data: { status: 'MATCHED' },
-        });
-      }
-      if (buckets.waiting.length > 0) {
-        await tx.attendance.updateMany({
-          where: { id: { in: buckets.waiting } },
-          data: { status: 'CHECKED_IN' },
-        });
-      }
+      await this.releaseFromGame(tx, attendanceIds, id);
       return tx.game.update({
         where: { id },
         data: { status: 'FINISHED', endedAt: new Date() },
@@ -431,21 +397,7 @@ export class GamesService {
           data: { status: 'IDLE' },
         });
       }
-      // 중복 대기 허용 — 이 게임만 해체하고, 각자의 상태는 남은 활성 게임 기준으로 재계산
-      // (다른 코트에서 PLAYING 중이면 건드리지 않고, 다른 QUEUED 조합에 있으면 MATCHED 유지)
-      const buckets = await this.splitByRemainingActiveGames(tx, attendanceIds, id);
-      if (buckets.matched.length > 0) {
-        await tx.attendance.updateMany({
-          where: { id: { in: buckets.matched } },
-          data: { status: 'MATCHED' },
-        });
-      }
-      if (buckets.waiting.length > 0) {
-        await tx.attendance.updateMany({
-          where: { id: { in: buckets.waiting } },
-          data: { status: 'CHECKED_IN' },
-        });
-      }
+      await this.releaseFromGame(tx, attendanceIds, id); // 이 게임만 해체 — 다른 조합·게임에 든 사람은 그 상태대로
       return tx.game.update({
         where: { id },
         data: { status: 'CANCELED', queueOrder: null },
@@ -473,19 +425,7 @@ export class GamesService {
       throw new ConflictException('이미 이 게임에 있는 모임원입니다.');
     }
 
-    const incoming = await this.prisma.attendance.findFirst({
-      where: {
-        id: dto.inAttendanceId,
-        sessionId: game.sessionId,
-        status: { notIn: ['LEFT', 'RESTING'] },
-        shuttleConfirmedAt: { not: null }, // 콕 미확인은 교체 투입도 불가
-      },
-    });
-    if (!incoming) {
-      throw new ConflictException(
-        '콕 미확인·퇴장·휴식 중이거나 이 모임에 없는 모임원입니다.',
-      );
-    }
+    const incoming = await this.findPlayableAttendance(game.sessionId, dto.inAttendanceId);
     // PLAYING은 동시에 한 곳만 — 게임 중인 게임엔 다른 코트에서 뛰는 중인 사람 투입 불가
     // (QUEUED 조합엔 중복 대기 정책상 게임 중인 사람도 미리 넣을 수 있다)
     if (game.status === 'PLAYING' && incoming.status === 'PLAYING') {
@@ -515,14 +455,8 @@ export class GamesService {
         });
       }
 
-      // 빠지는 사람: 남은 활성 게임 기준으로 상태 재계산 (대기 시간은 보존 — 오래 기다린 이력 유지)
-      const buckets = await this.splitByRemainingActiveGames(tx, [dto.outAttendanceId], id);
-      if (buckets.matched.length > 0 || buckets.waiting.length > 0) {
-        await tx.attendance.update({
-          where: { id: dto.outAttendanceId },
-          data: { status: buckets.matched.length > 0 ? 'MATCHED' : 'CHECKED_IN' },
-        });
-      }
+      // 빠지는 사람 (대기 시간은 보존 — 오래 기다린 이력 유지)
+      await this.releaseFromGame(tx, [dto.outAttendanceId], id);
 
       return tx.game.findUniqueOrThrow({ where: { id }, include: GAME_INCLUDE });
     });
@@ -634,13 +568,7 @@ export class GamesService {
       if (removed.count === 0) {
         throw new ConflictException('이 조합에 없는 모임원이에요.');
       }
-      const buckets = await this.splitByRemainingActiveGames(tx, [attendanceId], id);
-      if (buckets.matched.length > 0 || buckets.waiting.length > 0) {
-        await tx.attendance.update({
-          where: { id: attendanceId },
-          data: { status: buckets.matched.length > 0 ? 'MATCHED' : 'CHECKED_IN' },
-        });
-      }
+      await this.releaseFromGame(tx, [attendanceId], id);
       const left = await tx.gamePlayer.count({ where: { gameId: id } });
       return tx.game.update({
         where: { id },
@@ -753,13 +681,9 @@ export class GamesService {
     return attendance;
   }
 
-  // 특정 게임에서 빠지는 인원들의 다음 상태를 "남은 활성 게임" 기준으로 분류한다
-  // playing: 다른 코트에서 게임 중(상태 변경 금지) / matched: 다른 QUEUED 조합 잔존 / waiting: 완전히 자유
-  private async splitByRemainingActiveGames(
-    tx: Prisma.TransactionClient,
-    attendanceIds: string[],
-    excludeGameId: string,
-  ): Promise<{ playing: string[]; matched: string[]; waiting: string[] }> {
+  // 게임에서 빠지는 사람들의 상태를 남은 게임 기준으로 되돌린다(종료·취소·교체·빼기 공통) — 중복 대기 허용 정책
+  // 다른 코트에서 게임 중이면 그대로 / 다른 대기 조합에 남아 있으면 MATCHED / 어디에도 없으면 대기(CHECKED_IN)
+  private async releaseFromGame(tx: Prisma.TransactionClient, attendanceIds: string[], excludeGameId: string) {
     const remaining = await tx.gamePlayer.findMany({
       where: {
         attendanceId: { in: attendanceIds },
@@ -768,17 +692,31 @@ export class GamesService {
       },
       select: { attendanceId: true, game: { select: { status: true } } },
     });
-
-    const playingSet = new Set<string>();
-    const queuedSet = new Set<string>();
-    for (const row of remaining) {
-      (row.game.status === 'PLAYING' ? playingSet : queuedSet).add(row.attendanceId);
+    const playing = new Set(remaining.filter((r) => r.game.status === 'PLAYING').map((r) => r.attendanceId));
+    const queued = new Set(remaining.map((r) => r.attendanceId));
+    const matched = attendanceIds.filter((id) => !playing.has(id) && queued.has(id));
+    const waiting = attendanceIds.filter((id) => !queued.has(id));
+    if (matched.length > 0) {
+      await tx.attendance.updateMany({ where: { id: { in: matched } }, data: { status: 'MATCHED' } });
     }
-    return {
-      playing: attendanceIds.filter((id) => playingSet.has(id)),
-      matched: attendanceIds.filter((id) => !playingSet.has(id) && queuedSet.has(id)),
-      waiting: attendanceIds.filter((id) => !playingSet.has(id) && !queuedSet.has(id)),
-    };
+    if (waiting.length > 0) {
+      await tx.attendance.updateMany({ where: { id: { in: waiting } }, data: { status: 'CHECKED_IN' } });
+    }
+  }
+
+  // 게임을 넣을 수 있는 우리 코트(배정·옮기기 공통) — 비어 있는지는 부르는 쪽에서 본다
+  // 공유 코트는 차례를 지킨다 — 상대 게임이 끝났으면 코트 카드의 [우리 차례] 탭이 먼저
+  private async findOurCourt(sessionId: string, courtId: string) {
+    const court = await this.prisma.court.findFirst({ where: { id: courtId, sessionId, deletedAt: null } });
+    if (!court) {
+      throw new NotFoundException('등록된 코트를 찾을 수 없습니다.');
+    }
+    if (court.isShared && !court.ourTurn) {
+      throw new ConflictException(
+        '다른 모임 차례인 코트입니다. 상대 게임이 끝났다면 코트의 [우리 차례]를 먼저 눌러주세요.',
+      );
+    }
+    return court;
   }
 
   private async findGameOrThrow(id: string) {
