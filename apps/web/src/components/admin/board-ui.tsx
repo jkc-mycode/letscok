@@ -4,8 +4,18 @@ import { IPushCallResult, MemberRole } from '@letscok/shared-types';
 import { useEffect, useRef, useState } from 'react';
 import { CrownIcon } from '@/components/icons';
 import { api, ApiError } from '@/lib/api';
+import { formatElapsed, formatWaitingMinutes, useNow } from '@/lib/use-snapshot';
 
-// 관제판 공용 작은 부품 — 구역 틀, 2탭 확인 버튼, 호출 버튼, [⋯] 버튼, 왕관·게스트 표시, 길게 누르기
+// 관제판 공용 작은 부품 — 구역 틀, 2탭 확인 버튼, 호출 버튼, [⋯] 버튼, 왕관·게스트 표시, 길게 누르기, 시간 글자
+
+// 1초마다 바뀌는 시간 글자 — 시계를 이 글자 안에만 둔다. 보드가 시계를 들면 매초 카드·명단 전체를 다시 그려 끌기가 끊긴다
+export function ElapsedText({ since }: { since: string }) {
+  return <>{formatElapsed(since, useNow())}</>;
+}
+
+export function WaitingMinutesText({ since }: { since: string }) {
+  return <>{formatWaitingMinutes(since, useNow())}</>;
+}
 
 export function Zone({
   title,

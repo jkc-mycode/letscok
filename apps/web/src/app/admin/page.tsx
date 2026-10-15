@@ -21,7 +21,7 @@ import { HomeLink } from '@/components/home-link';
 import { InstallPrompt } from '@/components/install-prompt';
 import { LogoLoader } from '@/components/logo-loader';
 import { api, ApiError } from '@/lib/api';
-import { useNow, useSnapshot } from '@/lib/use-snapshot';
+import { useSnapshot } from '@/lib/use-snapshot';
 import { ToastState, useToast } from '@/lib/use-toast';
 import { MembersManagerModal } from '@/components/admin/members-manager';
 import { ManualCheckInModal } from '@/components/admin/manual-check-in';
@@ -234,7 +234,6 @@ function BoardBody({
   onSessionClosed: (sessionId: string) => void; // 모임 종료 성공 → 마무리 문구 띄우기
 }) {
   const router = useRouter();
-  const now = useNow();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [courtsOpen, setCourtsOpen] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
@@ -1096,7 +1095,6 @@ function BoardBody({
                 key={court.id}
                 court={court}
                 game={playingByCourt.get(court.id)}
-                now={now}
                 run={run}
                 slotActions={slotActions}
                 onEnd={endGame}
@@ -1251,7 +1249,6 @@ function BoardBody({
                 key={attendance.id}
                 onMore={(a) => setActionId(a.id)}
                 attendance={attendance}
-                now={now}
                 selected={selected.has(attendance.id)}
                 onToggle={() => toggleSelect(attendance.id)}
                 run={run}

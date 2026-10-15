@@ -4,9 +4,8 @@ import { ICourt, IGame } from '@letscok/shared-types';
 import { useDropTarget } from '@/components/board-dnd';
 import { MotionCard } from '@/components/motion-card';
 import { api } from '@/lib/api';
-import { formatElapsed } from '@/lib/use-snapshot';
 import { BoardSlots, SlotActions, gameRef } from '@/components/admin/board-slots';
-import { MoreButton } from '@/components/admin/board-ui';
+import { ElapsedText, MoreButton } from '@/components/admin/board-ui';
 
 // 게임 중 코트 카드
 
@@ -20,7 +19,6 @@ function SharedBadge() {
 export function CourtCard({
   court,
   game,
-  now,
   run,
   slotActions,
   onEnd,
@@ -29,7 +27,6 @@ export function CourtCard({
 }: {
   court: ICourt;
   game?: IGame;
-  now: number;
   run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   slotActions: SlotActions;
   onEnd: (gameId: string, kind: 'FINISHED' | 'UNASSIGNED') => void; // 게임 종료·대기로 — 누르자마자 반영
@@ -111,7 +108,7 @@ export function CourtCard({
           {court.courtNo}번 코트 {court.isShared && <SharedBadge />}
         </span>
         <span className="tabular font-mono text-[1.375rem] leading-none font-semibold text-court">
-          {game.startedAt ? formatElapsed(game.startedAt, now) : '--:--'}
+          {game.startedAt ? <ElapsedText since={game.startedAt} /> : '--:--'}
         </span>
       </div>
       <BoardSlots game={game} slotActions={slotActions} dragEnabled={dragEnabled} />

@@ -6,8 +6,7 @@ import { Sheet } from '@/components/sheet';
 import { GenderMarker, GradeBadge } from '@/components/badges';
 import { MegaphoneIcon } from '@/components/icons';
 import { api } from '@/lib/api';
-import { formatWaitingMinutes, useNow } from '@/lib/use-snapshot';
-import { CallButton, ConfirmButton, RoleCrown } from '@/components/admin/board-ui';
+import { CallButton, ConfirmButton, RoleCrown, WaitingMinutesText } from '@/components/admin/board-ui';
 import { RosterSort, RosterSortSelect, sortCandidates } from '@/components/admin/roster-sort';
 
 // 보드에서 여는 시트 — 카드·명단 [⋯], 빈칸 채우기, 선수 교체
@@ -32,7 +31,6 @@ export function ReplacePlayerModal({
 }) {
   const [outId, setOutId] = useState<string | null>(null);
   const [inId, setInId] = useState<string | null>(null);
-  const now = useNow(); // 후보 줄의 대기 시간
 
   const isPlaying = game.status === 'PLAYING';
   const playerIds = new Set((game.players ?? []).map((p) => p.attendanceId));
@@ -134,7 +132,7 @@ export function ReplacePlayerModal({
                 {/* 대기 명단과 같은 표기 — 게임 중이면 0분 */}
                 <span className="tabular ml-auto shrink-0 font-mono text-caption text-dim">
                   {attendance.gamesPlayed}게임 ·{' '}
-                  {attendance.status === 'PLAYING' ? '0분' : formatWaitingMinutes(attendance.waitingSince, now)}
+                  {attendance.status === 'PLAYING' ? '0분' : <WaitingMinutesText since={attendance.waitingSince} />}
                 </span>
               </button>
             );
@@ -180,7 +178,6 @@ export function SlotFillSheet({
 }) {
   const inGame = new Set((game?.players ?? []).map((p) => p.attendanceId));
   const candidates = roster.filter((a) => a.status !== 'RESTING' && !inGame.has(a.id));
-  const now = useNow(); // 후보 줄의 대기 시간
   const empty = GAME_SIZE - inGame.size;
 
   const pick = (attendanceId: string) =>
@@ -244,7 +241,7 @@ export function SlotFillSheet({
             {/* 대기 명단과 같은 표기 — 게임 중이면 0분 */}
             <span className="tabular ml-auto shrink-0 font-mono text-caption text-dim">
               {attendance.gamesPlayed}게임 ·{' '}
-              {attendance.status === 'PLAYING' ? '0분' : formatWaitingMinutes(attendance.waitingSince, now)}
+              {attendance.status === 'PLAYING' ? '0분' : <WaitingMinutesText since={attendance.waitingSince} />}
             </span>
           </button>
         );
