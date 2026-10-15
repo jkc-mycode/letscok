@@ -33,6 +33,12 @@ export class CourtsController {
     };
   }
 
+  // 번호 바꾸기 — 잘못 등록한 코트 번호 고치기
+  @Patch('courts/:id')
+  async renumber(@Param('id') id: string, @Body() dto: CreateCourtDto): Promise<IApiResponse<ICourt>> {
+    return { success: true, data: await this.courtsService.renumber(id, dto) };
+  }
+
   // 공유 코트 지정/해제 — 다른 모임과 번갈아 쓰는 코트
   @Patch('courts/:id/shared')
   async setShared(

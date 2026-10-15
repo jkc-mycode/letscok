@@ -74,6 +74,35 @@ export class CourtsService {
     return toCourtResponse(updated);
   }
 
+  // 번호 바꾸기 — 잘못 등록한 번호를 고칠 때. 게임 중이어도 된다(끝난 게임 기록도 코트로 이어져 새 번호로 보인다)
+  // 다른 코트가 쓰는 번호면 막는다(맞바꾸기는 한쪽을 잠깐 다른 번호로 옮겨서)
+  async renumber(id: string, dto: CreateCourtDto): Promise<ICourt> {
+    const court = await this.findCourtOrThrow(id);
+    await this.sessionsService.findOpenSessionOrThrow(court.sessionId);
+    if (court.courtNo === dto.courtNo) return toCourtResponse(court);
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // 해제된 코트도 고유 제약상 번호를 쥐고 있다 — 기록이 없으면 지우고, 있으면 그 기록의 번호가 바뀌면 안 되니 막는다
+      const holder = await tx.court.findUnique({
+        where: { sessionId_courtNo: { sessionId: court.sessionId, courtNo: dto.courtNo } },
+      });
+      if (holder && !holder.deletedAt) {
+        throw new ConflictException(`이미 ${dto.courtNo}번 코트가 있어요.`);
+      }
+      if (holder) {
+        if ((await tx.game.count({ where: { courtId: holder.id } })) > 0) {
+          throw new ConflictException(
+            `오늘 ${dto.courtNo}번 코트에서 한 게임 기록이 남아 있어 이 번호로 바꿀 수 없어요. [코트 추가]로 ${dto.courtNo}번을 다시 쓰세요.`,
+          );
+        }
+        await tx.court.delete({ where: { id: holder.id } });
+      }
+      return tx.court.update({ where: { id: court.id }, data: { courtNo: dto.courtNo } });
+    });
+    this.realtime.broadcastSnapshot(court.sessionId);
+    return toCourtResponse(updated);
+  }
+
   private async findCourtOrThrow(id: string) {
     const court = await this.prisma.court.findFirst({
       where: { id, deletedAt: null },
