@@ -8,7 +8,15 @@ import { CameraIcon, ImageIcon } from '@/components/icons';
 import { Sheet } from '@/components/sheet';
 import { api, ApiError } from '@/lib/api';
 import { shrinkImage } from '@/lib/image';
-import { DEFAULT_GROUPS, parseNames, settle, settlementText, won } from '@/lib/settlement';
+import {
+  DEFAULT_GROUPS,
+  parseNames,
+  settle,
+  settlementPeopleText,
+  settlementText,
+  settlePeople,
+  won,
+} from '@/lib/settlement';
 
 // 뒤풀이 정산 — 인원수만 받고 저장하지 않는다(닫으면 사라짐). 결과는 카톡 문구로 복사해 공유한다
 
@@ -53,17 +61,21 @@ const monthDay = (value: string) => {
 
 const MAX_RECEIPTS = 5; // 서버 한도 — 1차·2차 영수증, 길어서 나눠 찍은 것까지
 
-// 분류 칩 — 누를 때마다 공통 → 술 → 음료 순서로 바뀐다
-const CATEGORY_LABEL: Record<ReceiptCategory, string> = { common: '공통', alcohol: '술', beverage: '음료' };
-const CATEGORY_CLS: Record<ReceiptCategory, string> = {
+// 분류 칩 — 누를 때마다 공통 → 술 → 음료 → 개인 순서로 바뀐다
+// 개인 = 먹은 사람만 내는 메뉴(식사 등) — AI는 고르지 않고 운영진이 바꾼다
+type DraftCategory = ReceiptCategory | 'personal';
+const CATEGORY_LABEL: Record<DraftCategory, string> = { common: '공통', alcohol: '술', beverage: '음료', personal: '개인' };
+const CATEGORY_CLS: Record<DraftCategory, string> = {
   common: 'border-line text-dim',
   alcohol: 'border-amber/60 bg-amber/10 text-amber',
   beverage: 'border-sky/60 bg-sky/10 text-sky',
+  personal: 'border-court/60 bg-court/10 text-court',
 };
-const NEXT_CATEGORY: Record<ReceiptCategory, ReceiptCategory> = {
+const NEXT_CATEGORY: Record<DraftCategory, DraftCategory> = {
   common: 'alcohol',
   alcohol: 'beverage',
-  beverage: 'common',
+  beverage: 'personal',
+  personal: 'common',
 };
 
 // 영수증 판독 결과를 고칠 수 있게 담아 두는 형태 — 금액은 입력 중인 글자 그대로("-", "" 포함) 들고 있는다
@@ -71,7 +83,9 @@ interface DraftItem {
   key: number;
   name: string;
   amountText: string; // "-2000"처럼 할인은 음수
-  category: ReceiptCategory;
+  category: DraftCategory;
+  quantity: number; // 2 이상이면 [N줄로 나누기]
+  eaters: string[]; // 개인 메뉴를 먹은 사람(이름 칸의 이름)
 }
 interface ReceiptDraft {
   items: DraftItem[];
@@ -90,7 +104,7 @@ const amountDisplay = (text: string) => {
   return digits ? `${text.startsWith('-') ? '-' : ''}${Number(digits).toLocaleString('ko-KR')}` : text;
 };
 
-const sumBy = (items: DraftItem[], category?: ReceiptCategory) =>
+const sumBy = (items: DraftItem[], category?: DraftCategory) =>
   items.filter((i) => !category || i.category === category).reduce((sum, i) => sum + amountOf(i.amountText), 0);
 
 // 이름을 적으면 인원수가 이름 수로 고정된다(이름과 인원이 어긋나지 않게) — 이름을 지우면 다시 [-]/[+]
@@ -203,8 +217,38 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
   };
   const addItem = () => {
     if (!receipt) return;
-    const item: DraftItem = { key: nextItemKey.current++, name: '', amountText: '', category: 'common' };
+    const item: DraftItem = { key: nextItemKey.current++, name: '', amountText: '', category: 'common', quantity: 1, eaters: [] };
     updateReceipt({ ...receipt, items: [...receipt.items, item], edited: true });
+  };
+  // "크림짬뽕 ×4 64,000" → 16,000원짜리 4줄 — 한 개씩 먹은 사람을 고르게. 나누어떨어지지 않으면 남는 원은 첫 줄에
+  const splitItem = (key: number) => {
+    if (!receipt) return;
+    updateReceipt({
+      ...receipt,
+      items: receipt.items.flatMap((item) => {
+        if (item.key !== key || item.quantity < 2) return [item];
+        const amount = amountOf(item.amountText);
+        const each = Math.trunc(amount / item.quantity);
+        return Array.from({ length: item.quantity }, (_, i) => ({
+          ...item,
+          key: i === 0 ? item.key : nextItemKey.current++,
+          amountText: String(i === 0 ? amount - each * (item.quantity - 1) : each),
+          quantity: 1,
+          eaters: i === 0 ? item.eaters : [],
+        }));
+      }),
+    });
+  };
+  const toggleEater = (key: number, name: string) => {
+    const item = receipt?.items.find((i) => i.key === key);
+    if (!item) return;
+    const eaters = item.eaters.includes(name) ? item.eaters.filter((n) => n !== name) : [...item.eaters, name];
+    editItem(key, { eaters }, false);
+  };
+  // 영수증 없이 품목을 손으로 — 개인 메뉴를 쓰려면 품목이 있어야 한다
+  const startManualItems = () => {
+    const item: DraftItem = { key: nextItemKey.current++, name: '', amountText: '', category: 'common', quantity: 1, eaters: [] };
+    updateReceipt({ items: [item], total: null, edited: true });
   };
 
   const readReceipt = async (files: FileList | null) => {
@@ -227,6 +271,8 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
           name: item.name,
           amountText: String(item.amount),
           category: item.category,
+          quantity: Math.max(1, item.quantity ?? 1),
+          eaters: [],
         })),
         total: result.total,
         edited: false,
@@ -249,23 +295,25 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
     [counts, names],
   );
   const headcount = groups.reduce((sum, g) => sum + g.count, 0);
-  const common = toNumber(total) - toNumber(alcohol) - toNumber(beverage);
+  // 개인 메뉴 고르기 후보 = 그룹 이름 칸에 적은 사람. 이름을 지우면 고른 표시도 빠진다(남은 사람만 계산)
+  const allNames = groups.flatMap((g) => g.names);
+  const personal = (receipt?.items ?? [])
+    .filter((item) => item.category === 'personal')
+    .map((item) => ({ amount: amountOf(item.amountText), eaters: item.eaters.filter((n) => allNames.includes(n)) }));
+  const personalSum = personal.reduce((sum, item) => sum + item.amount, 0);
+  const common = toNumber(total) - toNumber(alcohol) - toNumber(beverage) - personalSum;
   // % 찬조는 총액 기준 원으로 바꿔 계산한다(반올림). 100%를 넘으면 계산 쪽에서 "총액보다 커요"로 막힌다
   const sponsorWon =
     sponsorUnit === 'won' ? toNumber(sponsor) : Math.round((toNumber(total) * toNumber(sponsor)) / 100);
-  const result = useMemo(
-    () =>
-      settle({
-        total: toNumber(total),
-        alcohol: toNumber(alcohol),
-        beverage: toNumber(beverage),
-        sponsor: sponsorWon,
-        groups,
-      }),
-    [total, alcohol, beverage, sponsorWon, groups],
-  );
+  const input = { total: toNumber(total), alcohol: toNumber(alcohol), beverage: toNumber(beverage), sponsor: sponsorWon, groups };
+  // 개인 메뉴가 하나라도 있으면 사람별, 없으면 지금처럼 그룹별
+  const result = personal.length > 0 ? settlePeople({ ...input, personal }) : settle(input);
   const when = day === '날짜' ? monthDay(date) : day;
-  const text = result.ok ? settlementText({ total: toNumber(total), when, place, shares: result.shares }) : '';
+  const text = !result.ok
+    ? ''
+    : 'people' in result
+      ? settlementPeopleText({ total: input.total, when, place, people: result.people })
+      : settlementText({ total: input.total, when, place, shares: result.shares });
 
   const copy = async () => {
     try {
@@ -336,80 +384,132 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
               </div>
             )}
             {receiptError && <p className="text-xs font-medium text-coral">{receiptError}</p>}
+          </div>
+        )}
 
-            {receipt && (
-              <div className="flex flex-col gap-1 rounded-xl bg-panel2 p-3">
-                <div className="flex items-center pb-1">
-                  <p className="text-xs text-dim">분류를 누르면 공통 → 술 → 음료로 바뀌고, 이름·금액은 눌러서 고쳐요</p>
-                  <button onClick={() => setReceipt(null)} className="tap ml-auto text-xs text-dim">
-                    접기
+        {/* 품목 — 영수증으로 채우거나 손으로 적는다. 분류를 [개인]으로 바꾸면 먹은 사람만 낸다 */}
+        {!receipt && (
+          <button
+            onClick={startManualItems}
+            className="h-10 rounded-xl border border-dashed border-line text-sm text-dim"
+          >
+            + 품목 직접 입력 (먹은 사람만 내는 메뉴가 있을 때)
+          </button>
+        )}
+        {receipt && (
+          <div className="flex flex-col gap-1 rounded-xl bg-panel2 p-3">
+            <div className="flex items-center pb-1">
+              <p className="text-xs text-dim">분류를 누르면 공통 → 술 → 음료 → 개인으로 바뀌고, 이름·금액은 눌러서 고쳐요</p>
+              <button onClick={() => setReceipt(null)} className="tap ml-auto text-xs text-dim">
+                접기
+              </button>
+            </div>
+            {receipt.items.map((item) => (
+              <div key={item.key} className="flex flex-col gap-1">
+                <div className="flex items-center gap-1.5 text-sm">
+                  <button
+                    onClick={() => editItem(item.key, { category: NEXT_CATEGORY[item.category] }, false)}
+                    className={`tap h-8 w-11 shrink-0 rounded-md border text-xs font-medium ${CATEGORY_CLS[item.category]}`}
+                  >
+                    {CATEGORY_LABEL[item.category]}
+                  </button>
+                  <ClearableInput
+                    value={item.name}
+                    onChange={(e) => editItem(item.key, { name: e.target.value }, false)}
+                    autoComplete="off"
+                    maxLength={40}
+                    placeholder="품목 이름"
+                    className="h-8 rounded-md border border-transparent bg-transparent px-1.5 outline-none placeholder:text-faint focus:border-court"
+                    onClear={() => editItem(item.key, { name: '' }, false)}
+                    wrapperClassName="min-w-0 flex-1"
+                  />
+                  <input
+                    value={amountDisplay(item.amountText)}
+                    onChange={(e) => editItem(item.key, { amountText: cleanAmount(e.target.value) }, true)}
+                    inputMode="numeric"
+                    autoComplete="off"
+                    placeholder="0"
+                    className={`tabular h-8 w-24 shrink-0 rounded-md border-2 border-transparent bg-panel2 px-2 text-right outline-none placeholder:text-faint focus:border-court ${
+                      amountOf(item.amountText) < 0 ? 'text-coral' : ''
+                    }`}
+                  />
+                  <button
+                    onClick={() => removeItem(item.key)}
+                    title="이 줄 지우기"
+                    className="tap h-8 w-7 shrink-0 text-dim hover:text-coral"
+                  >
+                    ✕
                   </button>
                 </div>
-                {receipt.items.map((item) => (
-                  <div key={item.key} className="flex items-center gap-1.5 text-sm">
-                    <button
-                      onClick={() => editItem(item.key, { category: NEXT_CATEGORY[item.category] }, false)}
-                      className={`tap h-8 w-11 shrink-0 rounded-md border text-xs font-medium ${CATEGORY_CLS[item.category]}`}
-                    >
-                      {CATEGORY_LABEL[item.category]}
-                    </button>
-                    <ClearableInput
-                      value={item.name}
-                      onChange={(e) => editItem(item.key, { name: e.target.value }, false)}
-                      autoComplete="off"
-                      maxLength={40}
-                      placeholder="품목 이름"
-                      className="h-8 rounded-md border border-transparent bg-transparent px-1.5 outline-none placeholder:text-faint focus:border-court"
-                      onClear={() => editItem(item.key, { name: '' }, false)}
-                      wrapperClassName="min-w-0 flex-1"
-                    />
-                    <input
-                      value={amountDisplay(item.amountText)}
-                      onChange={(e) => editItem(item.key, { amountText: cleanAmount(e.target.value) }, true)}
-                      inputMode="numeric"
-                      autoComplete="off"
-                      placeholder="0"
-                      className={`tabular h-8 w-24 shrink-0 rounded-md border-2 border-transparent bg-panel2 px-2 text-right outline-none placeholder:text-faint focus:border-court ${
-                        amountOf(item.amountText) < 0 ? 'text-coral' : ''
-                      }`}
-                    />
-                    <button
-                      onClick={() => removeItem(item.key)}
-                      title="이 줄 지우기"
-                      className="tap h-8 w-7 shrink-0 text-dim hover:text-coral"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
-                <button onClick={addItem} className="mt-1 h-8 rounded-md border border-dashed border-line text-xs text-dim">
-                  + 품목 추가
-                </button>
-                <p className="pt-1 text-right text-xs text-dim">품목 합계 {won(itemsSum)}</p>
-                {receipt.edited ? (
-                  <p className="text-right text-xs text-faint">품목을 고쳐서 총 금액을 품목 합계로 채웠어요</p>
-                ) : receipt.total === null ? (
-                  <p className="text-right text-xs text-amber">영수증 총액을 못 읽어 품목 합계로 채웠어요</p>
-                ) : (
-                  receipt.total !== itemsSum && (
-                    <p className="text-right text-xs text-amber">
-                      영수증 총액 {won(receipt.total)}과 {won(Math.abs(receipt.total - itemsSum))} 달라요. 할인이나
-                      봉사료일 수 있어요(차액은 공통에 포함)
-                    </p>
-                  )
+                {item.quantity >= 2 && (
+                  <button
+                    onClick={() => splitItem(item.key)}
+                    className="tap ml-12 self-start text-xs font-medium text-court"
+                  >
+                    ×{item.quantity} — {item.quantity}줄로 나누기
+                  </button>
                 )}
+                {/* 개인 메뉴 — 먹은 사람을 누르고, 여럿이면 똑같이 나눈다 */}
+                {item.category === 'personal' &&
+                  (allNames.length === 0 ? (
+                    <p className="ml-12 text-xs text-amber">아래 인원 칸에 이름을 적으면 여기서 먹은 사람을 고를 수 있어요</p>
+                  ) : (
+                    <div className="ml-12 flex flex-wrap items-center gap-1">
+                      {allNames.map((name) => {
+                        const on = item.eaters.includes(name);
+                        return (
+                          <button
+                            key={name}
+                            onClick={() => toggleEater(item.key, name)}
+                            className={`tap h-7 rounded-full border px-2.5 text-xs ${
+                              on ? 'border-court bg-court/15 font-bold text-court' : 'border-line text-dim'
+                            }`}
+                          >
+                            {name}
+                          </button>
+                        );
+                      })}
+                      {item.eaters.filter((n) => allNames.includes(n)).length >= 2 && (
+                        <span className="text-xs text-faint">
+                          1인{' '}
+                          {won(
+                            Math.floor(
+                              amountOf(item.amountText) / item.eaters.filter((n) => allNames.includes(n)).length,
+                            ),
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  ))}
               </div>
+            ))}
+            <button onClick={addItem} className="mt-1 h-8 rounded-md border border-dashed border-line text-xs text-dim">
+              + 품목 추가
+            </button>
+            <p className="pt-1 text-right text-xs text-dim">품목 합계 {won(itemsSum)}</p>
+            {receipt.edited ? (
+              <p className="text-right text-xs text-faint">품목을 고쳐서 총 금액을 품목 합계로 채웠어요</p>
+            ) : receipt.total === null ? (
+              <p className="text-right text-xs text-amber">영수증 총액을 못 읽어 품목 합계로 채웠어요</p>
+            ) : (
+              receipt.total !== itemsSum && (
+                <p className="text-right text-xs text-amber">
+                  영수증 총액 {won(receipt.total)}과 {won(Math.abs(receipt.total - itemsSum))} 달라요. 할인이나
+                  봉사료일 수 있어요(차액은 공통에 포함)
+                </p>
+              )
             )}
           </div>
         )}
 
-        {/* 금액 — 공통은 자동(총액 − 술 − 음료) */}
+        {/* 금액 — 공통은 자동(총액 − 술 − 음료 − 개인 메뉴) */}
         <div className="flex flex-col gap-2">
           <AmountField label="총 금액" value={total} onChange={setTotal} />
           <AmountField label="술값" value={alcohol} onChange={setAlcohol} />
           <AmountField label="음료값" value={beverage} onChange={setBeverage} />
           <p className="text-right text-xs text-faint">
             공통(안주·식사) {common >= 0 ? won(common) : '—'}
+            {personalSum > 0 && ` · 개인 메뉴 ${won(personalSum)}`}
           </p>
           {/* 찬조 — 원 또는 %. 공통·술·음료를 같은 비율로 줄인다. 카톡 문구엔 표시하지 않는다 */}
           <div className="flex items-center gap-3">
@@ -503,16 +603,21 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
             <p className="py-2 text-center text-sm text-dim">{result.error}</p>
           ) : (
             <>
-              {result.shares.map((s) => (
-                <div
-                  key={s.group.key}
-                  className="flex items-center rounded-lg bg-panel2 px-3 py-2 text-sm"
-                >
-                  <span className="font-medium">{s.group.label}</span>
-                  <span className="ml-1.5 text-xs text-faint">{s.group.count}명</span>
-                  <span className="tabular ml-auto font-bold text-court">{won(s.perPerson)}</span>
-                </div>
-              ))}
+              {'people' in result
+                ? result.people.map((p) => (
+                    <div key={p.name} className="flex items-center rounded-lg bg-panel2 px-3 py-2 text-sm">
+                      <span className="font-medium">{p.name}</span>
+                      <span className="ml-1.5 text-xs text-faint">{p.group.label}</span>
+                      <span className="tabular ml-auto font-bold text-court">{won(p.perPerson)}</span>
+                    </div>
+                  ))
+                : result.shares.map((s) => (
+                    <div key={s.group.key} className="flex items-center rounded-lg bg-panel2 px-3 py-2 text-sm">
+                      <span className="font-medium">{s.group.label}</span>
+                      <span className="ml-1.5 text-xs text-faint">{s.group.count}명</span>
+                      <span className="tabular ml-auto font-bold text-court">{won(s.perPerson)}</span>
+                    </div>
+                  ))}
               {result.remainder > 0 && (
                 <p className="text-right text-xs text-faint">
                   나누어떨어지지 않아 결제자 부담 {won(result.remainder)}
