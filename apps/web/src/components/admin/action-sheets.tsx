@@ -154,46 +154,25 @@ export function ReplacePlayerModal({
 // 빈칸 채우기 시트 — 명단에서 한 명씩 눌러 넣는다. game=null이면 첫 사람으로 새 조합을 만들고 그 조합을 이어서 채운다
 // 4명이 차면 부모가 저절로 닫는다(실시간 스냅샷 기준)
 export function SlotFillSheet({
-  sessionId,
   game,
   roster,
   placeLabels,
   sort,
   onSort,
-  run,
-  busy,
-  onCreated,
+  onPick,
   onClose,
 }: {
-  sessionId: string;
   game: IGame | null;
   roster: IAttendance[]; // 이미 고른 정렬로 정렬된 명단
   placeLabels: Map<string, string>;
   sort: RosterSort;
   onSort: (sort: RosterSort) => void;
-  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
-  busy: boolean;
-  onCreated: (game: IGame) => void;
+  onPick: (attendanceId: string) => void; // 누르자마자 그 조합에 들어간 모습으로(보드가 서버에 보낸다)
   onClose: () => void;
 }) {
   const inGame = new Set((game?.players ?? []).map((p) => p.attendanceId));
   const candidates = roster.filter((a) => a.status !== 'RESTING' && !inGame.has(a.id));
   const empty = GAME_SIZE - inGame.size;
-
-  const pick = (attendanceId: string) =>
-    void run(async () => {
-      if (game) {
-        await api(`/games/${game.id}/players`, { method: 'POST', admin: true, body: { attendanceId } });
-      } else {
-        onCreated(
-          await api<IGame>(`/sessions/${sessionId}/games/draft`, {
-            method: 'POST',
-            admin: true,
-            body: { attendanceId },
-          }),
-        );
-      }
-    });
 
   return (
     <Sheet
@@ -220,8 +199,7 @@ export function SlotFillSheet({
         return (
           <button
             key={attendance.id}
-            onClick={() => pick(attendance.id)}
-            disabled={busy}
+            onClick={() => onPick(attendance.id)}
             className="flex shrink-0 items-center gap-1.5 rounded-xl bg-panel2 p-3 text-left text-sm disabled:opacity-50"
           >
             <GradeBadge grade={member.grade} />

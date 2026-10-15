@@ -207,6 +207,8 @@ type GamePlayer = NonNullable<IGame['players']>[number];
 const playersSignature = (players: GamePlayer[] = []) =>
   players.map((p) => `${p.attendanceId}:${p.slot}`).sort().join(',');
 type OptimisticGame = { game: IGame; ids: string[]; realId?: string };
+// 조합의 첫 빈자리(0~3) — 서버 pickFreeSlot과 같은 규칙
+const firstFreeSlot = (players: GamePlayer[]) => [0, 1, 2, 3].find((n) => !players.some((p) => p.slot === n));
 
 // 서버 화면에 같은 조합이 실렸는지 — 같은 4명 조합은 서버가 중복으로 막아서 사람 묶음으로 알아볼 수 있다
 function isSettled(t: OptimisticGame, games: IGame[]): boolean {
@@ -283,7 +285,7 @@ function BoardBody({
   const [commandOpen, setCommandOpen] = useState(false); // AI 명령(글·음성)
   // 빈칸 채우기 시트 — gameId=null이면 새 조합(첫 사람을 고르면 그 조합으로 이어서 채운다)
   // pending = 방금 만든 조합(실시간 화면이 도착하기 전까지 대신 보여 줘서 시트가 깜빡 닫히지 않게)
-  const [slotTarget, setSlotTarget] = useState<{ gameId: string | null; pending?: IGame } | null>(null);
+  const [slotTarget, setSlotTarget] = useState<{ gameId: string | null } | null>(null);
 
   const { session } = snapshot;
   const dragEnabled = useBoardDragEnabled(); // 태블릿 이상 — 자석판처럼 끌어다 놓기
@@ -596,6 +598,8 @@ function BoardBody({
   };
   // 새 조합을 대기 조합 맨 끝에 바로 보여 주고 서버에 보낸다([조합 만들기]·새 조합 자리로 끌기 공용)
   // removeFrom = 다른 카드에서 끌어온 사람 — 만든 뒤 그 카드에서 뺀다(그 카드도 바로 빠진 모습으로)
+  // 임시 조합 → 서버 조합 id(만들어지면). 빈칸 채우기에서 만드는 중인 조합에 이어서 넣을 때 기다린다
+  const tempReal = useRef(new Map<string, Promise<string | null>>());
   const startGame = useCallback(
     (ids: string[], removeFrom?: string) => {
       // 원래 카드가 그 사이 해체됐으면 뺄 곳이 없다 — 만들기만
@@ -620,22 +624,27 @@ function BoardBody({
       };
       setOptCreated((prev) => [...prev, { game: temp, ids }]);
       const drop = () => setOptCreated((prev) => prev.filter((t) => t.game.id !== tempId));
+      let resolveReal: (id: string | null) => void = () => {};
+      tempReal.current.set(tempId, new Promise((resolve) => (resolveReal = resolve)));
       const request = async () => {
         try {
           if (ids.length === GAME_SIZE) {
             await api(`/sessions/${session.id}/games`, { method: 'POST', admin: true, body: { attendanceIds: ids } });
+            resolveReal(null);
           } else {
             const draft = await api<IGame>(`/sessions/${session.id}/games/draft`, {
               method: 'POST',
               admin: true,
               body: { attendanceId: ids[0] },
             });
+            resolveReal(draft.id);
             setOptCreated((prev) => prev.map((t) => (t.game.id === tempId ? { ...t, realId: draft.id } : t)));
             for (const attendanceId of ids.slice(1)) {
               await api(`/games/${draft.id}/players`, { method: 'POST', admin: true, body: { attendanceId } });
             }
           }
         } catch (error) {
+          resolveReal(null);
           drop(); // 실패 — 대기로 되돌린다(빈칸 조합이 일부만 만들어졌으면 그 조합이 서버 화면대로 남는다)
           throw error;
         }
@@ -649,8 +658,43 @@ function BoardBody({
       } else {
         void runParallel(request);
       }
+      return tempId;
     },
     [session.id, snapshot.attendances, snapshot.games, patchGames, runParallel],
+  );
+  // 만드는 중인 조합에 한 명 더 — 임시 카드에 바로 붙이고, 서버 조합이 생기면 그 조합에 넣는다. 실패하면 임시 카드에서 뺀다
+  const growTemp = useCallback(
+    (tempId: string, attendanceId: string) => {
+      const attendance = snapshot.attendances.find((a) => a.id === attendanceId);
+      setOptCreated((prev) =>
+        prev.map((t) => {
+          if (t.game.id !== tempId || t.ids.includes(attendanceId)) return t;
+          const slot = firstFreeSlot(t.game.players ?? []);
+          if (slot === undefined) return t;
+          const player = { id: `${tempId}:${slot}`, gameId: tempId, attendanceId, slot, attendance };
+          return { ...t, ids: [...t.ids, attendanceId], game: { ...t.game, players: [...(t.game.players ?? []), player] } };
+        }),
+      );
+      void runParallel(async () => {
+        const realId = await tempReal.current.get(tempId);
+        if (!realId) throw new Error('조합을 만들지 못해 넣지 못했어요');
+        await api(`/games/${realId}/players`, { method: 'POST', admin: true, body: { attendanceId } });
+      }).then((ok) => {
+        if (ok) return;
+        setOptCreated((prev) =>
+          prev.map((t) =>
+            t.game.id === tempId
+              ? {
+                  ...t,
+                  ids: t.ids.filter((id) => id !== attendanceId),
+                  game: { ...t.game, players: (t.game.players ?? []).filter((p) => p.attendanceId !== attendanceId) },
+                }
+              : t,
+          ),
+        );
+      });
+    },
+    [snapshot.attendances, runParallel],
   );
   // 끌어다 놓기 → 서버 호출. 카드에서 끌어낸 사람은 자석을 옮기듯 원래 조합에서 빠진다
   const onDrop = useCallback(
@@ -916,18 +960,48 @@ function BoardBody({
       ) ?? null,
     [games, replaceGameId],
   );
-  // 빈칸 채우기 대상 — 실시간 스냅샷 기준, 다 차거나 배정·해체되면 시트가 저절로 닫힌다
-  const slotLive = slotTarget?.gameId ? games.find((g) => g.id === slotTarget.gameId) : undefined;
-  const slotGame = slotLive
-    ? slotLive.status === 'QUEUED' && !isFullGame(slotLive)
-      ? slotLive
-      : null
-    : (slotTarget?.pending ?? null);
+  // 빈칸 채우기 대상 — 보이는 화면 기준, 다 차거나 배정·해체되면 시트가 저절로 닫힌다
+  // 시트에서 만든 새 조합은 서버 조합이 생기기 전까지 임시 카드로 보이므로 서버 id로도 그 임시 카드를 찾는다
+  const slotTempOf = (id: string) => optCreated.find((t) => t.game.id === id || t.realId === id);
+  const slotLive = slotTarget?.gameId
+    ? (games.find((g) => g.id === slotTarget.gameId) ??
+      games.find((g) => g.id === slotTempOf(slotTarget.gameId as string)?.game.id))
+    : undefined;
+  const slotGame = slotLive && slotLive.status === 'QUEUED' && !isFullGame(slotLive) ? slotLive : null;
   const slotOpen = slotTarget !== null && (slotTarget.gameId === null || slotGame !== null);
-  // 실시간 화면에 나타나면 대신 보여 주던 것은 버린다(이후 해체되면 시트가 닫히게)
+  // 서버 조합 id가 생기면 그 id로 바꿔 둔다 — 임시 카드가 사라진 뒤에도 같은 조합을 이어서 채우게
   useEffect(() => {
-    if (slotLive && slotTarget?.pending) setSlotTarget({ gameId: slotLive.id });
-  }, [slotLive, slotTarget]);
+    const id = slotTarget?.gameId;
+    if (!id?.startsWith(TEMP_GAME_PREFIX)) return;
+    const realId = optCreated.find((t) => t.game.id === id)?.realId;
+    if (realId) setSlotTarget({ gameId: realId });
+  }, [slotTarget, optCreated]);
+  // 빈칸 채우기에서 사람 고르기 — 누르자마자 그 조합에 들어간 모습으로(새 조합이면 임시 카드부터)
+  const fillSlot = (gameId: string | null, attendanceId: string) => {
+    if (!gameId) {
+      setSlotTarget({ gameId: startGame([attendanceId]) });
+      return;
+    }
+    const temp = slotTempOf(gameId);
+    if (temp) {
+      growTemp(temp.game.id, attendanceId);
+      return;
+    }
+    const attendance = snapshot.attendances.find((a) => a.id === attendanceId);
+    void patchGames(
+      [
+        [
+          gameId,
+          (players) => {
+            const slot = firstFreeSlot(players);
+            if (slot === undefined || players.some((p) => p.attendanceId === attendanceId)) return players;
+            return [...players, { id: `${TEMP_GAME_PREFIX}${attendanceId}`, gameId, attendanceId, slot, attendance }];
+          },
+        ],
+      ],
+      () => api(`/games/${gameId}/players`, { method: 'POST', admin: true, body: { attendanceId } }),
+    );
+  };
   const leftCount = attendances.filter((a) => a.status === 'LEFT').length;
   const presentCount = attendances.length - leftCount;
 
@@ -1564,15 +1638,12 @@ function BoardBody({
       )}
       {slotOpen && (
         <SlotFillSheet
-          sessionId={session.id}
           game={slotGame}
           roster={roster}
           placeLabels={placeLabels}
           sort={rosterSort}
           onSort={setRosterSort}
-          run={run}
-          busy={busy}
-          onCreated={(g) => setSlotTarget({ gameId: g.id, pending: g })}
+          onPick={(attendanceId) => fillSlot(slotGame?.id ?? null, attendanceId)}
           onClose={() => setSlotTarget(null)}
         />
       )}
