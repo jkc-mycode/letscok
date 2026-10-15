@@ -22,6 +22,13 @@ function Icon({ size = 18, className = '', children }: { size?: number; classNam
 
 type IconProps = { size?: number; className?: string };
 
+export const SearchIcon = (p: IconProps) => (
+  <Icon size={20} {...p}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="m20 20-3.5-3.5" />
+  </Icon>
+);
+
 export const MicIcon = (p: IconProps) => (
   <Icon {...p}>
     <rect x="9" y="2" width="6" height="12" rx="3" />
