@@ -128,7 +128,7 @@ export function WaitingRow({
       )}
       <span className="tabular ml-auto shrink-0 font-mono text-caption text-dim">
         {/* 게임 중엔 기다리는 게 아니라 0분 — 대기 시간은 게임이 끝나면 다시 센다(대기 조합은 아직 기다리는 중이라 그대로) */}
-        {attendance.gamesPlayed}게임 · {attendance.status === 'PLAYING' ? '0분' : <WaitingMinutesText since={attendance.waitingSince} />}
+        {attendance.gamesPlayed}게임 · {attendance.status === 'PLAYING' ? '0분' : <WaitingMinutesText since={attendance.waitingSince} alert={attendance.status === 'CHECKED_IN'} />}
       </span>
       {/* 호출·휴식/복귀·콕 확인 취소·퇴장은 [⋯] 하나로 모으고 시트에서 고른다(폰·태블릿 공통) — 작은 버튼이 줄에 붙으면 잘못 누르기 쉽다 */}
       <button

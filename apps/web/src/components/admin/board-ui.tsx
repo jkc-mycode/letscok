@@ -13,8 +13,18 @@ export function ElapsedText({ since }: { since: string }) {
   return <>{formatElapsed(since, useNow())}</>;
 }
 
-export function WaitingMinutesText({ since }: { since: string }) {
-  return <>{formatWaitingMinutes(since, useNow())}</>;
+// 오래 기다린 사람 강조 기준(분) — 15분 주황, 20분 빨강
+const WAIT_WARN_MINUTES = 15;
+const WAIT_ALERT_MINUTES = 20;
+
+// alert: 아직 조합에 안 든 대기 인원만 — 조합에 든 사람·휴식은 이미 처리된 상태라 색을 칠하지 않는다
+export function WaitingMinutesText({ since, alert = false }: { since: string; alert?: boolean }) {
+  const now = useNow();
+  const text = formatWaitingMinutes(since, now);
+  if (!alert) return <>{text}</>;
+  const minutes = (now - new Date(since).getTime()) / 60000;
+  const cls = minutes >= WAIT_ALERT_MINUTES ? 'font-bold text-coral' : minutes >= WAIT_WARN_MINUTES ? 'font-bold text-amber' : '';
+  return cls ? <span className={cls}>{text}</span> : <>{text}</>;
 }
 
 export function Zone({

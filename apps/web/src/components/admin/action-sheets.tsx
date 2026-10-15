@@ -132,7 +132,7 @@ export function ReplacePlayerModal({
                 {/* 대기 명단과 같은 표기 — 게임 중이면 0분 */}
                 <span className="tabular ml-auto shrink-0 font-mono text-caption text-dim">
                   {attendance.gamesPlayed}게임 ·{' '}
-                  {attendance.status === 'PLAYING' ? '0분' : <WaitingMinutesText since={attendance.waitingSince} />}
+                  {attendance.status === 'PLAYING' ? '0분' : <WaitingMinutesText since={attendance.waitingSince} alert={attendance.status === 'CHECKED_IN'} />}
                 </span>
               </button>
             );
@@ -219,7 +219,7 @@ export function SlotFillSheet({
             {/* 대기 명단과 같은 표기 — 게임 중이면 0분 */}
             <span className="tabular ml-auto shrink-0 font-mono text-caption text-dim">
               {attendance.gamesPlayed}게임 ·{' '}
-              {attendance.status === 'PLAYING' ? '0분' : <WaitingMinutesText since={attendance.waitingSince} />}
+              {attendance.status === 'PLAYING' ? '0분' : <WaitingMinutesText since={attendance.waitingSince} alert={attendance.status === 'CHECKED_IN'} />}
             </span>
           </button>
         );
