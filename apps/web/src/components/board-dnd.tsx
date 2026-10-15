@@ -58,6 +58,9 @@ export type DropTarget =
   | { kind: 'roster' } // 명단 구역 — 카드에서 끌어낸 사람을 빼기
   | { kind: 'court'; courtId: string }; // 빈 코트 — 조합 카드를 놓으면 배정
 
+// 아직 서버에 없는 조합(만드는 중)의 임시 id 접두어 — 그 카드의 사람은 끌 수 없고 그 카드에는 놓을 수 없다
+export const TEMP_GAME_PREFIX = 'temp:';
+
 // 칸·카드가 속한 게임 — 놓기 전에 서버가 거절할 조합을 미리 가리는 데 쓴다
 export type GameRef = {
   gameId: string;
@@ -78,6 +81,7 @@ function judge(item: DragItem, target: DropTarget): Judgement {
   }
   if (target.kind === 'court') return 'no';
   if (target.kind === 'new-game' || target.kind === 'roster') return 'yes';
+  if (target.gameId.startsWith(TEMP_GAME_PREFIX)) return 'noop'; // 만드는 중인 조합 — 서버에 생긴 뒤에
   if (target.gameId === item.fromGameId) {
     // 같은 카드 안 — 다른 사람 위·빈칸이면 자리 바꾸기(팀), 자기 자신·카드 여백은 제자리
     if (target.kind === 'slot') return 'yes';

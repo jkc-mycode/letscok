@@ -6,7 +6,13 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react';
 import { LoginGate, useAdminAuth } from '@/components/admin-gate';
 import { BirthdayCalendarModal } from '@/components/birthday-calendar';
-import { BoardDnd, useBoardDragEnabled, type DragItem, type DropTarget } from '@/components/board-dnd';
+import {
+  BoardDnd,
+  TEMP_GAME_PREFIX,
+  useBoardDragEnabled,
+  type DragItem,
+  type DropTarget,
+} from '@/components/board-dnd';
 import { arrayMove } from '@dnd-kit/sortable';
 import { CommandSheet } from '@/components/command-sheet';
 import { ConnectionError } from '@/components/connection-error';
@@ -197,7 +203,6 @@ const SWIPE_COMMIT_PX = 70; // 손을 뗐을 때 이 이상(또는 화면 폭 25
 const SWIPE_EDGE_GUARD = 20; // 화면 가장자리 시작 스와이프는 시스템 제스처에 양보
 
 // 누르자마자 보여 주는 새 조합 — 서버 id가 오기 전 임시 id. realId = 빈칸 조합을 한 명씩 채우는 중인 서버 조합
-const TEMP_GAME_PREFIX = 'temp:';
 type GamePlayer = NonNullable<IGame['players']>[number];
 const playersSignature = (players: GamePlayer[] = []) =>
   players.map((p) => `${p.attendanceId}:${p.slot}`).sort().join(',');
@@ -369,10 +374,20 @@ function BoardBody({
       games.filter((g) => g.status === 'QUEUED' || g.status === 'PLAYING').flatMap((g) => (g.players ?? []).map((p) => p.attendanceId)),
     );
     // 조합에서 뺀 사람 — 다른 조합에도 없으면 서버처럼 대기로(대기 시간은 그대로)
+    // 다른 카드에서 옮겨 넣은 사람 — 게임 중 카드면 '게임 중', 대기 조합이면 대기였던 사람만 '대기 조합'
     const removed = new Set<string>();
+    const removedFromPlaying = new Set<string>(); // 게임 중 카드에서 교체로 빠진 사람
+    const added = new Map<string, 'PLAYING' | 'MATCHED'>();
     for (const [id, patch] of optPlayers) {
       const kept = new Set(patch.players.map((p) => p.attendanceId));
-      for (const p of snapshot.games.find((g) => g.id === id)?.players ?? []) if (!kept.has(p.attendanceId)) removed.add(p.attendanceId);
+      const server = snapshot.games.find((g) => g.id === id);
+      const before = new Set((server?.players ?? []).map((p) => p.attendanceId));
+      for (const p of server?.players ?? []) {
+        if (kept.has(p.attendanceId)) continue;
+        removed.add(p.attendanceId);
+        if (server?.status === 'PLAYING') removedFromPlaying.add(p.attendanceId);
+      }
+      for (const p of patch.players) if (!before.has(p.attendanceId)) added.set(p.attendanceId, server?.status === 'PLAYING' ? 'PLAYING' : 'MATCHED');
     }
     return snapshot.attendances.map((a) => {
       if (playing.has(a.id)) return { ...a, status: 'PLAYING' as const };
@@ -386,6 +401,9 @@ function BoardBody({
         };
       }
       if (unassigned.has(a.id)) return { ...a, status: 'MATCHED' as const };
+      const addedAs = added.get(a.id);
+      if (addedAs === 'PLAYING' || (addedAs && a.status === 'CHECKED_IN')) return { ...a, status: addedAs };
+      if (removedFromPlaying.has(a.id)) return { ...a, status: inOtherGame.has(a.id) ? ('MATCHED' as const) : ('CHECKED_IN' as const) };
       if (removed.has(a.id) && a.status === 'MATCHED' && !inOtherGame.has(a.id)) return { ...a, status: 'CHECKED_IN' as const };
       return a.status === 'CHECKED_IN' && matched.has(a.id) ? { ...a, status: 'MATCHED' as const } : a;
     });
@@ -432,43 +450,63 @@ function BoardBody({
   gamesRef.current = games;
   const snapshotRef = useRef(snapshot); // 순서 요청이 줄을 서 있다 나갈 때 그때의 서버 화면을 보려고
   snapshotRef.current = snapshot;
-  const patchPlayers = useCallback(
-    (gameId: string, change: (players: GamePlayer[]) => GamePlayer[], request: () => Promise<unknown>) => {
-      const server = snapshot.games.find((g) => g.id === gameId);
-      const shown = gamesRef.current.find((g) => g.id === gameId);
-      if (!server || !shown || gameId.startsWith(TEMP_GAME_PREFIX)) return;
-      const players = change(shown.players ?? []);
+  // 카드 사람 목록을 먼저 바꿔 보여 주고 요청을 보낸다 — 카드끼리 옮길 때는 두 카드를 함께(요청 안에서 넣기 → 빼기 차례로)
+  // 실패하면 바꾼 카드 모두 서버 화면대로. 결과(성공 여부)를 돌려줘 이어서 할 일을 정할 수 있게
+  const patchGames = useCallback(
+    (changes: [string, (players: GamePlayer[]) => GamePlayer[]][], request: () => Promise<unknown>) => {
+      const ready = changes.every(
+        ([gameId]) =>
+          !gameId.startsWith(TEMP_GAME_PREFIX) &&
+          snapshot.games.some((g) => g.id === gameId) &&
+          gamesRef.current.some((g) => g.id === gameId),
+      );
+      if (!ready) return Promise.resolve(false);
+      const ids = changes.map(([gameId]) => gameId);
+      const patched = changes.map(([gameId, change]) => ({
+        gameId,
+        players: change(gamesRef.current.find((g) => g.id === gameId)?.players ?? []),
+        base: playersSignature(snapshot.games.find((g) => g.id === gameId)?.players),
+      }));
       setOptPlayers((prev) => {
-        const old = prev.get(gameId);
-        return new Map(prev).set(gameId, {
-          players,
-          base: old?.base ?? playersSignature(server.players),
-          pending: (old?.pending ?? 0) + 1,
-        });
+        const next = new Map(prev);
+        for (const { gameId, players, base } of patched) {
+          const old = prev.get(gameId);
+          next.set(gameId, { players, base: old?.base ?? base, pending: (old?.pending ?? 0) + 1 });
+        }
+        return next;
       });
-      void runParallel(request).then((ok) => {
+      return runParallel(request).then((ok) => {
         setOptPlayers((prev) => {
-          const patch = prev.get(gameId);
-          if (!patch) return prev;
           const next = new Map(prev);
-          if (!ok) next.delete(gameId); // 실패 — 서버 화면대로(알림은 runParallel)
-          else next.set(gameId, { ...patch, pending: patch.pending - 1 });
+          for (const gameId of ids) {
+            const patch = prev.get(gameId);
+            if (!patch) continue;
+            if (!ok) next.delete(gameId); // 실패 — 서버 화면대로(알림은 runParallel)
+            else next.set(gameId, { ...patch, pending: patch.pending - 1 });
+          }
           return next;
         });
         // 서버 목록이 결국 처음과 같아졌으면(바꿨다 되돌림) 지울 계기가 없다 — 새로고침이 올 만큼 기다렸다 지운다
         setTimeout(
           () =>
             setOptPlayers((prev) => {
-              if (prev.get(gameId)?.pending !== 0) return prev;
+              const done = ids.filter((gameId) => prev.get(gameId)?.pending === 0);
+              if (done.length === 0) return prev;
               const next = new Map(prev);
-              next.delete(gameId);
+              done.forEach((gameId) => next.delete(gameId));
               return next;
             }),
           2000,
         );
+        return ok;
       });
     },
     [snapshot.games, runParallel],
+  );
+  const patchPlayers = useCallback(
+    (gameId: string, change: (players: GamePlayer[]) => GamePlayer[], request: () => Promise<unknown>) =>
+      void patchGames([[gameId, change]], request),
+    [patchGames],
   );
   const slotActions = useMemo(
     () => ({
@@ -556,6 +594,64 @@ function BoardBody({
     if (from < 0 || to < 0 || to >= ids.length) return;
     reorderQueue(arrayMove(ids, from, to));
   };
+  // 새 조합을 대기 조합 맨 끝에 바로 보여 주고 서버에 보낸다([조합 만들기]·새 조합 자리로 끌기 공용)
+  // removeFrom = 다른 카드에서 끌어온 사람 — 만든 뒤 그 카드에서 뺀다(그 카드도 바로 빠진 모습으로)
+  const startGame = useCallback(
+    (ids: string[], removeFrom?: string) => {
+      // 원래 카드가 그 사이 해체됐으면 뺄 곳이 없다 — 만들기만
+      const origin = removeFrom && snapshot.games.some((g) => g.id === removeFrom) ? removeFrom : undefined;
+      const tempId = `${TEMP_GAME_PREFIX}${Date.now()}`;
+      const temp: IGame = {
+        id: tempId,
+        sessionId: session.id,
+        courtId: null,
+        status: 'QUEUED',
+        queuedAt: new Date().toISOString(),
+        startedAt: null,
+        endedAt: null,
+        queueOrder: null,
+        players: ids.map((attendanceId, slot) => ({
+          id: `${tempId}:${slot}`,
+          gameId: tempId,
+          attendanceId,
+          slot,
+          attendance: snapshot.attendances.find((a) => a.id === attendanceId),
+        })),
+      };
+      setOptCreated((prev) => [...prev, { game: temp, ids }]);
+      const drop = () => setOptCreated((prev) => prev.filter((t) => t.game.id !== tempId));
+      const request = async () => {
+        try {
+          if (ids.length === GAME_SIZE) {
+            await api(`/sessions/${session.id}/games`, { method: 'POST', admin: true, body: { attendanceIds: ids } });
+          } else {
+            const draft = await api<IGame>(`/sessions/${session.id}/games/draft`, {
+              method: 'POST',
+              admin: true,
+              body: { attendanceId: ids[0] },
+            });
+            setOptCreated((prev) => prev.map((t) => (t.game.id === tempId ? { ...t, realId: draft.id } : t)));
+            for (const attendanceId of ids.slice(1)) {
+              await api(`/games/${draft.id}/players`, { method: 'POST', admin: true, body: { attendanceId } });
+            }
+          }
+        } catch (error) {
+          drop(); // 실패 — 대기로 되돌린다(빈칸 조합이 일부만 만들어졌으면 그 조합이 서버 화면대로 남는다)
+          throw error;
+        }
+        setTimeout(drop, 5000); // 실시간 화면을 못 받아도 새로고침으로 실린 뒤엔 대신 보여 주던 것을 버린다
+        if (origin) {
+          await api(`/games/${origin}/players/${ids[0]}`, { method: 'DELETE', admin: true });
+        }
+      };
+      if (origin) {
+        void patchGames([[origin, (players) => players.filter((p) => p.attendanceId !== ids[0])]], request);
+      } else {
+        void runParallel(request);
+      }
+    },
+    [session.id, snapshot.attendances, snapshot.games, patchGames, runParallel],
+  );
   // 끌어다 놓기 → 서버 호출. 카드에서 끌어낸 사람은 자석을 옮기듯 원래 조합에서 빠진다
   const onDrop = useCallback(
     (item: DragItem, target: DropTarget | null) => {
@@ -576,20 +672,39 @@ function BoardBody({
       const person = item;
       const from = person.fromGameId;
       const body = { attendanceId: person.attendanceId };
+      // 끌어온 카드가 아직 서버에 없는 조합(만드는 중)이면 뺄 곳이 없다
+      const origin = from && !from.startsWith(TEMP_GAME_PREFIX) ? from : undefined;
       const leaveOrigin = () =>
-        from
-          ? api(`/games/${from}/players/${person.attendanceId}`, { method: 'DELETE', admin: true })
+        origin
+          ? api(`/games/${origin}/players/${person.attendanceId}`, { method: 'DELETE', admin: true })
           : Promise.resolve();
+      // 카드끼리 옮기기 — 놓자마자 새 카드에 들어가고 원래 카드에서 빠진 모습으로. 요청은 넣기 → 빼기 차례로
+      const moved: GamePlayer = {
+        id: `${TEMP_GAME_PREFIX}${person.attendanceId}`,
+        gameId: '',
+        attendanceId: person.attendanceId,
+        slot: 0,
+        attendance: snapshot.attendances.find((a) => a.id === person.attendanceId),
+      };
+      const withOrigin = (
+        targetId: string,
+        change: (players: GamePlayer[]) => GamePlayer[],
+      ): [string, (players: GamePlayer[]) => GamePlayer[]][] => [
+        [targetId, change],
+        ...(origin
+          ? [[origin, (players: GamePlayer[]) => players.filter((p) => p.attendanceId !== person.attendanceId)] as [
+              string,
+              (players: GamePlayer[]) => GamePlayer[],
+            ]]
+          : []),
+      ];
       // 아무 데도 아닌 곳·명단 = 카드에서 떼어 내기(명단에서 끈 거면 아무 일 없음)
       if (!target || target.kind === 'roster') {
         if (from) slotActions.removePlayer(from, person.attendanceId);
         return;
       }
       if (target.kind === 'new-game') {
-        void run(async () => {
-          await api(`/sessions/${session.id}/games/draft`, { method: 'POST', admin: true, body });
-          await leaveOrigin();
-        });
+        startGame([person.attendanceId], origin);
         return;
       }
       // 같은 카드 안에 놓으면 자리 바꾸기(팀) — 사람 위면 맞바꾸고 빈칸이면 그 자리로
@@ -607,28 +722,46 @@ function BoardBody({
         moveSlot(target.slot);
         return;
       }
+      if (target.kind === 'court') return; // 사람은 코트 자체엔 못 놓는다
+      const targetPlayers = gamesRef.current.find((g) => g.id === target.gameId)?.players ?? [];
+      // 이미 그 카드에 있는 사람이면 서버도 막는다 — 바꿔 보여 주지 않는다
+      if (targetPlayers.some((p) => p.attendanceId === person.attendanceId)) return;
       if (target.kind === 'player') {
         if (target.attendanceId === person.attendanceId) return;
-        void run(async () => {
-          await api(`/games/${target.gameId}/players`, {
-            method: 'PATCH',
-            admin: true,
-            body: { outAttendanceId: target.attendanceId, inAttendanceId: person.attendanceId },
-          });
-          await leaveOrigin();
-        });
+        void patchGames(
+          withOrigin(target.gameId, (players) =>
+            players.map((p) => (p.attendanceId === target.attendanceId ? { ...moved, gameId: target.gameId, slot: p.slot } : p)),
+          ),
+          async () => {
+            await api(`/games/${target.gameId}/players`, {
+              method: 'PATCH',
+              admin: true,
+              body: { outAttendanceId: target.attendanceId, inAttendanceId: person.attendanceId },
+            });
+            await leaveOrigin();
+          },
+        );
         return;
       }
-      // 빈칸 또는 빈칸 있는 카드의 여백 — 같은 카드거나 다 찬 카드면 그대로(사람은 코트 자체엔 못 놓는다)
-      if (target.kind === 'court' || target.gameId === from || (target.kind === 'card' && target.full)) return;
-      // 빈칸에 놓았으면 그 자리로(팀이 정해진다), 카드 여백이면 첫 빈자리
+      // 빈칸 또는 빈칸 있는 카드의 여백 — 같은 카드거나 다 찬 카드면 그대로
+      if (target.gameId === from || (target.kind === 'card' && target.full)) return;
+      // 빈칸에 놓았으면 그 자리로(팀이 정해진다), 카드 여백이면 첫 빈자리(서버 pickFreeSlot과 같은 규칙)
       const addBody = target.kind === 'slot' ? { ...body, slot: target.slot } : body;
-      void run(async () => {
-        await api(`/games/${target.gameId}/players`, { method: 'POST', admin: true, body: addBody });
-        await leaveOrigin();
-      });
+      const used = new Set(targetPlayers.map((p) => p.slot));
+      const slot =
+        target.kind === 'slot' && !used.has(target.slot)
+          ? target.slot
+          : [0, 1, 2, 3].find((n) => !used.has(n));
+      if (slot === undefined) return;
+      void patchGames(
+        withOrigin(target.gameId, (players) => [...players, { ...moved, gameId: target.gameId, slot }]),
+        async () => {
+          await api(`/games/${target.gameId}/players`, { method: 'POST', admin: true, body: addBody });
+          await leaveOrigin();
+        },
+      );
     },
-    [run, session.id, queuedGames, assignToCourt, slotActions],
+    [snapshot.attendances, queuedGames, assignToCourt, slotActions, startGame, patchGames],
   );
   // 폰: 조합 카드를 끄는 동안 구역 좌우 넘기기가 끼어들지 않게
   const dndDragging = useRef(false);
@@ -813,47 +946,7 @@ function BoardBody({
     const ids = [...selected];
     if (ids.length === 0) return;
     setSelected(new Set());
-    const tempId = `${TEMP_GAME_PREFIX}${Date.now()}`;
-    const temp: IGame = {
-      id: tempId,
-      sessionId: session.id,
-      courtId: null,
-      status: 'QUEUED',
-      queuedAt: new Date().toISOString(),
-      startedAt: null,
-      endedAt: null,
-      queueOrder: null,
-      players: ids.map((attendanceId, slot) => ({
-        id: `${tempId}:${slot}`,
-        gameId: tempId,
-        attendanceId,
-        slot,
-        attendance: snapshot.attendances.find((a) => a.id === attendanceId),
-      })),
-    };
-    setOptCreated((prev) => [...prev, { game: temp, ids }]);
-    const drop = () => setOptCreated((prev) => prev.filter((t) => t.game.id !== tempId));
-    void runParallel(async () => {
-      try {
-        if (ids.length === GAME_SIZE) {
-          await api(`/sessions/${session.id}/games`, { method: 'POST', admin: true, body: { attendanceIds: ids } });
-        } else {
-          const draft = await api<IGame>(`/sessions/${session.id}/games/draft`, {
-            method: 'POST',
-            admin: true,
-            body: { attendanceId: ids[0] },
-          });
-          setOptCreated((prev) => prev.map((t) => (t.game.id === tempId ? { ...t, realId: draft.id } : t)));
-          for (const attendanceId of ids.slice(1)) {
-            await api(`/games/${draft.id}/players`, { method: 'POST', admin: true, body: { attendanceId } });
-          }
-        }
-      } catch (error) {
-        drop(); // 실패 — 대기로 되돌린다(빈칸 조합이 일부만 만들어졌으면 그 조합이 서버 화면대로 남는다)
-        throw error;
-      }
-      setTimeout(drop, 5000); // 실시간 화면을 못 받아도 새로고침으로 실린 뒤엔 대신 보여 주던 것을 버린다
-    });
+    startGame(ids);
   };
 
   const closeSession = () => {

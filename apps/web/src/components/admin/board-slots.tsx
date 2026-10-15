@@ -2,7 +2,7 @@
 
 import { GAME_SIZE, ICourt, IGame } from '@letscok/shared-types';
 import { useEffect, useState } from 'react';
-import { mergeRefs, useDropTarget, usePersonDrag, type GameRef } from '@/components/board-dnd';
+import { mergeRefs, TEMP_GAME_PREFIX, useDropTarget, usePersonDrag, type GameRef } from '@/components/board-dnd';
 import { gamePartnerPeople, GenderMarker, GradeBadge, PartnerNote } from '@/components/badges';
 import { useLongPress } from '@/components/admin/board-ui';
 
@@ -163,6 +163,8 @@ function SlotPerson({
 }) {
   const member = player.attendance!.member!;
   const queued = game.status === 'QUEUED';
+  // 만드는 중인 조합(임시 카드)의 사람은 끌지 않는다 — 끌어내면 빠지지 않고 복사된다(서버에 아직 뺄 조합이 없음)
+  const draggable = dragEnabled && queued && !game.id.startsWith(TEMP_GAME_PREFIX);
   // 대기 조합에 있는데 본인은 다른 코트에서 게임 중 = 미리 짜둔 조합의 차용 인원
   const busyElsewhere = queued && player.attendance?.status === 'PLAYING';
   const drop = useDropTarget(
@@ -181,10 +183,10 @@ function SlotPerson({
       fromGameId: game.id,
       playing: player.attendance?.status === 'PLAYING',
     },
-    dragEnabled && queued,
+    draggable,
   );
   // 끌 수 있는 칸(태블릿 대기 조합)은 길게 누르면 끌기가 시작된다 — 자리 바꾸기는 같은 카드 안에 놓는 것으로
-  const press = useLongPress(onLongPress, !(dragEnabled && queued));
+  const press = useLongPress(onLongPress, !draggable);
   return (
     <div
       ref={mergeRefs(drop.ref, drag.ref)}
