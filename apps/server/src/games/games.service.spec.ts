@@ -413,6 +413,55 @@ describe('finish', () => {
   });
 });
 
+// ===== moveCourt (코트 옮기기) =====
+
+describe('moveCourt', () => {
+  async function playOn(sessionId: string, courtId: string) {
+    const [a, b, c, d] = await seedFour(sessionId);
+    const game = await service.create(sessionId, { attendanceIds: [a.id, b.id, c.id, d.id] });
+    return service.assign(game.id, { courtId });
+  }
+
+  it('코트만 바뀌고 게임 시작 시각·상태는 그대로, 원래 코트는 비고 새 코트는 게임 중', async () => {
+    pushStub.notifyGame.mockClear();
+    const session = await seedSession();
+    const [from, to] = [await seedCourt(session.id, 1), await seedCourt(session.id, 2)];
+    const game = await playOn(session.id, from.id);
+
+    const moved = await service.moveCourt(game.id, { courtId: to.id });
+
+    expect(moved.status).toBe('PLAYING');
+    expect(moved.courtId).toBe(to.id);
+    expect(moved.startedAt).toEqual(game.startedAt);
+    expect((await prisma.court.findUniqueOrThrow({ where: { id: from.id } })).status).toBe('IDLE');
+    expect((await prisma.court.findUniqueOrThrow({ where: { id: to.id } })).status).toBe('IN_GAME');
+    expect(pushStub.notifyGame).toHaveBeenLastCalledWith(game.id);
+  });
+
+  it('게임 중인 코트·다른 모임 차례인 공유 코트로는 못 옮긴다', async () => {
+    const session = await seedSession();
+    const [from, busy] = [await seedCourt(session.id, 1), await seedCourt(session.id, 2)];
+    const shared = await prisma.court.create({
+      data: { sessionId: session.id, courtNo: 3, isShared: true, ourTurn: false },
+    });
+    const game = await playOn(session.id, from.id);
+    await playOn(session.id, busy.id);
+
+    await expect(service.moveCourt(game.id, { courtId: busy.id })).rejects.toThrow('이미 게임이 진행 중');
+    await expect(service.moveCourt(game.id, { courtId: shared.id })).rejects.toThrow('다른 모임 차례');
+    expect((await prisma.game.findUniqueOrThrow({ where: { id: game.id } })).courtId).toBe(from.id);
+  });
+
+  it('게임 중이 아닌 조합은 409', async () => {
+    const session = await seedSession();
+    const court = await seedCourt(session.id);
+    const [a, b, c, d] = await seedFour(session.id);
+    const queued = await service.create(session.id, { attendanceIds: [a.id, b.id, c.id, d.id] });
+
+    await expect(service.moveCourt(queued.id, { courtId: court.id })).rejects.toThrow(ConflictException);
+  });
+});
+
 // ===== reopen (종료 되돌리기) =====
 
 describe('reopen', () => {

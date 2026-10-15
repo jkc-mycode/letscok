@@ -143,6 +143,49 @@ export class GamesService {
     return toGameResponse(assigned);
   }
 
+  // 코트 옮기기: 게임 중인 조합을 다른 빈 코트로 — 게임 시간은 이어지고 코트만 바뀐다(대기로 → 다시 배정하면 시간이 0부터)
+  // 원래 코트는 비운다. 공유 코트의 차례는 건드리지 않는다(게임이 끝난 게 아니므로)
+  async moveCourt(id: string, dto: AssignGameDto): Promise<IGame> {
+    const game = await this.findGameOrThrow(id);
+    if (game.status !== 'PLAYING' || !game.courtId) {
+      throw new ConflictException('게임 중인 조합만 코트를 옮길 수 있어요.');
+    }
+    if (game.courtId === dto.courtId) {
+      throw new BadRequestException('지금 코트와 같은 코트예요.');
+    }
+    const court = await this.prisma.court.findFirst({
+      where: { id: dto.courtId, sessionId: game.sessionId, deletedAt: null },
+    });
+    if (!court) {
+      throw new NotFoundException('등록된 코트를 찾을 수 없습니다.');
+    }
+    if (court.isShared && !court.ourTurn) {
+      throw new ConflictException(
+        '다른 모임 차례인 코트입니다. 상대 게임이 끝났다면 코트의 [우리 차례]를 먼저 눌러주세요.',
+      );
+    }
+    const fromCourtId = game.courtId;
+
+    const moved = await this.prisma.$transaction(async (tx) => {
+      // 새 코트가 비어 있고 게임이 아직 그 코트에서 게임 중일 때만 — 다른 기기가 먼저 배정·종료했으면 409
+      const target = await tx.court.updateMany({
+        where: { id: court.id, status: 'IDLE' },
+        data: { status: 'IN_GAME' },
+      });
+      if (target.count === 0) throw new ConflictException('이미 게임이 진행 중인 코트입니다.');
+      const updated = await tx.game.updateMany({
+        where: { id, status: 'PLAYING', courtId: fromCourtId },
+        data: { courtId: court.id },
+      });
+      if (updated.count === 0) throw new ConflictException('이미 끝났거나 옮겨진 게임입니다.');
+      await tx.court.update({ where: { id: fromCourtId }, data: { status: 'IDLE' } });
+      return tx.game.findUniqueOrThrow({ where: { id }, include: GAME_INCLUDE });
+    });
+    this.realtime.broadcastSnapshot(game.sessionId);
+    this.push.notifyGame(id); // 4명에게 "N번 코트로 오세요"를 새 코트로
+    return toGameResponse(moved);
+  }
+
   // 빈 코트 채우기 — 빈 코트(번호 순)에 대기 조합(순서대로)을 한 번에 배정한다
   // 가능한 것만 넣는다: 다른 코트에서 게임 중인 사람이 든 조합은 건너뛰고 다음 조합을 넣는다(코트를 놀리지 않게)
   async fillCourts(sessionId: string): Promise<IFillCourtsResult> {

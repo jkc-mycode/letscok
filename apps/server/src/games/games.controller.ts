@@ -104,6 +104,12 @@ export class GamesController {
   }
 
   // 게임 중 → 대기 조합 복귀 (조합 유지, 게임 수 미집계)
+  // 게임 중인 조합을 다른 빈 코트로 — 게임 시간은 그대로
+  @Patch('games/:id/court')
+  async moveCourt(@Param('id') id: string, @Body() dto: AssignGameDto): Promise<IApiResponse<IGame>> {
+    return { success: true, data: await this.gamesService.moveCourt(id, dto) };
+  }
+
   // [게임 종료] 되돌리기 — 종료 직후(30초 안)에만
   @Patch('games/:id/reopen')
   async reopen(@Param('id') id: string): Promise<IApiResponse<IGame>> {
