@@ -439,6 +439,7 @@ function BoardBody({
   const [assignGameId, setAssignGameId] = useState<string | null>(null); // 코트 고르기 시트 대상 조합
   const [actionId, setActionId] = useState<string | null>(null); // 폰 대기 줄 [⋯] 시트 대상 출석
   const [cardMenuId, setCardMenuId] = useState<string | null>(null); // 코트·조합 카드 [⋯] 시트 대상 게임
+  const [moveGameId, setMoveGameId] = useState<string | null>(null); // 다른 코트로 옮길 게임 중 조합
   const [commandOpen, setCommandOpen] = useState(false); // AI 명령(글·음성)
   // 빈칸 채우기 시트 — gameId=null이면 새 조합(첫 사람을 고르면 그 조합으로 이어서 채운다)
   // pending = 방금 만든 조합(실시간 화면이 도착하기 전까지 대신 보여 줘서 시트가 깜빡 닫히지 않게)
@@ -925,6 +926,11 @@ function BoardBody({
   const assignTarget = useMemo(
     () => games.find((g) => g.id === assignGameId && g.status === 'QUEUED') ?? null,
     [games, assignGameId],
+  );
+  // 코트 옮기기 대상 — 게임이 끝나면 시트가 저절로 닫힌다
+  const moveTarget = useMemo(
+    () => games.find((g) => g.id === moveGameId && g.status === 'PLAYING') ?? null,
+    [games, moveGameId],
   );
   // 카드 [⋯] 대상 — 실시간 스냅샷 기준, 게임이 끝나거나 해체되면 저절로 닫힌다
   const cardMenuTarget = useMemo(
@@ -1528,6 +1534,21 @@ function BoardBody({
           onClose={() => setAssignGameId(null)}
         />
       )}
+      {/* 게임 중 조합 코트 옮기기 — 게임 시간은 이어진다 */}
+      {moveTarget && (
+        <CourtPickSheet
+          game={moveTarget}
+          idleCourts={idleCourts}
+          title={`${courts.find((c) => c.id === moveTarget.courtId)?.courtNo ?? ''}번 코트에서 어디로 옮길까요?`}
+          onAssign={(gameId, courtId) =>
+            void run(
+              () => api(`/games/${gameId}/court`, { method: 'PATCH', admin: true, body: { courtId } }),
+              `game:${gameId}`,
+            )
+          }
+          onClose={() => setMoveGameId(null)}
+        />
+      )}
       {/* 폰 더보기 — 햄버거가 보드를 밀어내던 격자 대신 아래에서 올라오는 목록. 위험한 항목은 맨 아래 따로 */}
       {menuOpen && (
         <Sheet
@@ -1604,6 +1625,7 @@ function BoardBody({
           }
           run={run}
           onReplace={(g) => setReplaceGameId(g.id)}
+          onMoveCourt={(g) => setMoveGameId(g.id)}
           onClose={() => setCardMenuId(null)}
         />
       )}
@@ -3811,11 +3833,13 @@ function CourtsManager({
 function CourtPickSheet({
   game,
   idleCourts,
+  title = '몇 번 코트에 넣을까요?',
   onAssign,
   onClose,
 }: {
   game: IGame;
   idleCourts: ICourt[];
+  title?: string; // 게임 중 조합 옮기기에서도 쓴다
   onAssign: (gameId: string, courtId: string) => void;
   onClose: () => void;
 }) {
@@ -3824,9 +3848,10 @@ function CourtPickSheet({
     <Sheet
       ariaLabel="코트 고르기"
       onClose={onClose}
-      header={<h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-amber">몇 번 코트에 넣을까요?</h2>}
+      header={<h2 className="min-w-0 truncate text-lg font-bold text-amber">{title}</h2>}
     >
       <p className="text-sm text-dim">{names.join(', ')}</p>
+      {idleCourts.length === 0 && <p className="py-4 text-center text-sm text-faint">빈 코트가 없어요</p>}
       <div className="grid grid-cols-2 gap-2">
         {idleCourts.map((court) => {
           const theirTurn = court.isShared && !court.ourTurn;
@@ -4983,12 +5008,14 @@ function GameActionSheet({
   title,
   run,
   onReplace,
+  onMoveCourt,
   onClose,
 }: {
   game: IGame;
   title: string;
   run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   onReplace: (game: IGame) => void;
+  onMoveCourt: (game: IGame) => void;
   onClose: () => void;
 }) {
   const playing = game.status === 'PLAYING';
@@ -5029,6 +5056,17 @@ function GameActionSheet({
       >
         {playing ? '교체 — 한 명만 바꾸기(타이머 유지)' : '교체 — 한 명만 바꾸기(순서 유지)'}
       </button>
+      {playing && (
+        <button
+          onClick={() => {
+            onMoveCourt(game);
+            onClose();
+          }}
+          className={`${row} bg-panel2 text-ink`}
+        >
+          다른 코트로 옮기기 — 빈 코트로(타이머 유지)
+        </button>
+      )}
       <ConfirmButton
         label={playing ? '게임 취소 — 조합까지 해체(게임 수 안 셈)' : '해체 — 조합을 없애고 대기로'}
         confirmLabel={playing ? '한 번 더 누르면 게임 취소' : '한 번 더 누르면 해체'}
