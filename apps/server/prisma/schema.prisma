@@ -185,6 +185,7 @@ model Attendance {
 
   @@unique([sessionId, memberId]) // 하루 1인 1출석 — 재입장은 새 행이 아니라 이 행을 CHECKED_IN으로 되돌림
   @@index([sessionId, status]) // 보드 3구역 조회(상태별 필터)가 가장 빈번한 쿼리
+  @@index([memberId]) // 한 사람의 출석 찾기 — 개인 출석 이력·삭제 전 확인·출석 집계(위 unique는 sessionId가 앞이라 못 씀)
   @@map("attendances")
 }
 
@@ -204,6 +205,7 @@ model Game {
   players GamePlayer[]
 
   @@index([sessionId, status])
+  @@index([courtId]) // 코트의 게임 찾기 — 종료 되돌리기·코트 번호 바꾸기의 기록 확인
   @@map("games")
 }
 
