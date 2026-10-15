@@ -7,6 +7,7 @@ import { GAME_SIZE, IGame, IGamePlayer } from '@letscok/shared-types';
 import { useEffect } from 'react';
 import { GenderMarker, GradeBadge } from '@/components/badges';
 import { ConnectionError } from '@/components/connection-error';
+import { HomeLink } from '@/components/home-link';
 import { LogoLoader } from '@/components/logo-loader';
 import { formatElapsed, useNow, useSnapshot } from '@/lib/use-snapshot';
 
@@ -71,7 +72,10 @@ export default function BoardDisplayPage() {
   return (
     <Shell>
       <header className="flex items-center gap-4">
-        <span className="text-caption font-bold tracking-[0.3em] text-court">LETSCOK</span>
+        {/* 로고 = 홈 링크(모임원 화면과 같음) — 버튼처럼 보이지 않아 대회 중 실수로 누를 일이 적다 */}
+        <HomeLink className="flex h-11 items-center text-caption font-bold tracking-[0.3em] text-court transition-opacity hover:opacity-70">
+          LETSCOK
+        </HomeLink>
         <span className="ml-auto rounded-full bg-panel px-4 py-1.5 text-body font-bold text-dim">
           대기 <span className="tabular text-ink">{waitingCount}</span>명
         </span>
