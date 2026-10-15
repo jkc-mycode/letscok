@@ -3707,7 +3707,13 @@ function CourtsManager({
   const [sharedOverride, setSharedOverride] = useState<Map<string, boolean>>(new Map());
   const [removing, setRemoving] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState<number[]>([]);
+  const [numberOverride, setNumberOverride] = useState<Map<string, number>>(new Map()); // 번호 바꾸는 중
+  const [editing, setEditing] = useState<{ id: string; value: string } | null>(null); // 번호를 눌러 고치는 줄
   useEffect(() => {
+    setNumberOverride((prev) => {
+      const next = new Map([...prev].filter(([id, no]) => courts.some((c) => c.id === id && c.courtNo !== no)));
+      return next.size === prev.size ? prev : next;
+    });
     setSharedOverride((prev) => {
       const next = new Map([...prev].filter(([id, v]) => courts.find((c) => c.id === id)?.isShared !== v && courts.some((c) => c.id === id)));
       return next.size === prev.size ? prev : next;
@@ -3723,7 +3729,8 @@ function CourtsManager({
   }, [courts]);
   const view = courts
     .filter((c) => !removing.has(c.id))
-    .map((c) => (sharedOverride.has(c.id) ? { ...c, isShared: sharedOverride.get(c.id)! } : c));
+    .map((c) => (sharedOverride.has(c.id) ? { ...c, isShared: sharedOverride.get(c.id)! } : c))
+    .map((c) => (numberOverride.has(c.id) ? { ...c, courtNo: numberOverride.get(c.id)! } : c));
 
   const add = () => {
     const no = Number(courtNo);
@@ -3741,6 +3748,22 @@ function CourtsManager({
       (ok) =>
         !ok &&
         setSharedOverride((prev) => {
+          const next = new Map(prev);
+          next.delete(court.id);
+          return next;
+        }),
+    );
+  };
+  // 잘못 등록한 번호 고치기 — 다른 코트가 쓰는 번호면 서버가 막고 이유를 알려 준다
+  const renumber = (court: ICourt, value: string) => {
+    setEditing(null);
+    const no = Number(value);
+    if (!no || no === court.courtNo) return;
+    setNumberOverride((prev) => new Map(prev).set(court.id, no));
+    void runParallel(() => api(`/courts/${court.id}`, { method: 'PATCH', admin: true, body: { courtNo: no } })).then(
+      (ok) =>
+        !ok &&
+        setNumberOverride((prev) => {
           const next = new Map(prev);
           next.delete(court.id);
           return next;
@@ -3786,14 +3809,50 @@ function CourtsManager({
       {view.length === 0 && adding.length === 0 && (
         <p className="py-6 text-center text-sm text-faint">오늘 쓰는 코트 번호를 아래에서 추가해주세요</p>
       )}
+      {view.length > 0 && <p className="text-xs text-faint">번호를 누르면 바꿀 수 있어요(게임 중에도 돼요)</p>}
       {view.map((court) => {
         const inGame = playingByCourt.has(court.id);
+        if (editing?.id === court.id) {
+          return (
+            <div key={court.id} className="flex items-center gap-2 rounded-xl bg-panel2 p-3">
+              <input
+                autoFocus
+                autoComplete="off"
+                inputMode="numeric"
+                enterKeyHint="done"
+                value={editing.value}
+                onChange={(e) => setEditing({ id: court.id, value: e.target.value.replace(/\D/g, '').slice(0, 2) })}
+                onKeyDown={(e) => e.key === 'Enter' && renumber(court, editing.value)}
+                aria-label={`${court.courtNo}번 코트 새 번호`}
+                className="h-9 w-16 rounded-lg border-2 border-court bg-panel px-2 text-center font-bold outline-none"
+              />
+              <span className="font-bold">번 코트로</span>
+              <button
+                onClick={() => renumber(court, editing.value)}
+                disabled={!editing.value}
+                className="ml-auto h-9 rounded-lg bg-court px-3 text-xs font-bold text-bg disabled:opacity-50"
+              >
+                바꾸기
+              </button>
+              <button onClick={() => setEditing(null)} className="h-9 rounded-lg px-3 text-xs text-dim">
+                취소
+              </button>
+            </div>
+          );
+        }
         return (
           <div
             key={court.id}
             className="flex items-center gap-2 rounded-xl bg-panel2 p-3"
           >
-            <span className="font-bold">{court.courtNo}번 코트</span>
+            <button
+              onClick={() => setEditing({ id: court.id, value: String(court.courtNo) })}
+              disabled={numberOverride.has(court.id)}
+              title="번호 바꾸기"
+              className="tap font-bold underline decoration-dotted underline-offset-4 disabled:opacity-60"
+            >
+              {court.courtNo}번 코트
+            </button>
             {inGame && <span className="text-xs text-coral">게임 중</span>}
             {/* 공유 토글 — 다른 모임과 콕 걸고 번갈아 쓰는 코트. 게임 중에도 전환 가능(치는 도중 공유가 시작되기도) */}
             <button
