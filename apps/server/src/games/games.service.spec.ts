@@ -538,6 +538,64 @@ describe('reopen', () => {
   });
 });
 
+// ===== 동시 요청 =====
+
+describe('동시에 같은 게임을 바꿀 때', () => {
+  async function playing(sessionId: string, courtNo = 1) {
+    const court = await seedCourt(sessionId, courtNo);
+    const [a, b, c, d] = await seedFour(sessionId);
+    const game = await service.create(sessionId, { attendanceIds: [a.id, b.id, c.id, d.id] });
+    await service.assign(game.id, { courtId: court.id });
+    return { game, court, players: [a, b, c, d] };
+  }
+
+  it('두 기기가 동시에 종료하면 한 번만 — 게임 수는 1', async () => {
+    const session = await seedSession();
+    const { game, players } = await playing(session.id);
+
+    const results = await Promise.allSettled([service.finish(game.id), service.finish(game.id)]);
+
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
+    for (const p of players) {
+      expect((await prisma.attendance.findUniqueOrThrow({ where: { id: p.id } })).gamesPlayed).toBe(1);
+    }
+  });
+
+  it('종료와 취소가 동시에 오면 하나만 반영된다', async () => {
+    const session = await seedSession();
+    const { game } = await playing(session.id);
+
+    const results = await Promise.allSettled([service.finish(game.id), service.cancel(game.id)]);
+
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const status = (await prisma.game.findUniqueOrThrow({ where: { id: game.id } })).status;
+    expect(['FINISHED', 'CANCELED']).toContain(status);
+  });
+
+  it('코트를 옮긴 뒤 옛 화면으로 종료하면 409 — 엉뚱한 코트를 비우지 않는다', async () => {
+    const session = await seedSession();
+    const { game, court } = await playing(session.id);
+    const other = await seedCourt(session.id, 2);
+    const stale = await prisma.game.findUniqueOrThrow({ where: { id: game.id } }); // 옮기기 전 상태
+    await service.moveCourt(game.id, { courtId: other.id });
+
+    // 옮기기 전에 읽은 상태로 종료를 시도한 것처럼 — 서비스 안의 claimGame 조건이 막아야 한다
+    await expect(
+      prisma.$transaction((tx) =>
+        (service as unknown as { claimGame: (...a: unknown[]) => Promise<void> }).claimGame(
+          tx,
+          game.id,
+          stale.status,
+          stale.courtId,
+        ),
+      ),
+    ).rejects.toThrow(ConflictException);
+    expect((await prisma.court.findUniqueOrThrow({ where: { id: court.id } })).status).toBe('IDLE');
+    expect((await prisma.court.findUniqueOrThrow({ where: { id: other.id } })).status).toBe('IN_GAME');
+  });
+});
+
 // ===== unassign (대기로) =====
 
 describe('unassign', () => {

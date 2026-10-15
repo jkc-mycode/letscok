@@ -280,6 +280,8 @@ export class GamesService {
 
     const attendanceIds = game.players.map((player) => player.attendanceId);
     const finished = await this.prisma.$transaction(async (tx) => {
+      // 읽은 뒤 다른 기기가 먼저 종료·이동했으면 여기서 멈춘다 — 두 번 종료되면 게임 수가 2씩 오른다
+      await this.claimGame(tx, id, game.status, game.courtId);
       // 공유 코트면 우리 차례 소진 — 다음은 다른 모임 (퐁당퐁당). 연속으로 치기로 했으면
       // 운영진이 코트 카드에서 [우리 차례]로 되돌린다 (퐁퐁당도 이 조작으로 커버)
       const court = await tx.court.findUniqueOrThrow({
@@ -389,6 +391,7 @@ export class GamesService {
 
     const attendanceIds = game.players.map((player) => player.attendanceId);
     const unassigned = await this.prisma.$transaction(async (tx) => {
+      await this.claimGame(tx, id, game.status, game.courtId);
       await tx.court.update({
         where: { id: game.courtId as string },
         data: { status: 'IDLE' },
@@ -422,6 +425,7 @@ export class GamesService {
 
     const attendanceIds = game.players.map((player) => player.attendanceId);
     const canceled = await this.prisma.$transaction(async (tx) => {
+      await this.claimGame(tx, id, game.status, game.courtId);
       if (game.courtId) {
         await tx.court.update({
           where: { id: game.courtId },
@@ -703,6 +707,21 @@ export class GamesService {
   }
 
   // 같은 모임의 조합 변경을 한 줄로 세운다(트랜잭션이 끝나면 풀림) — 동시에 눌러도 중복·5명째가 생기지 않게
+  // 트랜잭션 첫 단계 — 게임이 읽었을 때와 같은 상태·코트일 때만 진행. 행을 잠가서 동시에 온 같은 요청은 뒤에서 기다렸다 409
+  // (상태 확인을 트랜잭션 밖에서만 하면 두 기기가 동시에 종료할 때 둘 다 통과한다)
+  private async claimGame(
+    tx: Prisma.TransactionClient,
+    id: string,
+    status: Prisma.GameWhereInput['status'],
+    courtId: string | null,
+  ) {
+    // 같은 코트 값을 다시 쓴다 — 바꿀 값이 없으면 UPDATE가 나가지 않아 행이 잠기지 않는다
+    const claimed = await tx.game.updateMany({ where: { id, status, courtId }, data: { courtId } });
+    if (claimed.count === 0) {
+      throw new ConflictException('그 사이 다른 기기에서 바뀐 게임이에요. 화면을 확인해 주세요.');
+    }
+  }
+
   private async lockSession(tx: Prisma.TransactionClient, sessionId: string) {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${sessionId}))`;
   }
