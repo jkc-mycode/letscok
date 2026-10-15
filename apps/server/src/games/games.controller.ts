@@ -27,6 +27,7 @@ import {
   RecommendGamesQueryDto,
   ReplaceGamePlayerDto,
 } from './dto/game.dtos';
+import { GameRosterService } from './game-roster.service';
 import { GamesService } from './games.service';
 import { RecommendationsService } from './recommendations.service';
 
@@ -36,6 +37,7 @@ import { RecommendationsService } from './recommendations.service';
 export class GamesController {
   constructor(
     private readonly gamesService: GamesService,
+    private readonly rosterService: GameRosterService,
     private readonly recommendationsService: RecommendationsService,
   ) {}
 
@@ -60,7 +62,7 @@ export class GamesController {
     @Param('sessionId') sessionId: string,
     @Body() dto: CreateGameDto,
   ): Promise<IApiResponse<IGame>> {
-    return { success: true, data: await this.gamesService.create(sessionId, dto) };
+    return { success: true, data: await this.rosterService.create(sessionId, dto) };
   }
 
   // 빈칸 있는 조합 시작 — 관제판에서 첫 사람을 새 조합 자리에 끌어다 놓을 때
@@ -69,7 +71,7 @@ export class GamesController {
     @Param('sessionId') sessionId: string,
     @Body() dto: CreateDraftGameDto,
   ): Promise<IApiResponse<IGame>> {
-    return { success: true, data: await this.gamesService.createDraft(sessionId, dto) };
+    return { success: true, data: await this.rosterService.createDraft(sessionId, dto) };
   }
 
   // 대기 조합 전체 순서를 한 번에 (끌어서 순서 바꾸기)
@@ -78,7 +80,7 @@ export class GamesController {
     @Param('sessionId') sessionId: string,
     @Body() dto: ReorderGamesDto,
   ): Promise<IApiResponse<IGame[]>> {
-    return { success: true, data: await this.gamesService.reorder(sessionId, dto) };
+    return { success: true, data: await this.rosterService.reorder(sessionId, dto) };
   }
 
   @Patch('games/:id/assign')
@@ -137,7 +139,7 @@ export class GamesController {
     @Param('id') id: string,
     @Body() dto: ReplaceGamePlayerDto,
   ): Promise<IApiResponse<IGame>> {
-    return { success: true, data: await this.gamesService.replacePlayer(id, dto) };
+    return { success: true, data: await this.rosterService.replacePlayer(id, dto) };
   }
 
   // 대기 조합 빈칸에 한 명 넣기 — 4명이 차면 일반 조합(4명에게 알림)
@@ -146,7 +148,7 @@ export class GamesController {
     @Param('id') id: string,
     @Body() dto: AddGamePlayerDto,
   ): Promise<IApiResponse<IGame>> {
-    return { success: true, data: await this.gamesService.addPlayer(id, dto) };
+    return { success: true, data: await this.rosterService.addPlayer(id, dto) };
   }
 
   // 대기 조합에서 한 명 빼기(빈칸으로) — 아무도 안 남으면 조합 해체
@@ -155,12 +157,12 @@ export class GamesController {
     @Param('id') id: string,
     @Param('attendanceId') attendanceId: string,
   ): Promise<IApiResponse<IGame>> {
-    return { success: true, data: await this.gamesService.removePlayer(id, attendanceId) };
+    return { success: true, data: await this.rosterService.removePlayer(id, attendanceId) };
   }
 
   // 게임 안 자리 옮기기(팀 바꾸기) — 대기 조합·게임 중 모두
   @Patch('games/:id/slots')
   async moveSlot(@Param('id') id: string, @Body() dto: MoveGameSlotDto): Promise<IApiResponse<IGame>> {
-    return { success: true, data: await this.gamesService.moveSlot(id, dto) };
+    return { success: true, data: await this.rosterService.moveSlot(id, dto) };
   }
 }

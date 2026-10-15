@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from '../push/push.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { SessionsService } from '../sessions/sessions.service';
+import { GameRosterService } from './game-roster.service';
 import { GamesService } from './games.service';
 import { pickFreeSlot, withSlots } from '../common/utils/game-slots';
 
@@ -19,6 +20,13 @@ const sessionsService = new SessionsService(prisma, realtimeStub);
 // 알림은 호출 여부만 본다 — 문구·발송은 push.service.spec이 검증
 const pushStub = { notifyGame: jest.fn(), resendGame: jest.fn() };
 const service = new GamesService(
+  prisma,
+  sessionsService,
+  realtimeStub,
+  pushStub as unknown as PushService,
+);
+// 조합 편집(만들기·넣기·빼기·자리·교체·순서)은 GameRosterService로 나뉘었다 — 같은 DB·스텁으로 함께 검증
+const roster = new GameRosterService(
   prisma,
   sessionsService,
   realtimeStub,
@@ -101,7 +109,7 @@ describe('create', () => {
     const session = await seedSession();
     const [a, b, c, d] = await seedFour(session.id);
 
-    const game = await service.create(session.id, {
+    const game = await roster.create(session.id, {
       attendanceIds: [a.id, b.id, c.id, d.id],
     });
 
@@ -113,7 +121,7 @@ describe('create', () => {
 
     // 두 번째 조합은 큐 맨 뒤(queueOrder 2)
     const [e, f, g, h] = await seedFour(session.id);
-    const second = await service.create(session.id, {
+    const second = await roster.create(session.id, {
       attendanceIds: [e.id, f.id, g.id, h.id],
     });
     expect(second.queueOrder).toBe(2);
@@ -125,7 +133,7 @@ describe('create', () => {
     const [a, b, c] = await seedFour(session.id);
 
     await expect(
-      service.create(session.id, { attendanceIds: [resting.id, a.id, b.id, c.id] }),
+      roster.create(session.id, { attendanceIds: [resting.id, a.id, b.id, c.id] }),
     ).rejects.toThrow(
       '콕 미확인·퇴장·휴식 중이거나 이 모임에 없는 모임원이 포함되어 있습니다.',
     );
@@ -137,7 +145,7 @@ describe('create', () => {
     const [a, b, c] = await seedFour(session.id);
 
     await expect(
-      service.create(session.id, { attendanceIds: [noShuttle.id, a.id, b.id, c.id] }),
+      roster.create(session.id, { attendanceIds: [noShuttle.id, a.id, b.id, c.id] }),
     ).rejects.toThrow(
       '콕 미확인·퇴장·휴식 중이거나 이 모임에 없는 모임원이 포함되어 있습니다.',
     );
@@ -149,7 +157,7 @@ describe('create', () => {
     const matched = await seedAttendance(session.id, { status: 'MATCHED' });
     const [a, b] = await seedFour(session.id);
 
-    await service.create(session.id, {
+    await roster.create(session.id, {
       attendanceIds: [playing.id, matched.id, a.id, b.id],
     });
 
@@ -161,16 +169,16 @@ describe('create', () => {
   it('똑같은 4명 조합이 이미 대기 중이면 409 — 순서가 달라도, 두 기기에서 동시에 넣어도 하나만', async () => {
     const session = await seedSession();
     const [a, b, c, d] = await seedFour(session.id);
-    await service.create(session.id, { attendanceIds: [a.id, b.id, c.id, d.id] });
+    await roster.create(session.id, { attendanceIds: [a.id, b.id, c.id, d.id] });
 
     await expect(
-      service.create(session.id, { attendanceIds: [d.id, c.id, b.id, a.id] }),
+      roster.create(session.id, { attendanceIds: [d.id, c.id, b.id, a.id] }),
     ).rejects.toThrow('같은 4명 조합이 이미 대기 중이에요.');
 
     const [e, f, g, h] = await seedFour(session.id);
     const results = await Promise.allSettled([
-      service.create(session.id, { attendanceIds: [e.id, f.id, g.id, h.id] }),
-      service.create(session.id, { attendanceIds: [e.id, f.id, g.id, h.id] }),
+      roster.create(session.id, { attendanceIds: [e.id, f.id, g.id, h.id] }),
+      roster.create(session.id, { attendanceIds: [e.id, f.id, g.id, h.id] }),
     ]);
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
@@ -182,10 +190,10 @@ describe('create', () => {
     const [a, b, c] = await seedFour(session.id);
 
     await expect(
-      service.create(session.id, { attendanceIds: [left.id, a.id, b.id, c.id] }),
+      roster.create(session.id, { attendanceIds: [left.id, a.id, b.id, c.id] }),
     ).rejects.toThrow(ConflictException);
     await expect(
-      service.create(session.id, { attendanceIds: [a.id, a.id, b.id, c.id] }),
+      roster.create(session.id, { attendanceIds: [a.id, a.id, b.id, c.id] }),
     ).rejects.toThrow(BadRequestException);
   });
 });
@@ -197,7 +205,7 @@ describe('assign', () => {
     const session = await seedSession();
     const court = await seedCourt(session.id);
     const [a, b, c, d] = await seedFour(session.id);
-    const game = await service.create(session.id, {
+    const game = await roster.create(session.id, {
       attendanceIds: [a.id, b.id, c.id, d.id],
     });
 
@@ -218,7 +226,7 @@ describe('assign', () => {
     const court = await seedCourt(session.id);
     const busy = await seedAttendance(session.id, { status: 'PLAYING' });
     const [a, b, c] = await seedFour(session.id);
-    const game = await service.create(session.id, {
+    const game = await roster.create(session.id, {
       attendanceIds: [busy.id, a.id, b.id, c.id],
     });
 
@@ -231,13 +239,13 @@ describe('assign', () => {
     const session = await seedSession();
     const court = await seedCourt(session.id);
     const [a, b, c, d] = await seedFour(session.id);
-    const first = await service.create(session.id, {
+    const first = await roster.create(session.id, {
       attendanceIds: [a.id, b.id, c.id, d.id],
     });
     await service.assign(first.id, { courtId: court.id });
 
     const [e, f, g, h] = await seedFour(session.id);
-    const second = await service.create(session.id, {
+    const second = await roster.create(session.id, {
       attendanceIds: [e.id, f.id, g.id, h.id],
     });
     await expect(service.assign(second.id, { courtId: court.id })).rejects.toThrow(
@@ -251,7 +259,7 @@ describe('assign', () => {
       data: { sessionId: session.id, courtNo: 4, isShared: true, ourTurn: false },
     });
     const [a, b, c, d] = await seedFour(session.id);
-    const game = await service.create(session.id, {
+    const game = await roster.create(session.id, {
       attendanceIds: [a.id, b.id, c.id, d.id],
     });
 
@@ -270,7 +278,7 @@ describe('assign', () => {
 
 describe('fillCourts', () => {
   async function queue(sessionId: string, ids: string[]) {
-    return service.create(sessionId, { attendanceIds: ids as [string, string, string, string] });
+    return roster.create(sessionId, { attendanceIds: ids as [string, string, string, string] });
   }
 
   it('빈 코트(번호 순)에 대기 조합(순서대로)을 배정하고, 코트가 모자라면 남은 조합은 그대로 둔다', async () => {
@@ -353,7 +361,7 @@ describe('finish', () => {
     const session = await seedSession();
     const court = await seedCourt(session.id);
     const [a, b, c, d] = await seedFour(session.id);
-    const game = await service.create(session.id, {
+    const game = await roster.create(session.id, {
       attendanceIds: [a.id, b.id, c.id, d.id],
     });
     await service.assign(game.id, { courtId: court.id });
@@ -375,13 +383,13 @@ describe('finish', () => {
     const session = await seedSession();
     const court = await seedCourt(session.id);
     const [a, b, c, d] = await seedFour(session.id);
-    const game = await service.create(session.id, {
+    const game = await roster.create(session.id, {
       attendanceIds: [a.id, b.id, c.id, d.id],
     });
     await service.assign(game.id, { courtId: court.id });
     // a는 다음 게임 조합에도 미리 들어가 있다 (겹침)
     const [e, f, g] = await seedFour(session.id);
-    await service.create(session.id, { attendanceIds: [a.id, e.id, f.id, g.id] });
+    await roster.create(session.id, { attendanceIds: [a.id, e.id, f.id, g.id] });
 
     await service.finish(game.id);
 
@@ -398,7 +406,7 @@ describe('finish', () => {
 
     for (const court of [shared, normal]) {
       const [a, b, c, d] = await seedFour(session.id);
-      const game = await service.create(session.id, {
+      const game = await roster.create(session.id, {
         attendanceIds: [a.id, b.id, c.id, d.id],
       });
       await service.assign(game.id, { courtId: court.id });
@@ -418,7 +426,7 @@ describe('finish', () => {
 describe('moveCourt', () => {
   async function playOn(sessionId: string, courtId: string) {
     const [a, b, c, d] = await seedFour(sessionId);
-    const game = await service.create(sessionId, { attendanceIds: [a.id, b.id, c.id, d.id] });
+    const game = await roster.create(sessionId, { attendanceIds: [a.id, b.id, c.id, d.id] });
     return service.assign(game.id, { courtId });
   }
 
@@ -456,7 +464,7 @@ describe('moveCourt', () => {
     const session = await seedSession();
     const court = await seedCourt(session.id);
     const [a, b, c, d] = await seedFour(session.id);
-    const queued = await service.create(session.id, { attendanceIds: [a.id, b.id, c.id, d.id] });
+    const queued = await roster.create(session.id, { attendanceIds: [a.id, b.id, c.id, d.id] });
 
     await expect(service.moveCourt(queued.id, { courtId: court.id })).rejects.toThrow(ConflictException);
   });
@@ -468,7 +476,7 @@ describe('reopen', () => {
   async function playAndFinish(sessionId: string, courtId: string) {
     const players = await seedFour(sessionId);
     const [a, b, c, d] = players;
-    const game = await service.create(sessionId, { attendanceIds: [a.id, b.id, c.id, d.id] });
+    const game = await roster.create(sessionId, { attendanceIds: [a.id, b.id, c.id, d.id] });
     await service.assign(game.id, { courtId });
     await service.finish(game.id);
     return { game, players };
@@ -510,7 +518,7 @@ describe('reopen', () => {
     const court = await seedCourt(session.id);
     const { game } = await playAndFinish(session.id, court.id);
     const [e, f, g, h] = await seedFour(session.id);
-    const next = await service.create(session.id, { attendanceIds: [e.id, f.id, g.id, h.id] });
+    const next = await roster.create(session.id, { attendanceIds: [e.id, f.id, g.id, h.id] });
     await service.assign(next.id, { courtId: court.id });
 
     await expect(service.reopen(game.id)).rejects.toThrow('이미 다른 게임이 들어가');
@@ -522,7 +530,7 @@ describe('reopen', () => {
     const [court, court2] = [await seedCourt(session.id, 1), await seedCourt(session.id, 2)];
     const { game, players } = await playAndFinish(session.id, court.id);
     const [e, f, g] = await seedFour(session.id);
-    const next = await service.create(session.id, { attendanceIds: [players[0].id, e.id, f.id, g.id] });
+    const next = await roster.create(session.id, { attendanceIds: [players[0].id, e.id, f.id, g.id] });
     await service.assign(next.id, { courtId: court2.id });
 
     await expect(service.reopen(game.id)).rejects.toThrow(ConflictException);
@@ -544,7 +552,7 @@ describe('동시에 같은 게임을 바꿀 때', () => {
   async function playing(sessionId: string, courtNo = 1) {
     const court = await seedCourt(sessionId, courtNo);
     const [a, b, c, d] = await seedFour(sessionId);
-    const game = await service.create(sessionId, { attendanceIds: [a.id, b.id, c.id, d.id] });
+    const game = await roster.create(sessionId, { attendanceIds: [a.id, b.id, c.id, d.id] });
     await service.assign(game.id, { courtId: court.id });
     return { game, court, players: [a, b, c, d] };
   }
@@ -603,13 +611,13 @@ describe('unassign', () => {
     const session = await seedSession();
     const court = await seedCourt(session.id);
     const [a, b, c, d] = await seedFour(session.id);
-    const game = await service.create(session.id, {
+    const game = await roster.create(session.id, {
       attendanceIds: [a.id, b.id, c.id, d.id],
     });
     await service.assign(game.id, { courtId: court.id });
     // 큐에 다른 조합이 하나 있는 상태에서 되돌리면 그 뒤(queueOrder 2)로 가야 한다
     const [e, f, g, h] = await seedFour(session.id);
-    await service.create(session.id, { attendanceIds: [e.id, f.id, g.id, h.id] });
+    await roster.create(session.id, { attendanceIds: [e.id, f.id, g.id, h.id] });
 
     const unassigned = await service.unassign(game.id);
 
@@ -633,7 +641,7 @@ describe('cancel', () => {
     const session = await seedSession();
     const court = await seedCourt(session.id);
     const [a, b, c, d] = await seedFour(session.id);
-    const game = await service.create(session.id, {
+    const game = await roster.create(session.id, {
       attendanceIds: [a.id, b.id, c.id, d.id],
     });
     await service.assign(game.id, { courtId: court.id });
@@ -657,17 +665,17 @@ describe('cancel', () => {
     // 실제 게임 참여 기록을 근거로 하므로, 진짜 PLAYING 게임을 만들어야 한다
     const court = await seedCourt(session.id);
     const [busy, p2, p3, p4] = await seedFour(session.id);
-    const playingGame = await service.create(session.id, {
+    const playingGame = await roster.create(session.id, {
       attendanceIds: [busy.id, p2.id, p3.id, p4.id],
     });
     await service.assign(playingGame.id, { courtId: court.id });
     const [a, b, c] = await seedFour(session.id);
-    const target = await service.create(session.id, {
+    const target = await roster.create(session.id, {
       attendanceIds: [busy.id, a.id, b.id, c.id],
     });
     // a는 다른 조합에도 들어 있다
     const [e, f, g] = await seedFour(session.id);
-    await service.create(session.id, { attendanceIds: [a.id, e.id, f.id, g.id] });
+    await roster.create(session.id, { attendanceIds: [a.id, e.id, f.id, g.id] });
 
     await service.cancel(target.id);
 
@@ -684,13 +692,13 @@ describe('replacePlayer', () => {
     const session = await seedSession();
     const court = await seedCourt(session.id);
     const [a, b, c, d] = await seedFour(session.id);
-    const game = await service.create(session.id, {
+    const game = await roster.create(session.id, {
       attendanceIds: [a.id, b.id, c.id, d.id],
     });
     const assigned = await service.assign(game.id, { courtId: court.id });
     const incoming = await seedAttendance(session.id);
 
-    const replaced = await service.replacePlayer(game.id, {
+    const replaced = await roster.replacePlayer(game.id, {
       outAttendanceId: a.id,
       inAttendanceId: incoming.id,
     });
@@ -709,27 +717,27 @@ describe('replacePlayer', () => {
     const session = await seedSession();
     const court = await seedCourt(session.id);
     const [a, b, c, d] = await seedFour(session.id);
-    const game = await service.create(session.id, {
+    const game = await roster.create(session.id, {
       attendanceIds: [a.id, b.id, c.id, d.id],
     });
     await service.assign(game.id, { courtId: court.id });
     const busy = await seedAttendance(session.id, { status: 'PLAYING' });
 
     await expect(
-      service.replacePlayer(game.id, { outAttendanceId: a.id, inAttendanceId: busy.id }),
+      roster.replacePlayer(game.id, { outAttendanceId: a.id, inAttendanceId: busy.id }),
     ).rejects.toThrow(ConflictException);
   });
 
   it('QUEUED 조합 교체 — 게임 중인 사람 투입 허용(PLAYING 유지), out은 CHECKED_IN·in CHECKED_IN은 MATCHED', async () => {
     const session = await seedSession();
     const [a, b, c, d] = await seedFour(session.id);
-    const game = await service.create(session.id, {
+    const game = await roster.create(session.id, {
       attendanceIds: [a.id, b.id, c.id, d.id],
     });
     const busy = await seedAttendance(session.id, { status: 'PLAYING' });
 
     // 게임 중인 사람을 QUEUED 조합에 투입 — 중복 대기 정책상 허용
-    await service.replacePlayer(game.id, {
+    await roster.replacePlayer(game.id, {
       outAttendanceId: a.id,
       inAttendanceId: busy.id,
     });
@@ -738,7 +746,7 @@ describe('replacePlayer', () => {
 
     // 미배정 대기자를 투입하면 MATCHED로 승격
     const waiting = await seedAttendance(session.id);
-    await service.replacePlayer(game.id, {
+    await roster.replacePlayer(game.id, {
       outAttendanceId: b.id,
       inAttendanceId: waiting.id,
     });
@@ -748,38 +756,38 @@ describe('replacePlayer', () => {
   it('가드 — 게임에 없는 out(409), 이미 게임에 있는 in(409), 같은 사람(400), LEFT 투입(409)', async () => {
     const session = await seedSession();
     const [a, b, c, d] = await seedFour(session.id);
-    const game = await service.create(session.id, {
+    const game = await roster.create(session.id, {
       attendanceIds: [a.id, b.id, c.id, d.id],
     });
     const outsider = await seedAttendance(session.id);
     const left = await seedAttendance(session.id, { status: 'LEFT' });
 
     await expect(
-      service.replacePlayer(game.id, { outAttendanceId: outsider.id, inAttendanceId: a.id }),
+      roster.replacePlayer(game.id, { outAttendanceId: outsider.id, inAttendanceId: a.id }),
     ).rejects.toThrow(ConflictException);
     await expect(
-      service.replacePlayer(game.id, { outAttendanceId: a.id, inAttendanceId: b.id }),
+      roster.replacePlayer(game.id, { outAttendanceId: a.id, inAttendanceId: b.id }),
     ).rejects.toThrow(ConflictException);
     await expect(
-      service.replacePlayer(game.id, { outAttendanceId: a.id, inAttendanceId: a.id }),
+      roster.replacePlayer(game.id, { outAttendanceId: a.id, inAttendanceId: a.id }),
     ).rejects.toThrow(BadRequestException);
     await expect(
-      service.replacePlayer(game.id, { outAttendanceId: a.id, inAttendanceId: left.id }),
+      roster.replacePlayer(game.id, { outAttendanceId: a.id, inAttendanceId: left.id }),
     ).rejects.toThrow(ConflictException);
   });
 
   it('겹침 out — 다른 QUEUED 조합에 남아 있는 사람이 빠지면 CHECKED_IN이 아니라 MATCHED로', async () => {
     const session = await seedSession();
     const [a, b, c, d] = await seedFour(session.id);
-    const game = await service.create(session.id, {
+    const game = await roster.create(session.id, {
       attendanceIds: [a.id, b.id, c.id, d.id],
     });
     // a는 다른 조합에도 들어 있다
     const [e, f, g] = await seedFour(session.id);
-    await service.create(session.id, { attendanceIds: [a.id, e.id, f.id, g.id] });
+    await roster.create(session.id, { attendanceIds: [a.id, e.id, f.id, g.id] });
     const incoming = await seedAttendance(session.id);
 
-    await service.replacePlayer(game.id, {
+    await roster.replacePlayer(game.id, {
       outAttendanceId: a.id,
       inAttendanceId: incoming.id,
     });
@@ -796,7 +804,7 @@ describe('게임 알림 호출', () => {
     const court = await seedCourt(session.id);
     const four = await seedFour(session.id);
 
-    const game = await service.create(session.id, { attendanceIds: [four[0].id, four[1].id, four[2].id, four[3].id] });
+    const game = await roster.create(session.id, { attendanceIds: [four[0].id, four[1].id, four[2].id, four[3].id] });
     expect(pushStub.notifyGame).toHaveBeenLastCalledWith(game.id);
 
     await service.assign(game.id, { courtId: court.id });
@@ -809,16 +817,16 @@ describe('게임 알림 호출', () => {
     const court = await seedCourt(session.id);
     const four = await seedFour(session.id);
     const sub = await seedAttendance(session.id);
-    const game = await service.create(session.id, { attendanceIds: [four[0].id, four[1].id, four[2].id, four[3].id] });
+    const game = await roster.create(session.id, { attendanceIds: [four[0].id, four[1].id, four[2].id, four[3].id] });
     await service.assign(game.id, { courtId: court.id });
     pushStub.notifyGame.mockClear();
 
-    await service.replacePlayer(game.id, { outAttendanceId: four[0].id, inAttendanceId: sub.id });
+    await roster.replacePlayer(game.id, { outAttendanceId: four[0].id, inAttendanceId: sub.id });
     expect(pushStub.notifyGame).toHaveBeenCalledWith(game.id, sub.id);
 
     pushStub.notifyGame.mockClear();
     await service.finish(game.id);
-    const second = await service.create(session.id, { attendanceIds: [four[0].id, four[1].id, four[2].id, four[3].id] });
+    const second = await roster.create(session.id, { attendanceIds: [four[0].id, four[1].id, four[2].id, four[3].id] });
     pushStub.notifyGame.mockClear();
     await service.cancel(second.id);
     expect(pushStub.notifyGame).not.toHaveBeenCalled();
@@ -831,7 +839,7 @@ describe('renotify (코트 다시 알림)', () => {
     const session = await seedSession();
     const court = await seedCourt(session.id);
     const four = await seedFour(session.id);
-    const game = await service.create(session.id, {
+    const game = await roster.create(session.id, {
       attendanceIds: [four[0].id, four[1].id, four[2].id, four[3].id],
     });
 
@@ -854,19 +862,19 @@ describe('빈칸 있는 조합', () => {
     const session = await seedSession();
     const [a, b, c, d] = await seedFour(session.id);
     const [e, f, g, h] = await seedFour(session.id);
-    await service.create(session.id, { attendanceIds: [e.id, f.id, g.id, h.id] });
+    await roster.create(session.id, { attendanceIds: [e.id, f.id, g.id, h.id] });
     pushStub.notifyGame.mockClear();
 
-    const draft = await service.createDraft(session.id, { attendanceId: a.id });
+    const draft = await roster.createDraft(session.id, { attendanceId: a.id });
     expect(draft.status).toBe('QUEUED');
     expect(draft.queueOrder).toBe(2);
     expect(draft.players).toHaveLength(1);
     expect(await statusOf(a.id)).toBe('MATCHED');
 
-    await service.addPlayer(draft.id, { attendanceId: b.id });
-    await service.addPlayer(draft.id, { attendanceId: c.id });
+    await roster.addPlayer(draft.id, { attendanceId: b.id });
+    await roster.addPlayer(draft.id, { attendanceId: c.id });
     expect(pushStub.notifyGame).not.toHaveBeenCalled();
-    const full = await service.addPlayer(draft.id, { attendanceId: d.id });
+    const full = await roster.addPlayer(draft.id, { attendanceId: d.id });
     expect(full.players).toHaveLength(4);
     expect(pushStub.notifyGame).toHaveBeenCalledTimes(1);
     expect(pushStub.notifyGame).toHaveBeenCalledWith(draft.id);
@@ -878,34 +886,34 @@ describe('빈칸 있는 조합', () => {
     const resting = await seedAttendance(session.id, { status: 'RESTING' });
     const unpaid = await seedAttendance(session.id, { shuttleConfirmed: false });
 
-    const draft = await service.createDraft(session.id, { attendanceId: a.id });
-    await expect(service.addPlayer(draft.id, { attendanceId: a.id })).rejects.toThrow(ConflictException);
-    await expect(service.addPlayer(draft.id, { attendanceId: resting.id })).rejects.toThrow(ConflictException);
-    await expect(service.createDraft(session.id, { attendanceId: unpaid.id })).rejects.toThrow(ConflictException);
+    const draft = await roster.createDraft(session.id, { attendanceId: a.id });
+    await expect(roster.addPlayer(draft.id, { attendanceId: a.id })).rejects.toThrow(ConflictException);
+    await expect(roster.addPlayer(draft.id, { attendanceId: resting.id })).rejects.toThrow(ConflictException);
+    await expect(roster.createDraft(session.id, { attendanceId: unpaid.id })).rejects.toThrow(ConflictException);
 
     // 같은 4명 조합이 이미 있으면 4명째에서 막힌다
-    await service.create(session.id, { attendanceIds: [a.id, b.id, c.id, d.id] });
-    await service.addPlayer(draft.id, { attendanceId: b.id });
-    await service.addPlayer(draft.id, { attendanceId: c.id });
-    await expect(service.addPlayer(draft.id, { attendanceId: d.id })).rejects.toThrow(ConflictException);
+    await roster.create(session.id, { attendanceIds: [a.id, b.id, c.id, d.id] });
+    await roster.addPlayer(draft.id, { attendanceId: b.id });
+    await roster.addPlayer(draft.id, { attendanceId: c.id });
+    await expect(roster.addPlayer(draft.id, { attendanceId: d.id })).rejects.toThrow(ConflictException);
 
     const e = await seedAttendance(session.id);
-    await service.addPlayer(draft.id, { attendanceId: e.id });
+    await roster.addPlayer(draft.id, { attendanceId: e.id });
     const f = await seedAttendance(session.id);
-    await expect(service.addPlayer(draft.id, { attendanceId: f.id })).rejects.toThrow(ConflictException);
+    await expect(roster.addPlayer(draft.id, { attendanceId: f.id })).rejects.toThrow(ConflictException);
   });
 
   it('두 기기가 마지막 빈칸을 동시에 채워도 4명을 넘지 않는다', async () => {
     const session = await seedSession();
     const [a, b, c, d] = await seedFour(session.id);
     const e = await seedAttendance(session.id);
-    const draft = await service.createDraft(session.id, { attendanceId: a.id });
-    await service.addPlayer(draft.id, { attendanceId: b.id });
-    await service.addPlayer(draft.id, { attendanceId: c.id });
+    const draft = await roster.createDraft(session.id, { attendanceId: a.id });
+    await roster.addPlayer(draft.id, { attendanceId: b.id });
+    await roster.addPlayer(draft.id, { attendanceId: c.id });
 
     const results = await Promise.allSettled([
-      service.addPlayer(draft.id, { attendanceId: d.id }),
-      service.addPlayer(draft.id, { attendanceId: e.id }),
+      roster.addPlayer(draft.id, { attendanceId: d.id }),
+      roster.addPlayer(draft.id, { attendanceId: e.id }),
     ]);
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(await prisma.gamePlayer.count({ where: { gameId: draft.id } })).toBe(4);
@@ -914,20 +922,20 @@ describe('빈칸 있는 조합', () => {
   it('빼기 — 4명 조합도 빈칸으로 돌아가고, 빠진 사람은 대기 복귀(다른 조합에 있으면 MATCHED), 0명이면 해체', async () => {
     const session = await seedSession();
     const [a, b, c, d] = await seedFour(session.id);
-    const game = await service.create(session.id, { attendanceIds: [a.id, b.id, c.id, d.id] });
-    const other = await service.createDraft(session.id, { attendanceId: b.id });
+    const game = await roster.create(session.id, { attendanceIds: [a.id, b.id, c.id, d.id] });
+    const other = await roster.createDraft(session.id, { attendanceId: b.id });
 
-    const three = await service.removePlayer(game.id, a.id);
+    const three = await roster.removePlayer(game.id, a.id);
     expect(three.status).toBe('QUEUED');
     expect(three.players).toHaveLength(3);
     expect(await statusOf(a.id)).toBe('CHECKED_IN');
 
-    await service.removePlayer(game.id, b.id);
+    await roster.removePlayer(game.id, b.id);
     expect(await statusOf(b.id)).toBe('MATCHED'); // other 조합에 남아 있다
 
-    await expect(service.removePlayer(game.id, a.id)).rejects.toThrow(ConflictException);
+    await expect(roster.removePlayer(game.id, a.id)).rejects.toThrow(ConflictException);
 
-    const empty = await service.removePlayer(other.id, b.id);
+    const empty = await roster.removePlayer(other.id, b.id);
     expect(empty.status).toBe('CANCELED');
     expect(empty.queueOrder).toBeNull();
     expect(await statusOf(b.id)).toBe('CHECKED_IN');
@@ -937,8 +945,8 @@ describe('빈칸 있는 조합', () => {
     const session = await seedSession();
     const court = await seedCourt(session.id);
     const [a, b, c, d] = await seedFour(session.id);
-    const draft = await service.createDraft(session.id, { attendanceId: a.id });
-    const full = await service.create(session.id, { attendanceIds: [a.id, b.id, c.id, d.id] });
+    const draft = await roster.createDraft(session.id, { attendanceId: a.id });
+    const full = await roster.create(session.id, { attendanceIds: [a.id, b.id, c.id, d.id] });
 
     await expect(service.assign(draft.id, { courtId: court.id })).rejects.toThrow(ConflictException);
     const result = await service.fillCourts(session.id);
@@ -949,17 +957,17 @@ describe('빈칸 있는 조합', () => {
   it('한 번에 순서 바꾸기 — 대기 조합 전부를 새 순서로, 빠지거나 남는 게 있으면 409', async () => {
     const session = await seedSession();
     const [a, b, c] = await seedFour(session.id);
-    const g1 = await service.createDraft(session.id, { attendanceId: a.id });
-    const g2 = await service.createDraft(session.id, { attendanceId: b.id });
-    const g3 = await service.createDraft(session.id, { attendanceId: c.id });
+    const g1 = await roster.createDraft(session.id, { attendanceId: a.id });
+    const g2 = await roster.createDraft(session.id, { attendanceId: b.id });
+    const g3 = await roster.createDraft(session.id, { attendanceId: c.id });
 
-    const reordered = await service.reorder(session.id, { gameIds: [g3.id, g1.id, g2.id] });
+    const reordered = await roster.reorder(session.id, { gameIds: [g3.id, g1.id, g2.id] });
     expect(reordered.map((g) => [g.id, g.queueOrder])).toEqual([
       [g3.id, 1],
       [g1.id, 2],
       [g2.id, 3],
     ]);
-    await expect(service.reorder(session.id, { gameIds: [g1.id, g2.id] })).rejects.toThrow(ConflictException);
+    await expect(roster.reorder(session.id, { gameIds: [g1.id, g2.id] })).rejects.toThrow(ConflictException);
   });
 });
 
@@ -972,11 +980,11 @@ describe('게임 자리(팀)', () => {
     const [a, b, c, d] = await seedFour(session.id);
     const e = await seedAttendance(session.id);
 
-    const game = await service.create(session.id, { attendanceIds: [c.id, a.id, d.id, b.id] });
+    const game = await roster.create(session.id, { attendanceIds: [c.id, a.id, d.id, b.id] });
     expect(slotsOf(game)).toEqual({ [c.id]: 0, [a.id]: 1, [d.id]: 2, [b.id]: 3 });
     expect(game.players?.map((p) => p.slot)).toEqual([0, 1, 2, 3]); // 응답은 자리 순
 
-    const replaced = await service.replacePlayer(game.id, { outAttendanceId: d.id, inAttendanceId: e.id });
+    const replaced = await roster.replacePlayer(game.id, { outAttendanceId: d.id, inAttendanceId: e.id });
     expect(slotsOf(replaced)[e.id]).toBe(2);
   });
 
@@ -984,13 +992,13 @@ describe('게임 자리(팀)', () => {
     const session = await seedSession();
     const [a, b, c, d] = await seedFour(session.id);
 
-    const draft = await service.createDraft(session.id, { attendanceId: a.id });
+    const draft = await roster.createDraft(session.id, { attendanceId: a.id });
     expect(slotsOf(draft)[a.id]).toBe(0);
-    const withB = await service.addPlayer(draft.id, { attendanceId: b.id, slot: 3 });
+    const withB = await roster.addPlayer(draft.id, { attendanceId: b.id, slot: 3 });
     expect(slotsOf(withB)[b.id]).toBe(3);
-    const withC = await service.addPlayer(draft.id, { attendanceId: c.id, slot: 3 }); // 이미 찬 자리 → 첫 빈자리
+    const withC = await roster.addPlayer(draft.id, { attendanceId: c.id, slot: 3 }); // 이미 찬 자리 → 첫 빈자리
     expect(slotsOf(withC)[c.id]).toBe(1);
-    const full = await service.addPlayer(draft.id, { attendanceId: d.id });
+    const full = await roster.addPlayer(draft.id, { attendanceId: d.id });
     expect(slotsOf(full)[d.id]).toBe(2);
   });
 
@@ -1015,24 +1023,24 @@ describe('moveSlot (자리 옮기기)', () => {
     const session = await seedSession();
     const court = await seedCourt(session.id);
     const [a, b, c, d] = await seedFour(session.id);
-    const game = await service.create(session.id, { attendanceIds: [a.id, b.id, c.id, d.id] });
+    const game = await roster.create(session.id, { attendanceIds: [a.id, b.id, c.id, d.id] });
 
-    const swapped = await service.moveSlot(game.id, { attendanceId: b.id, slot: 2 });
+    const swapped = await roster.moveSlot(game.id, { attendanceId: b.id, slot: 2 });
     expect(slotsOf(swapped)).toEqual({ [a.id]: 0, [c.id]: 1, [b.id]: 2, [d.id]: 3 });
 
     await service.assign(game.id, { courtId: court.id });
-    const playing = await service.moveSlot(game.id, { attendanceId: a.id, slot: 3 });
+    const playing = await roster.moveSlot(game.id, { attendanceId: a.id, slot: 3 });
     expect(slotsOf(playing)).toEqual({ [d.id]: 0, [c.id]: 1, [b.id]: 2, [a.id]: 3 });
   });
 
   it('빈칸 있는 조합에서 빈자리로 옮기기, 게임에 없는 사람은 409', async () => {
     const session = await seedSession();
     const [a, b] = await seedFour(session.id);
-    const draft = await service.createDraft(session.id, { attendanceId: a.id });
-    await service.addPlayer(draft.id, { attendanceId: b.id });
+    const draft = await roster.createDraft(session.id, { attendanceId: a.id });
+    await roster.addPlayer(draft.id, { attendanceId: b.id });
 
-    const moved = await service.moveSlot(draft.id, { attendanceId: a.id, slot: 3 });
+    const moved = await roster.moveSlot(draft.id, { attendanceId: a.id, slot: 3 });
     expect(slotsOf(moved)).toEqual({ [b.id]: 1, [a.id]: 3 });
-    await expect(service.moveSlot(draft.id, { attendanceId: 'nobody', slot: 0 })).rejects.toThrow(ConflictException);
+    await expect(roster.moveSlot(draft.id, { attendanceId: 'nobody', slot: 0 })).rejects.toThrow(ConflictException);
   });
 });
