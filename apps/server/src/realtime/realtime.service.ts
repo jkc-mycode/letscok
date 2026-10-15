@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, OnModuleDestroy } from '@nestjs/common';
 import { ISessionSnapshot } from '@letscok/shared-types';
 import {
   toAttendanceResponse,
@@ -9,9 +9,13 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from './realtime.gateway';
 
+// 이 시간 안의 변경은 모아서 현황을 한 번만 보낸다 — [모두 콕 확인] 20명이면 현황 20번(폰 20대면 400번) → 1번
+const BROADCAST_DEBOUNCE_MS = 100;
+
 @Injectable()
-export class RealtimeService {
+export class RealtimeService implements OnModuleDestroy {
   private readonly logger = new Logger(RealtimeService.name);
+  private readonly pending = new Map<string, ReturnType<typeof setTimeout>>(); // 모임별 보낼 예정
 
   constructor(
     private readonly prisma: PrismaService,
@@ -57,15 +61,32 @@ export class RealtimeService {
 
   // 변경을 일으킨 서비스가 응답을 지연시키지 않도록 fire-and-forget으로 호출한다
   // (브로드캐스트 실패는 로그만 — 이미 커밋된 변경의 응답을 실패시키면 안 됨)
+  // 이미 보낼 예정이면 그대로 둔다 — 보낼 때 그 시점의 현황을 새로 읽으므로 사이의 변경이 다 들어간다
   broadcastSnapshot(sessionId: string): void {
-    this.buildSnapshot(sessionId)
-      .then((snapshot) => this.gateway.emitSnapshotUpdated(sessionId, snapshot))
-      .catch((error: Error) =>
-        this.logger.error(`스냅샷 브로드캐스트 실패 (session=${sessionId})`, error.stack),
-      );
+    if (this.pending.has(sessionId)) return;
+    this.pending.set(
+      sessionId,
+      setTimeout(() => {
+        this.pending.delete(sessionId);
+        this.buildSnapshot(sessionId)
+          .then((snapshot) => this.gateway.emitSnapshotUpdated(sessionId, snapshot))
+          .catch((error: Error) =>
+            this.logger.error(`스냅샷 브로드캐스트 실패 (session=${sessionId})`, error.stack),
+          );
+      }, BROADCAST_DEBOUNCE_MS),
+    );
   }
 
+  // 보낼 예정이던 현황은 버린다 — 종료 알림 뒤에 현황이 도착하면 폰이 종료 화면에서 보드로 되돌아간다
   broadcastSessionClosed(sessionId: string): void {
+    const timer = this.pending.get(sessionId);
+    if (timer) clearTimeout(timer);
+    this.pending.delete(sessionId);
     this.gateway.emitSessionClosed(sessionId);
+  }
+
+  onModuleDestroy(): void {
+    for (const timer of this.pending.values()) clearTimeout(timer);
+    this.pending.clear();
   }
 }
