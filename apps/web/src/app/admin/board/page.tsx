@@ -102,22 +102,26 @@ export default function BoardDisplayPage() {
                 const game = playingByCourt.get(court.id);
                 const otherTurn = !game && court.isShared && !court.ourTurn;
                 return (
-                  <div key={court.id} className={`flex flex-col gap-3 rounded-2xl border p-4 ${game ? 'border-line bg-panel' : 'border-line/60 bg-panel/50'}`}>
-                    <div className="flex items-baseline gap-2">
-                      <span className={`text-display font-bold ${game ? 'text-court' : 'text-faint'}`}>{court.courtNo}</span>
-                      <span className="text-body text-dim">번 코트</span>
-                      {game?.startedAt && (
-                        <span className="tabular ml-auto font-mono text-heading font-semibold text-court">
+                  <BoardCard
+                    key={court.id}
+                    dim={!game}
+                    no={court.courtNo}
+                    noCls={game ? 'text-court' : 'text-faint'}
+                    unit="번 코트"
+                    side={
+                      game?.startedAt && (
+                        <span className="tabular font-mono text-heading font-semibold text-court">
                           {formatElapsed(game.startedAt, now)}
                         </span>
-                      )}
-                    </div>
+                      )
+                    }
+                  >
                     {game ? (
                       <Teams game={game} />
                     ) : (
                       <p className="py-3 text-body text-faint">{otherTurn ? '다른 모임 차례' : '비어 있음'}</p>
                     )}
-                  </div>
+                  </BoardCard>
                 );
               })}
             </div>
@@ -131,17 +135,21 @@ export default function BoardDisplayPage() {
           {queuedGames.length === 0 ? (
             <Empty>아직 짜인 게임이 없어요</Empty>
           ) : (
-            <div className="flex flex-col gap-3">
+            // 코트 카드와 같은 틀·그리드 — 양쪽 카드 크기가 맞게
+            <div className="grid gap-3 sm:grid-cols-2">
               {queuedGames.map((game, index) => {
                 const draft = (game.players?.length ?? 0) < GAME_SIZE;
                 return (
-                  <div key={game.id} className={`flex gap-4 rounded-2xl border p-4 ${draft ? 'border-line/60 bg-panel/50' : 'border-line bg-panel'}`}>
-                    <span className="tabular w-8 shrink-0 text-heading font-bold text-amber">{index + 1}</span>
-                    <div className="flex min-w-0 flex-1 flex-col gap-1">
-                      {draft && <span className="text-caption font-medium text-faint">짜는 중</span>}
-                      <Teams game={game} />
-                    </div>
-                  </div>
+                  <BoardCard
+                    key={game.id}
+                    dim={draft}
+                    no={index + 1}
+                    noCls="text-amber"
+                    unit="번째"
+                    side={draft && <span className="text-body font-medium text-faint">짜는 중</span>}
+                  >
+                    <Teams game={game} />
+                  </BoardCard>
                 );
               })}
             </div>
@@ -149,6 +157,34 @@ export default function BoardDisplayPage() {
         </section>
       </div>
     </Shell>
+  );
+}
+
+// 게임 중·다음 게임 공용 카드 — 큰 번호 + 단위, 오른쪽 끝 보조 글자(경과 시간·짜는 중), 아래 내용. dim: 빈 코트·짜는 중
+function BoardCard({
+  dim,
+  no,
+  noCls,
+  unit,
+  side,
+  children,
+}: {
+  dim: boolean;
+  no: number;
+  noCls: string;
+  unit: string;
+  side?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`flex flex-col gap-3 rounded-2xl border p-4 ${dim ? 'border-line/60 bg-panel/50' : 'border-line bg-panel'}`}>
+      <div className="flex items-baseline gap-2">
+        <span className={`tabular text-display font-bold ${noCls}`}>{no}</span>
+        <span className="text-body text-dim">{unit}</span>
+        {side && <span className="ml-auto">{side}</span>}
+      </div>
+      {children}
+    </div>
   );
 }
 
