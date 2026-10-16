@@ -91,7 +91,7 @@ export default function BoardDisplayPage() {
         </span>
       </header>
 
-      <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[3fr_2fr]">
+      <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-2">
         <section className="flex min-w-0 flex-col gap-3">
           <h2 className="text-heading font-bold">게임 중</h2>
           {courts.length === 0 ? (
