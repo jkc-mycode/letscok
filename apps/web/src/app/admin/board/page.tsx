@@ -1,15 +1,15 @@
 'use client';
 
-// 전광판 — 대회·모임 때 태블릿·TV에 띄워 모임원에게 보여 주는 보기 전용 화면(버튼 없음, 로그인 없음)
+// 전광판 — 대회·모임 때 태블릿·TV에 띄워 모임원에게 보여 주는 보기 전용 화면(뒤로 버튼 하나뿐, 로그인 없음)
 // 관제판 앱 영역(/admin) 안에 둬서, 설치된 관제판 앱에서 열어도 주소창 없는 앱 화면으로 뜬다
 // 모임원 화면과 같은 공개 현황(실시간)을 크게: 왼쪽 코트별 게임 중(팀으로 나눠), 오른쪽 다음 게임 순서
 
 import { GAME_SIZE, IGame, IGamePlayer } from '@letscok/shared-types';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { GenderMarker, GradeBadge } from '@/components/badges';
 import { ConnectionError } from '@/components/connection-error';
-import { HomeLink, useStandalone } from '@/components/home-link';
+import { useStandalone } from '@/components/home-link';
 import { LogoLoader } from '@/components/logo-loader';
 import { formatElapsed, useNow, useSnapshot } from '@/lib/use-snapshot';
 
@@ -37,13 +37,17 @@ function useWakeLock() {
   }, []);
 }
 
-const LOGO_CLS = 'flex h-11 items-center text-caption font-bold tracking-[0.3em] text-court transition-opacity hover:opacity-70';
-
 export default function BoardDisplayPage() {
   const { snapshot, noSession, failed, loading, refetch } = useSnapshot();
   const now = useNow();
   useWakeLock();
   const standalone = useStandalone();
+  const router = useRouter();
+  // 뒤로 — 관제판에서 열었으면 그 화면으로. 주소로 바로 연 경우(기록 없음)엔 설치된 앱은 관제판, 브라우저는 홈으로
+  const goBack = () => {
+    if (window.history.length > 1) router.back();
+    else router.push(standalone ? '/admin' : '/');
+  };
 
   if (loading) {
     return (
@@ -77,15 +81,14 @@ export default function BoardDisplayPage() {
   return (
     <Shell>
       <header className="flex items-center gap-4">
-        {/* 로고 = 돌아가는 링크 — 버튼처럼 보이지 않아 대회 중 실수로 누를 일이 적다
-            설치된 관제판 앱에선 홈(/)이 앱 밖이라 관제판으로, 브라우저에선 지금처럼 홈으로 */}
-        {standalone ? (
-          <Link href="/admin" className={LOGO_CLS}>
-            LETSCOK
-          </Link>
-        ) : (
-          <HomeLink className={LOGO_CLS}>LETSCOK</HomeLink>
-        )}
+        {/* 앱·태블릿엔 브라우저 뒤로 버튼이 없어(아이패드 설치본) 화면에 둔다 — 멀리서도 보이게 글자와 테두리를 붙인다 */}
+        <button
+          onClick={goBack}
+          className="flex h-11 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-line bg-panel2 pr-5 pl-4 text-body font-bold text-ink transition-opacity hover:opacity-70"
+        >
+          <span className="text-heading leading-none">‹</span>
+          뒤로
+        </button>
         <span className="ml-auto rounded-full bg-panel px-4 py-1.5 text-body font-bold text-dim">
           대기 <span className="tabular text-ink">{waitingCount}</span>명
         </span>
