@@ -92,8 +92,9 @@ export default function BoardDisplayPage() {
       </header>
 
       <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-2">
-        <section className="flex min-w-0 flex-col gap-3">
-          <h2 className="text-heading font-bold">게임 중</h2>
+        {/* 구역마다 옅은 색 틀 — 멀리서도 게임 중(초록)과 다음 게임(주황)이 갈리게 */}
+        <section className="flex min-w-0 flex-col gap-3 rounded-3xl border border-court/25 bg-court/5 p-3 sm:p-4">
+          <h2 className="text-heading font-bold text-court">게임 중</h2>
           {courts.length === 0 ? (
             <Empty>등록된 코트가 없어요</Empty>
           ) : (
@@ -128,8 +129,8 @@ export default function BoardDisplayPage() {
           )}
         </section>
 
-        <section className="flex min-w-0 flex-col gap-3">
-          <h2 className="text-heading font-bold">
+        <section className="flex min-w-0 flex-col gap-3 rounded-3xl border border-amber/25 bg-amber/5 p-3 sm:p-4">
+          <h2 className="text-heading font-bold text-amber">
             다음 게임 <span className="tabular text-body text-faint">{queuedGames.length}</span>
           </h2>
           {queuedGames.length === 0 ? (
