@@ -92,7 +92,7 @@ export default function BoardDisplayPage() {
                 const game = playingByCourt.get(court.id);
                 const otherTurn = !game && court.isShared && !court.ourTurn;
                 return (
-                  <div key={court.id} className={`flex flex-col gap-3 rounded-2xl p-4 ${game ? 'bg-panel' : 'bg-panel/50'}`}>
+                  <div key={court.id} className={`flex flex-col gap-3 rounded-2xl border p-4 ${game ? 'border-line bg-panel' : 'border-line/60 bg-panel/50'}`}>
                     <div className="flex items-baseline gap-2">
                       <span className={`text-display font-bold ${game ? 'text-court' : 'text-faint'}`}>{court.courtNo}</span>
                       <span className="text-body text-dim">번 코트</span>
@@ -125,7 +125,7 @@ export default function BoardDisplayPage() {
               {queuedGames.map((game, index) => {
                 const draft = (game.players?.length ?? 0) < GAME_SIZE;
                 return (
-                  <div key={game.id} className={`flex gap-4 rounded-2xl p-4 ${draft ? 'bg-panel/50' : 'bg-panel'}`}>
+                  <div key={game.id} className={`flex gap-4 rounded-2xl border p-4 ${draft ? 'border-line/60 bg-panel/50' : 'border-line bg-panel'}`}>
                     <span className="tabular w-8 shrink-0 text-heading font-bold text-amber">{index + 1}</span>
                     <div className="flex min-w-0 flex-1 flex-col gap-1">
                       {draft && <span className="text-caption font-medium text-faint">짜는 중</span>}
@@ -177,7 +177,7 @@ function Person({ player }: { player?: IGamePlayer }) {
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="rounded-2xl bg-panel p-5 text-center text-body text-faint">{children}</p>;
+  return <p className="rounded-2xl border border-line bg-panel p-5 text-center text-body text-faint">{children}</p>;
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
