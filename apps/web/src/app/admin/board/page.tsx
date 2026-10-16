@@ -198,7 +198,7 @@ function Teams({ game }: { game: IGame }) {
         [2, 3],
       ].map((team, i) => (
         <div key={i} className="contents">
-          {i === 1 && <span className="text-caption font-bold text-faint">VS</span>}
+          {i === 1 && <span className="self-center text-caption font-bold text-faint">VS</span>}
           <div className="grid grid-cols-2 gap-2">
             {team.map((slot) => (
               <Person key={slot} player={bySlot(slot)} />
