@@ -1095,6 +1095,8 @@ function BoardBody({
       key: 'display',
       label: '전광판 열기 — 모임원에게 보여 줄 화면',
       // 같은 창으로 — 새 창은 설치된 관제판 앱에서 주소·X가 붙은 임시 브라우저로 열렸다. 앱 영역(/admin) 안이라 그대로 앱 화면에 뜬다
+      // 지난 기록과 같은 이유로 시트를 닫지 않고 이동한다(닫으면 뒤로가기 정리가 이동을 되돌린다)
+      keepMenuOpen: true,
       onClick: () => router.push('/admin/board'),
     },
     {
