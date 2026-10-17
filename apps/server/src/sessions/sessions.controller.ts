@@ -2,10 +2,12 @@ import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/co
 import {
   IApiResponse,
   ICheckInCodeResponse,
+  IClosedTodaySession,
   ISession,
   ISessionSnapshot,
 } from '@letscok/shared-types';
 import { AdminGuard } from '../common/guards/admin.guard';
+import { OpenSessionDto } from './dto/open-session.dto';
 import { UpdateCheckInCodeDto } from './dto/update-check-in-code.dto';
 import { SessionsService } from './sessions.service';
 
@@ -13,11 +15,18 @@ import { SessionsService } from './sessions.service';
 export class SessionsController {
   constructor(private readonly sessionsService: SessionsService) {}
 
-  // 모임 시작 (운영진 전용)
+  // 모임 시작 (운영진 전용) — 본문 없으면 같은 날 종료한 모임을 다시 연다, fresh면 새 모임
   @Post()
   @UseGuards(AdminGuard)
-  async open(): Promise<IApiResponse<ISession>> {
-    return { success: true, data: await this.sessionsService.open() };
+  async open(@Body() dto: OpenSessionDto): Promise<IApiResponse<ISession>> {
+    return { success: true, data: await this.sessionsService.open(dto.fresh === true) };
+  }
+
+  // 오늘 종료한 모임 (운영진 전용) — 없으면 data null. [모임 시작] 전에 고르는 창을 띄울지 판단
+  @Get('closed-today')
+  @UseGuards(AdminGuard)
+  async getClosedToday(): Promise<IApiResponse<IClosedTodaySession | null>> {
+    return { success: true, data: await this.sessionsService.getClosedToday() };
   }
 
   // 모임 종료 (운영진 전용)

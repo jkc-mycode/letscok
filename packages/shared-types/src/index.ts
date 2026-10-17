@@ -112,6 +112,19 @@ export interface ISession {
   closedAt: string | null;
 }
 
+// 모임 시작 — 같은 날 종료한 모임이 있으면 기본은 그 모임을 다시 연다(실수 종료 복구).
+// fresh: true면 같은 날이어도 새 모임으로 시작(장소·모임원이 다른 두 번째 모임)
+export interface IOpenSessionDto {
+  fresh?: boolean;
+}
+
+// 오늘 종료한 모임 중 마지막 것 — 관제판이 [이어서 하기]/[새 모임] 고르는 창을 띄울지 판단 (운영진 전용)
+export interface IClosedTodaySession {
+  session: ISession;
+  attendeeCount: number; // 그 모임에 출석했던 인원 (고르는 창 안내용)
+  sessionCountToday: number; // 오늘 모임 수 — 새로 시작하면 이 다음 번째가 된다
+}
+
 export interface ICourt {
   id: string;
   sessionId: string;

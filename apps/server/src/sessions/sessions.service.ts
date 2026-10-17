@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ISession, ISessionSnapshot } from '@letscok/shared-types';
+import { IClosedTodaySession, ISession, ISessionSnapshot } from '@letscok/shared-types';
 import { toSessionResponse } from '../common/mappers/entity.mappers';
 import { generateCheckInCode } from '../common/utils/code.util';
 import { todayKst } from '../common/utils/date.util';
@@ -17,7 +17,27 @@ export class SessionsService {
     private readonly realtime: RealtimeService,
   ) {}
 
-  async open(): Promise<ISession> {
+  // 오늘 마지막으로 종료한 모임 — 같은 날 두 번째 모임이 있으면 그중 늦게 끝난 것
+  private findLastClosedToday() {
+    return this.prisma.session.findFirst({
+      where: { date: todayKst(), status: 'CLOSED' },
+      orderBy: { closedAt: 'desc' },
+    });
+  }
+
+  // 관제판이 [모임 시작] 전에 묻는다 — 있으면 [이어서 하기]/[새 모임] 고르는 창
+  async getClosedToday(): Promise<IClosedTodaySession | null> {
+    const last = await this.findLastClosedToday();
+    if (!last) return null;
+    const [attendeeCount, sessionCountToday] = await Promise.all([
+      this.prisma.attendance.count({ where: { sessionId: last.id } }),
+      this.prisma.session.count({ where: { date: last.date } }),
+    ]);
+    return { session: toSessionResponse(last), attendeeCount, sessionCountToday };
+  }
+
+  // fresh: 같은 날 종료한 모임이 있어도 새 모임으로 시작 (장소·모임원이 다른 두 번째 모임)
+  async open(fresh = false): Promise<ISession> {
     // 동시 세션 없음 확정 — OPEN이 하나라도 있으면 새로 열 수 없다
     const openSession = await this.prisma.session.findFirst({
       where: { status: 'OPEN' },
@@ -30,9 +50,7 @@ export class SessionsService {
     // (실수로 종료한 경우 출석·게임 횟수가 초기화되지 않도록)
     // 코드는 재발급하지 않음 — 이미 공지한 코드·체크인한 인원과의 연속성 유지
     const today = todayKst();
-    const closedToday = await this.prisma.session.findFirst({
-      where: { date: today, status: 'CLOSED' },
-    });
+    const closedToday = fresh ? null : await this.findLastClosedToday();
     if (closedToday) {
       const reopened = await this.prisma.session.update({
         where: { id: closedToday.id },
