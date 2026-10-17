@@ -5,7 +5,7 @@ import { useDropTarget } from '@/components/board-dnd';
 import { MotionCard } from '@/components/motion-card';
 import { api } from '@/lib/api';
 import { BoardSlots, SlotActions, gameRef } from '@/components/admin/board-slots';
-import { ElapsedText, MoreButton } from '@/components/admin/board-ui';
+import { ConfirmButton, ElapsedText, MoreButton } from '@/components/admin/board-ui';
 
 // 게임 중 코트 카드
 
@@ -114,12 +114,14 @@ export function CourtCard({
       <BoardSlots game={game} slotActions={slotActions} dragEnabled={dragEnabled} />
       {/* 자주 쓰는 둘만 펼치고(게임 종료·대기로) 나머지(다시 알림·교체·취소)는 [⋯] 시트 */}
       <div className="mt-3 flex gap-1.5">
-        <button
-          onClick={() => onEnd(game.id, 'FINISHED')}
-          className="h-10 flex-1 rounded-[10px] bg-court text-body-sm font-bold text-bg"
-        >
-          게임 종료
-        </button>
+        {/* 스치듯 눌려 끝나는 일이 잦아 두 번 눌러야 종료(3초 안에 다시 누르기) */}
+        <ConfirmButton
+          label="게임 종료"
+          confirmLabel="한 번 더 눌러 종료"
+          onConfirm={() => onEnd(game.id, 'FINISHED')}
+          className="h-10 flex-1 rounded-[10px] text-body-sm"
+          idleCls="bg-court font-bold text-bg"
+        />
         <button
           onClick={() => onEnd(game.id, 'UNASSIGNED')}
           title="조합 유지한 채 대기 조합 맨 뒤로 (게임 수 미집계)"
