@@ -20,9 +20,6 @@ import { GAME_INCLUDE, findGameOrThrow, nextQueueOrder, releaseFromGame } from '
 // 게임 진행 — 코트 배정·옮기기·빈 코트 채우기·종료·되돌리기·대기로·취소·다시 알림
 // 조합을 만들고 고치는 쪽은 GameRosterService
 
-// 종료 되돌리기 허용 시간 — 웹 토스트는 10초, 느린 망에서 늦게 닿는 요청까지 받도록 여유를 둔다
-const REOPEN_WINDOW_MS = 30_000;
-
 // 코트 [다시 알림] — 같은 게임을 30초 안에 다시 보내면 막는다 (운영진 호출과 같은 기준)
 const renotifyCooldown = createCooldown(30_000);
 
@@ -227,17 +224,15 @@ export class GamesService {
     return toGameResponse(finished);
   }
 
-  // 종료 되돌리기: [게임 종료]를 잘못 눌렀을 때 직후에만 — 코트·게임 수·대기 시간·상태를 종료 전으로
-  // 그사이 코트에 다른 게임이 들어갔거나 4명 중 누가 다른 게임·휴식·퇴장으로 갔으면 409
+  // 종료 되돌리기: [게임 종료]를 잘못 눌렀을 때 — 코트·게임 수·대기 시간·상태를 종료 전으로, 시작 시각은 그대로라 시간이 이어진다
+  // 종료 직후 알림 [되돌리기]와 게임 기록 길게 누르기(알림을 놓쳤을 때) 둘 다 쓴다. 시간 제한 대신
+  // 끝난 뒤 그 코트나 4명 중 누가 다른 게임을 했거나 휴식·퇴장으로 갔으면 409 (되살리면 시간·대기 기록이 꼬인다)
   async reopen(id: string): Promise<IGame> {
     const game = await findGameOrThrow(this.prisma, id);
     if (game.status !== 'FINISHED' || !game.endedAt || !game.courtId) {
       throw new ConflictException('끝난 게임만 되돌릴 수 있어요.');
     }
     await this.sessionsService.findOpenSessionOrThrow(game.sessionId);
-    if (Date.now() - game.endedAt.getTime() > REOPEN_WINDOW_MS) {
-      throw new ConflictException('종료한 지 오래돼 되돌릴 수 없어요.');
-    }
     const moved = game.players.filter(
       (player) => player.attendance.status !== 'CHECKED_IN' && player.attendance.status !== 'MATCHED',
     );
@@ -246,6 +241,23 @@ export class GamesService {
       throw new ConflictException(`${names} 님이 이미 다른 상태라 되돌릴 수 없어요.`);
     }
     const courtId = game.courtId;
+    const startedLater = { id: { not: id }, sessionId: game.sessionId, startedAt: { gt: game.endedAt } };
+    const laterOnCourt = await this.prisma.game.findFirst({
+      where: { ...startedLater, courtId },
+      select: { court: { select: { courtNo: true } } },
+    });
+    if (laterOnCourt) {
+      throw new ConflictException(`${laterOnCourt.court?.courtNo}번 코트에 이미 다른 게임이 들어가 되돌릴 수 없어요.`);
+    }
+    const attendanceIds = game.players.map((player) => player.attendanceId);
+    const playedLater = await this.prisma.gamePlayer.findMany({
+      where: { attendanceId: { in: attendanceIds }, game: startedLater },
+      select: { attendance: { select: { member: { select: { name: true } } } } },
+    });
+    if (playedLater.length > 0) {
+      const names = [...new Set(playedLater.map((p) => p.attendance.member.name))].join(', ');
+      throw new ConflictException(`${names} 님이 그 뒤에 다른 게임을 해서 되돌릴 수 없어요.`);
+    }
 
     const reopened = await this.prisma.$transaction(async (tx) => {
       // 두 기기가 동시에 눌러도 한 번만 — 아직 FINISHED일 때만 바꾼다

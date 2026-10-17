@@ -536,13 +536,43 @@ describe('reopen', () => {
     await expect(service.reopen(game.id)).rejects.toThrow(ConflictException);
   });
 
-  it('종료한 지 30초가 지났으면 409', async () => {
+  it('종료한 지 오래돼도 그 뒤 아무 일 없으면 되돌린다 — 게임 기록 길게 누르기, 시작 시각 그대로', async () => {
     const session = await seedSession();
     const court = await seedCourt(session.id);
     const { game } = await playAndFinish(session.id, court.id);
-    await prisma.game.update({ where: { id: game.id }, data: { endedAt: new Date(Date.now() - 31_000) } });
+    await prisma.game.update({ where: { id: game.id }, data: { endedAt: new Date(Date.now() - 10 * 60_000) } });
+    const startedAt = (await prisma.game.findUniqueOrThrow({ where: { id: game.id } })).startedAt;
 
-    await expect(service.reopen(game.id)).rejects.toThrow('오래돼');
+    const reopened = await service.reopen(game.id);
+
+    expect(reopened.status).toBe('PLAYING');
+    expect(reopened.startedAt).toBe(startedAt?.toISOString());
+  });
+
+  it('그 코트에서 다른 게임이 시작했다 끝났으면 409', async () => {
+    const session = await seedSession();
+    const court = await seedCourt(session.id);
+    const { game } = await playAndFinish(session.id, court.id);
+    await prisma.game.update({ where: { id: game.id }, data: { endedAt: new Date(Date.now() - 60_000) } });
+    const [e, f, g, h] = await seedFour(session.id);
+    const next = await roster.create(session.id, { attendanceIds: [e.id, f.id, g.id, h.id] });
+    await service.assign(next.id, { courtId: court.id });
+    await service.finish(next.id);
+
+    await expect(service.reopen(game.id)).rejects.toThrow('이미 다른 게임이 들어가');
+  });
+
+  it('4명 중 누가 그 뒤 다른 게임을 하고 끝냈으면 409', async () => {
+    const session = await seedSession();
+    const [court, court2] = [await seedCourt(session.id, 1), await seedCourt(session.id, 2)];
+    const { game, players } = await playAndFinish(session.id, court.id);
+    await prisma.game.update({ where: { id: game.id }, data: { endedAt: new Date(Date.now() - 60_000) } });
+    const [e, f, g] = await seedFour(session.id);
+    const next = await roster.create(session.id, { attendanceIds: [players[0].id, e.id, f.id, g.id] });
+    await service.assign(next.id, { courtId: court2.id });
+    await service.finish(next.id);
+
+    await expect(service.reopen(game.id)).rejects.toThrow('그 뒤에 다른 게임을');
   });
 });
 

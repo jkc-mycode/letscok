@@ -5,20 +5,24 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Sheet } from '@/components/sheet';
 import { ClearableInput } from '@/components/clearable-input';
 import { GradeBadge } from '@/components/badges';
+import { useLongPress } from '@/components/admin/board-ui';
 import { api, ApiError } from '@/lib/api';
 
 // 오늘 게임 기록 — 끝난 게임 목록
 
 // 완료(FINISHED) 게임만 — 진행 중은 코트 구역에 이미 보이므로 중복 노출 안 함
 // 서버는 히스토리 상세 API 재사용 (OPEN 세션에도 동작, 별도 엔드포인트 안 만듦)
+// 줄을 길게 누르면 그 게임을 게임 중으로 되돌린다(시작 시각 그대로) — 종료 직후 [되돌리기] 알림을 놓쳤을 때
 export function TodayGamesModal({
   sessionId,
   snapshot,
   onClose,
+  onReopen,
 }: {
   sessionId: string;
   snapshot: ISessionSnapshot;
   onClose: () => void;
+  onReopen: (game: { id: string; no: number; courtNo: number | null }) => void;
 }) {
   const [detail, setDetail] = useState<IHistorySessionDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +85,7 @@ export function TodayGamesModal({
         onClear={() => setQuery('')}
         wrapperClassName="mb-3"
       />
+      <p className="pb-2 text-xs text-faint">잘못 종료한 게임은 길게 누르면 시간 그대로 게임 중으로 되돌려요</p>
       {q && detail && (
         <p className="pb-2 text-xs text-dim">
           &lsquo;{q}&rsquo; 포함 <span className="font-bold text-court">{games.length}</span>게임
@@ -99,37 +104,58 @@ export function TodayGamesModal({
         )}
         <ul className="space-y-1.5">
           {games.map((game) => (
-            <li
-              key={game.id}
-              className="flex items-center gap-3 rounded-xl bg-panel2 px-4 py-2.5"
-            >
-              <span className="tabular w-8 shrink-0 font-mono text-xs text-faint">
-                #{game.no}
-              </span>
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1 text-sm">
-                {game.players.map((player, i) => (
-                  <span key={i} className="flex items-center gap-1">
-                    <GradeBadge grade={player.grade} />
-                    <span
-                      className={
-                        q && matchesName(player.name, q) ? 'font-bold text-court' : 'font-medium'
-                      }
-                    >
-                      {player.name}
-                    </span>
-                  </span>
-                ))}
-              </div>
-              <div className="shrink-0 text-right text-xs text-dim">
-                <p>{game.courtNo != null ? `${game.courtNo}번 코트` : '코트 미지정'}</p>
-                <p className="tabular font-mono text-faint">
-                  {timeOf(game.startedAt)} ~ {timeOf(game.endedAt)}
-                </p>
-              </div>
-            </li>
+            <GameRow key={game.id} game={game} q={q} timeOf={timeOf} onReopen={onReopen} />
           ))}
         </ul>
       </div>
     </Sheet>
+  );
+}
+
+type GameItem = IHistorySessionDetail['games'][number] & { no: number };
+
+// 한 줄 — 코트가 있던 게임만 길게 누르기로 되돌릴 수 있다(서버가 그 코트로 되돌린다)
+function GameRow({
+  game,
+  q,
+  timeOf,
+  onReopen,
+}: {
+  game: GameItem;
+  q: string;
+  timeOf: (iso: string | null) => string;
+  onReopen: (game: { id: string; no: number; courtNo: number | null }) => void;
+}) {
+  const reopenable = game.courtNo != null;
+  const { handlers } = useLongPress(() => onReopen({ id: game.id, no: game.no, courtNo: game.courtNo }), reopenable, 600);
+  return (
+    <li
+      {...handlers}
+      className={`flex items-center gap-3 rounded-xl bg-panel2 px-4 py-2.5 ${reopenable ? 'cursor-pointer select-none active:bg-panel' : ''}`}
+    >
+      <span className="tabular w-8 shrink-0 font-mono text-xs text-faint">
+        #{game.no}
+      </span>
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1 text-sm">
+        {game.players.map((player, i) => (
+          <span key={i} className="flex items-center gap-1">
+            <GradeBadge grade={player.grade} />
+            <span
+              className={
+                q && matchesName(player.name, q) ? 'font-bold text-court' : 'font-medium'
+              }
+            >
+              {player.name}
+            </span>
+          </span>
+        ))}
+      </div>
+      <div className="shrink-0 text-right text-xs text-dim">
+        <p>{game.courtNo != null ? `${game.courtNo}번 코트` : '코트 미지정'}</p>
+        <p className="tabular font-mono text-faint">
+          {timeOf(game.startedAt)} ~ {timeOf(game.endedAt)}
+        </p>
+      </div>
+    </li>
   );
 }
