@@ -654,3 +654,29 @@ export interface ISetEntryMembersDto {
   attendanceIds: string[];
   included: boolean;
 }
+
+// ===== 이름 검색 (서버·웹 공용) =====
+// 부분 일치에 초성도 받는다 — "ㄱㅁㅅ"·"김ㅁ"·"ㅁㅅ"로 김민수. 초성이 없으면 지금처럼 그대로 포함 검사
+const CHOSEONG = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+const HANGUL_START = 0xac00;
+const HANGUL_COUNT = 11172;
+const isChoseong = (c: string) => CHOSEONG.includes(c);
+// 완성형 한글이면 첫소리, 아니면 그 글자 그대로
+const choseongOf = (c: string) => {
+  const offset = c.charCodeAt(0) - HANGUL_START;
+  return offset >= 0 && offset < HANGUL_COUNT ? CHOSEONG[Math.floor(offset / 588)] : c;
+};
+
+export const hasChoseong = (query: string) => [...query].some(isChoseong);
+
+export function matchesName(name: string, query: string): boolean {
+  if (!query) return true;
+  if (!hasChoseong(query)) return name.includes(query);
+  // 초성이 섞이면 공백은 빼고, 글자마다 초성 자리는 첫소리끼리·나머지는 같은 글자끼리 비교
+  const q = [...query.replace(/\s/g, '')];
+  const n = [...name.replace(/\s/g, '')];
+  for (let start = 0; start + q.length <= n.length; start += 1) {
+    if (q.every((c, i) => (isChoseong(c) ? choseongOf(n[start + i]) === c : n[start + i] === c))) return true;
+  }
+  return false;
+}

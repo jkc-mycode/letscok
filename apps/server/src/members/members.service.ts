@@ -11,6 +11,8 @@ import {
   MemberListFilter,
   MemberListSort,
   IMemberAlias,
+  hasChoseong,
+  matchesName,
 } from '@letscok/shared-types';
 import { normalizeName } from '../common/utils/name.util';
 import { toMemberResponse, toPublicMemberResponse } from '../common/mappers/entity.mappers';
@@ -55,10 +57,15 @@ export class MembersService {
 
   async search(name: string, full = false): Promise<IMember[]> {
     // 부분 일치 검색 — 목록에 생년월일·급수를 함께 내려 동명이인을 본인이 구분하게 한다
-    const members = await this.prisma.member.findMany({
-      where: { name: { contains: name }, deletedAt: null },
-      take: 20, // 한 글자 검색 등 과다 결과 방지
-    });
+    // 초성("ㄱㅁㅅ")은 DB에서 비교할 수 없어 삭제 안 된 전원을 받아 거른다(소모임 규모)
+    const members = hasChoseong(name)
+      ? (await this.prisma.member.findMany({ where: { deletedAt: null } }))
+          .filter((m) => matchesName(m.name, name))
+          .slice(0, 20)
+      : await this.prisma.member.findMany({
+          where: { name: { contains: name }, deletedAt: null },
+          take: 20, // 한 글자 검색 등 과다 결과 방지
+        });
     // 최근 출석순 정렬 — 자주 오는 사람이 위로, 한 번 오고 만 게스트는 아래로 (게스트 일괄 숨김 대신 택한 해법)
     const stats = await memberAttendanceStats(this.prisma, { memberIds: members.map((m) => m.id) });
     return members
@@ -94,7 +101,7 @@ export class MembersService {
     }
 
     const matched = all.filter((member) => {
-      if (keyword && !member.name.includes(keyword)) return false;
+      if (keyword && !matchesName(member.name, keyword)) return false;
       // 삭제 회원은 전용 탭에서만 — 평소 목록을 어지럽히지 않는다
       if (filter === 'DELETED') return member.deletedAt !== null;
       if (member.deletedAt) return false;

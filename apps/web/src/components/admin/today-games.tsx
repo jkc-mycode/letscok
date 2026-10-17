@@ -1,6 +1,6 @@
 'use client';
 
-import { IHistorySessionDetail, ISessionSnapshot } from '@letscok/shared-types';
+import { IHistorySessionDetail, ISessionSnapshot, matchesName } from '@letscok/shared-types';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Sheet } from '@/components/sheet';
 import { ClearableInput } from '@/components/clearable-input';
@@ -45,7 +45,7 @@ export function TodayGamesModal({
   const games = useMemo(() => {
     const numbered = (detail?.games ?? []).map((game, i) => ({ ...game, no: i + 1 })).reverse();
     if (!q) return numbered;
-    return numbered.filter((game) => game.players.some((player) => player.name.includes(q)));
+    return numbered.filter((game) => game.players.some((player) => matchesName(player.name, q)));
   }, [detail, q]);
 
   const timeOf = (iso: string | null) =>
@@ -112,7 +112,7 @@ export function TodayGamesModal({
                     <GradeBadge grade={player.grade} />
                     <span
                       className={
-                        q && player.name.includes(q) ? 'font-bold text-court' : 'font-medium'
+                        q && matchesName(player.name, q) ? 'font-bold text-court' : 'font-medium'
                       }
                     >
                       {player.name}

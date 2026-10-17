@@ -89,6 +89,26 @@ describe('search', () => {
     expect(results).toHaveLength(2);
     expect(results.find((m) => m.name === '나게스')?.birthDate).toBeNull();
   });
+
+  it('초성으로도 찾는다 — 초성만, 글자와 초성 섞기, 중간부터', async () => {
+    await service.create(memberDto({ name: '김민수' }));
+    await service.create(memberDto({ name: '김민지', birthDate: '1998-01-01' }));
+    await service.create(memberDto({ name: '박서연', birthDate: '1999-01-01' }));
+
+    const names = async (q: string) => (await service.search(q)).map((m) => m.name).sort();
+
+    expect(await names('ㄱㅁㅅ')).toEqual(['김민수']);
+    expect(await names('김ㅁ')).toEqual(['김민수', '김민지']);
+    expect(await names('ㅅㅇ')).toEqual(['박서연']);
+    expect(await names('ㅎㅎ')).toEqual([]);
+  });
+
+  it('초성 검색도 삭제된 회원은 빼고 찾는다', async () => {
+    const deleted = await service.create(memberDto({ name: '최지우' }));
+    await prisma.member.update({ where: { id: deleted.id }, data: { deletedAt: new Date() } });
+
+    expect(await service.search('ㅊㅈㅇ')).toHaveLength(0);
+  });
 });
 
 // ===== 명단 관리 (수정·삭제·복구·승격·익명화) =====
@@ -239,6 +259,9 @@ describe('page (모임원 관리 목록)', () => {
     expect(searched.items.map((m) => m.name)).toEqual(['김모임']);
     expect(searched.total).toBe(1);
     expect(searched.counts).toEqual(all.counts); // 검색해도 탭 숫자는 전체 그대로
+
+    const byChoseong = await service.page({ q: 'ㅇㅁㅇ' });
+    expect(byChoseong.items.map((m) => m.name)).toEqual(['이모임']);
 
     const deleted = await service.page({ filter: 'DELETED' });
     expect(deleted.items.map((m) => m.name)).toEqual(['최삭제']);
