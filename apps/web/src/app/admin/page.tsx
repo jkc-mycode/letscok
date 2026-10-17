@@ -894,7 +894,7 @@ function BoardBody({
         .sort((a, b) => roleRank(a) - roleRank(b)),
     [shuttleView],
   );
-  // 명단 — 콕 확인된 출석자 전원(조합에 넣어도 사라지지 않는 자석판 명단). 비어 있는 사람(오래 기다린 순)이 위
+  // 명단 — 콕 확인된 출석자 전원(조합에 넣어도 사라지지 않는 자석판 명단). 운영진 아래는 고른 정렬(기본 대기순: 오래 기다린 사람이 위)
   // 명단·빈칸 채우기·선수 교체가 같이 쓰는 정렬 — 이 기기에 기억
   const [rosterSort, setRosterSortState] = useState<RosterSort>(readRosterSort);
   const setRosterSort = (sort: RosterSort) => {
