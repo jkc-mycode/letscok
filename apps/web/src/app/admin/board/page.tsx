@@ -94,7 +94,8 @@ export default function BoardDisplayPage() {
         </span>
       </header>
 
-      <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-2">
+      {/* 세로 화면은 위아래 두 줄을 같은 높이로(내용 길이와 상관없이 5:5), 가로 화면은 좌우 5:5 한 줄 */}
+      <div className="grid min-h-0 flex-1 grid-rows-2 gap-6 lg:grid-cols-2 lg:grid-rows-1">
         {/* 구역마다 옅은 색 틀 — 멀리서도 게임 중(초록)과 다음 게임(주황)이 갈리게 */}
         <section className="flex min-w-0 flex-col gap-3 rounded-3xl border border-court/25 bg-court/5 p-3 sm:p-4">
           <h2 className="text-heading font-bold text-court">게임 중</h2>
