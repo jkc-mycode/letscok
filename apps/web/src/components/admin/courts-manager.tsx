@@ -2,6 +2,7 @@
 
 import { ICourt, IGame } from '@letscok/shared-types';
 import { useEffect, useState } from 'react';
+import { ConfirmButton } from '@/components/admin/board-ui';
 import { Sheet } from '@/components/sheet';
 import { api } from '@/lib/api';
 
@@ -183,14 +184,24 @@ export function CourtsManager({
             >
               {court.isShared ? '공유 중' : '공유'}
             </button>
-            <button
-              onClick={() => remove(court)}
-              disabled={inGame}
-              title={inGame ? '게임 진행 중' : '코트 해제'}
-              className="h-9 rounded-lg bg-panel2 px-3 text-xs text-dim disabled:opacity-30"
-            >
-              해제
-            </button>
+            {/* 게임 중엔 못 누르고, 비어 있으면 두 번 눌러야 해제(3초 안에 다시 누르기) */}
+            {inGame ? (
+              <button
+                disabled
+                title="게임 진행 중"
+                className="h-9 rounded-lg bg-panel2 px-3 text-xs text-dim disabled:opacity-30"
+              >
+                해제
+              </button>
+            ) : (
+              <ConfirmButton
+                label="해제"
+                title="코트 해제"
+                onConfirm={() => remove(court)}
+                className="h-9 rounded-lg px-3 text-xs"
+                idleCls="bg-panel2 text-dim"
+              />
+            )}
           </div>
         );
       })}
