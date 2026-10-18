@@ -44,7 +44,7 @@ import {
   RosterSort,
   RosterSortSelect,
   readRosterSort,
-  roleRank,
+  sortCandidates,
   sortRoster,
 } from '@/components/admin/roster-sort';
 import { NewGameSlot, RosterDrop, buildPlaceLabels, isFullGame } from '@/components/admin/board-slots';
@@ -886,12 +886,13 @@ function BoardBody({
       });
     });
   };
-  // 명단과 같은 규칙 — 모임장 → 운영진을 맨 위에(현장에서 찾기 쉽게), 나머지는 스냅샷 순서
+  // 모임장 → 운영진을 맨 위에(현장에서 찾기 쉽게), 나머지는 명단 정렬과 상관없이 항상 이름순 — 콕 낸 사람을 이름으로 찾는다
   const pendingShuttle = useMemo(
     () =>
-      shuttleView
-        .filter((a) => a.status !== 'LEFT' && !a.shuttleConfirmedAt)
-        .sort((a, b) => roleRank(a) - roleRank(b)),
+      sortCandidates(
+        shuttleView.filter((a) => a.status !== 'LEFT' && !a.shuttleConfirmedAt),
+        'NAME',
+      ),
     [shuttleView],
   );
   // 명단 — 콕 확인된 출석자 전원(조합에 넣어도 사라지지 않는 자석판 명단). 운영진 아래는 고른 정렬(기본 대기순: 오래 기다린 사람이 위)
