@@ -60,7 +60,7 @@ export function MultiMemberForm({
   register: (body: NewMemberBody) => Promise<void>; // 한 명 처리 — 실패하면 throw
   // 비슷한 이름 목록에서 기존 사람을 바로 처리(수동 체크인: 그 사람 체크인) — 없으면 목록은 보기만
   pickExisting?: { label: string; action: (member: IMember) => Promise<void> };
-  onFinished: (doneNames: string[], remaining: number) => void; // remaining = 실패해서 남은 카드 수
+  onFinished: (doneNames: string[], remaining: number) => void; // remaining = 아직 남은 카드 수(실패했거나 입력 중) — 0이면 다 끝남
 }) {
   const nextKey = useRef(1);
   const newRow = (isGuest: boolean, name = ''): Row => ({
@@ -74,6 +74,8 @@ export function MultiMemberForm({
     error: null,
   });
   const [rows, setRows] = useState<Row[]>(() => [newRow(defaultGuest, initialName)]);
+  const rowsRef = useRef(rows); // 기존 사람 고르기는 요청을 기다린 뒤 남은 카드를 세서, 그때의 카드 목록을 본다
+  rowsRef.current = rows;
   const [sameName, setSameName] = useState<Record<number, boolean>>({}); // 카드별 "이름이 똑같은 사람 있음"
   const [submitting, setSubmitting] = useState(false);
 
@@ -115,8 +117,10 @@ export function MultiMemberForm({
     ? async (row: Row, member: IMember) => {
         try {
           await pickExisting.action(member);
+          // 고른 카드만 빠진다 — 남은 카드 수를 그대로 알려야 입력 중인 다른 카드가 있는데 폼이 닫히지 않는다
+          const left = rowsRef.current.filter((r) => r.key !== row.key).length;
           remove(row.key);
-          onFinished([member.name], 0);
+          onFinished([member.name], left);
         } catch (e) {
           setRows((prev) =>
             prev.map((r) =>
