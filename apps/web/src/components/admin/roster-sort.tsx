@@ -3,30 +3,25 @@
 import { IAttendance } from '@letscok/shared-types';
 import { GRADES } from '@/components/multi-member-form';
 
-// 사람 목록 정렬(대기 명단·빈칸 채우기·선수 교체 공용) — 모임장·운영진 고정, 그 아래는 고른 기준
+// 사람 목록 정렬(대기 명단·빈칸 채우기·선수 교체 공용) — 모임장·운영진 고정, 그 아래는 고른 기준 하나로만
+// (상태로 묶지 않는다 — 이름순이면 그냥 가나다순. 같으면 오래 기다린 순)
 
-// 명단 순서 — 모임장 → 운영진을 맨 위에 고정(현장에서 찾기 쉽게), 그 아래는
-// 대기순이면 상태와 상관없이 오래 기다린 순(게임 중은 화면처럼 0분이라 맨 아래),
-// 다른 정렬이면 비어 있는 사람 → 조합에 든 사람 → 게임 중 → 휴식 묶음 안에서 고른 기준
+// 모임장 → 운영진을 맨 위에 고정(현장에서 찾기 쉽게)
 const ROLE_RANK: Record<string, number> = { LEADER: 0, MANAGER: 1 };
 
 export const roleRank = (a: IAttendance) => ROLE_RANK[a.member?.role ?? 'MEMBER'] ?? 2;
 
-const ROSTER_RANK: Partial<Record<IAttendance['status'], number>> = {
-  CHECKED_IN: 0,
-  MATCHED: 1,
-  PLAYING: 2,
-  RESTING: 3,
-};
+// 명단에 보이는 상태 — 퇴장은 빠진다
+const ROSTER_STATUSES: IAttendance['status'][] = ['CHECKED_IN', 'MATCHED', 'PLAYING', 'RESTING'];
 
 export function sortRoster(attendances: IAttendance[], sort: RosterSort): IAttendance[] {
   return sortCandidates(
-    attendances.filter((a) => a.shuttleConfirmedAt && ROSTER_RANK[a.status] !== undefined),
+    attendances.filter((a) => a.shuttleConfirmedAt && ROSTER_STATUSES.includes(a.status)),
     sort,
   );
 }
 
-// 정렬 기준 — 대기순·이름순·급수순·게임 적은 순(대기순 외에는 같으면 오래 기다린 순)
+// 정렬 기준 — 오래 기다린 순·가나다순·A→F 급수순·게임 적은 순
 export type RosterSort = 'WAITING' | 'NAME' | 'GRADE' | 'GAMES';
 
 const ROSTER_SORT_LABEL: Record<RosterSort, string> = {
@@ -55,18 +50,17 @@ const waitedLonger = (a: IAttendance, b: IAttendance) => {
   return Number.isNaN(diff) ? 0 : diff; // 둘 다 게임 중이면 Infinity - Infinity
 };
 
+// 실제로 뛴 게임 수 — gamesPlayed는 종료 때 오르므로 지금 뛰는 게임도 한 게임으로 센다
+const gamesSoFar = (a: IAttendance) => a.gamesPlayed + (a.status === 'PLAYING' ? 1 : 0);
+
 export function sortCandidates(attendances: IAttendance[], sort: RosterSort): IAttendance[] {
   const byKey = (a: IAttendance, b: IAttendance) => {
     if (sort === 'NAME') return (a.member?.name ?? '').localeCompare(b.member?.name ?? '', 'ko');
     if (sort === 'GRADE') return GRADES.indexOf(a.member?.grade ?? 'F') - GRADES.indexOf(b.member?.grade ?? 'F');
-    if (sort === 'GAMES') return a.gamesPlayed - b.gamesPlayed;
+    if (sort === 'GAMES') return gamesSoFar(a) - gamesSoFar(b);
     return 0;
   };
-  const byStatus = (a: IAttendance, b: IAttendance) =>
-    sort === 'WAITING' ? 0 : (ROSTER_RANK[a.status] ?? 9) - (ROSTER_RANK[b.status] ?? 9);
-  return [...attendances].sort(
-    (a, b) => roleRank(a) - roleRank(b) || byStatus(a, b) || byKey(a, b) || waitedLonger(a, b),
-  );
+  return [...attendances].sort((a, b) => roleRank(a) - roleRank(b) || byKey(a, b) || waitedLonger(a, b));
 }
 
 // 정렬 고르기 — 세 목록이 같은 값을 쓴다(명단에서 본 순서가 시트에서도 같게)
