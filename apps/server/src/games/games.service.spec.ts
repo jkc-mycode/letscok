@@ -549,7 +549,39 @@ describe('reopen', () => {
     expect(reopened.startedAt).toBe(startedAt?.toISOString());
   });
 
-  it('그 코트에서 다른 게임이 시작했다 끝났으면 409', async () => {
+  it('원래 코트에 다음 게임이 들어가 있으면 고른 빈 코트로 되돌린다', async () => {
+    const session = await seedSession();
+    const [court, court2] = [await seedCourt(session.id, 1), await seedCourt(session.id, 2)];
+    const { game } = await playAndFinish(session.id, court.id);
+    const [e, f, g, h] = await seedFour(session.id);
+    const next = await roster.create(session.id, { attendanceIds: [e.id, f.id, g.id, h.id] });
+    await service.assign(next.id, { courtId: court.id });
+
+    const reopened = await service.reopen(game.id, court2.id);
+
+    expect(reopened.status).toBe('PLAYING');
+    expect(reopened.courtId).toBe(court2.id);
+    expect((await prisma.court.findUniqueOrThrow({ where: { id: court2.id } })).status).toBe('IN_GAME');
+    expect((await prisma.court.findUniqueOrThrow({ where: { id: court.id } })).status).toBe('IN_GAME'); // 다음 게임 그대로
+  });
+
+  it('고른 코트가 게임 중이거나 다른 모임 차례면 409', async () => {
+    const session = await seedSession();
+    const [court, court2] = [await seedCourt(session.id, 1), await seedCourt(session.id, 2)];
+    const shared = await prisma.court.create({
+      data: { sessionId: session.id, courtNo: 3, isShared: true, ourTurn: false },
+    });
+    const { game } = await playAndFinish(session.id, court.id);
+    const [e, f, g, h] = await seedFour(session.id);
+    const next = await roster.create(session.id, { attendanceIds: [e.id, f.id, g.id, h.id] });
+    await service.assign(next.id, { courtId: court2.id });
+
+    await expect(service.reopen(game.id, court2.id)).rejects.toThrow('이미 다른 게임이 들어가');
+    await expect(service.reopen(game.id, shared.id)).rejects.toThrow('다른 모임 차례');
+    expect((await prisma.game.findUniqueOrThrow({ where: { id: game.id } })).status).toBe('FINISHED');
+  });
+
+  it('원래 코트에서 다른 게임이 하고 끝났어도 비어 있으면 원래 코트로 되돌린다', async () => {
     const session = await seedSession();
     const court = await seedCourt(session.id);
     const { game } = await playAndFinish(session.id, court.id);
@@ -559,7 +591,9 @@ describe('reopen', () => {
     await service.assign(next.id, { courtId: court.id });
     await service.finish(next.id);
 
-    await expect(service.reopen(game.id)).rejects.toThrow('이미 다른 게임이 들어가');
+    const reopened = await service.reopen(game.id);
+
+    expect(reopened.courtId).toBe(court.id);
   });
 
   it('4명 중 누가 그 뒤 다른 게임을 하고 끝냈으면 409', async () => {

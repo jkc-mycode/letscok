@@ -24,6 +24,7 @@ import {
   CreateDraftGameDto,
   CreateGameDto,
   ReorderGamesDto,
+  ReopenGameDto,
   RecommendGamesQueryDto,
   ReplaceGamePlayerDto,
 } from './dto/game.dtos';
@@ -111,10 +112,10 @@ export class GamesController {
     return { success: true, data: await this.gamesService.moveCourt(id, dto) };
   }
 
-  // [게임 종료] 되돌리기 — 종료 직후(30초 안)에만
+  // [게임 종료] 되돌리기 — 종료 직후 알림(원래 코트), 게임 기록 길게 누르기(고른 빈 코트)
   @Patch('games/:id/reopen')
-  async reopen(@Param('id') id: string): Promise<IApiResponse<IGame>> {
-    return { success: true, data: await this.gamesService.reopen(id) };
+  async reopen(@Param('id') id: string, @Body() dto: ReopenGameDto): Promise<IApiResponse<IGame>> {
+    return { success: true, data: await this.gamesService.reopen(id, dto.courtId) };
   }
 
   @Patch('games/:id/unassign')

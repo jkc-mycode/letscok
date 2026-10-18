@@ -1519,12 +1519,12 @@ function BoardBody({
           sessionId={session.id}
           snapshot={snapshot}
           onClose={() => setGamesLogOpen(false)}
-          // 길게 누른 게임을 게임 중으로 — 기록을 닫고 코트에서 바로 보이게. 안 되면 서버가 이유를 알려 준다
-          onReopen={(game) => {
+          // 확인 창에서 고른 코트로 게임 중 — 기록을 닫고 코트에서 바로 보이게. 안 되면 서버가 이유를 알려 준다
+          onReopen={(game, court) => {
             setGamesLogOpen(false);
             void run(async () => {
-              await api(`/games/${game.id}/reopen`, { method: 'PATCH', admin: true });
-              showToast(`#${game.no} 게임을 ${game.courtNo}번 코트 게임 중으로 되돌렸어요`, 'success');
+              await api(`/games/${game.id}/reopen`, { method: 'PATCH', admin: true, body: { courtId: court.id } });
+              showToast(`#${game.no} 게임을 ${court.courtNo}번 코트 게임 중으로 되돌렸어요`, 'success');
             }, `game:${game.id}`);
           }}
         />

@@ -4,6 +4,7 @@ import {
   ICreateDraftGameDto,
   ICreateGameDto,
   IReorderGamesDto,
+  IReopenGameDto,
   IMoveGameSlotDto,
   IReplaceGamePlayerDto,
   RecommendationCategory,
@@ -46,6 +47,13 @@ export class RecommendGamesQueryDto {
 export class AssignGameDto implements IAssignGameDto {
   @IsString({ message: '배정할 코트를 선택해주세요.' })
   courtId: string;
+}
+
+// 종료 되돌리기 — 코트를 안 주면 원래 코트로
+export class ReopenGameDto implements IReopenGameDto {
+  @IsOptional()
+  @IsString({ message: '되돌릴 코트를 선택해주세요.' })
+  courtId?: string;
 }
 
 // 빈칸 있는 조합 시작 — 첫 사람의 출석 id

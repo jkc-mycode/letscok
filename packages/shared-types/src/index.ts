@@ -244,6 +244,11 @@ export interface IAssignGameDto {
   courtId: string;
 }
 
+// 종료 되돌리기 — 코트를 안 주면 원래 코트로(종료 직후 알림), 주면 그 빈 코트로(게임 기록 길게 누르기)
+export interface IReopenGameDto {
+  courtId?: string;
+}
+
 // 빈칸 있는 조합(1~3명) — 관제판에서 사람을 한 명씩 끌어다 놓아 짠다. 4명이 차면 일반 조합
 // 모임원 앱·코트 배정·빈 코트 채우기는 4명 다 찬 조합만 다룬다
 export const GAME_SIZE = 4;

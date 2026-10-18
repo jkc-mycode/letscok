@@ -224,10 +224,10 @@ export class GamesService {
     return toGameResponse(finished);
   }
 
-  // 종료 되돌리기: [게임 종료]를 잘못 눌렀을 때 — 코트·게임 수·대기 시간·상태를 종료 전으로, 시작 시각은 그대로라 시간이 이어진다
-  // 종료 직후 알림 [되돌리기]와 게임 기록 길게 누르기(알림을 놓쳤을 때) 둘 다 쓴다. 시간 제한 대신
-  // 끝난 뒤 그 코트나 4명 중 누가 다른 게임을 했거나 휴식·퇴장으로 갔으면 409 (되살리면 시간·대기 기록이 꼬인다)
-  async reopen(id: string): Promise<IGame> {
+  // 종료 되돌리기: [게임 종료]를 잘못 눌렀을 때 — 게임 수·대기 시간·상태를 종료 전으로, 시작 시각은 그대로라 시간이 이어진다
+  // 종료 직후 알림 [되돌리기]는 원래 코트로, 게임 기록 길게 누르기는 고른 빈 코트로(원래 코트에 다음 게임이 들어갔어도 살린다).
+  // 시간 제한 대신 4명 중 누가 그 뒤 다른 게임을 했거나 휴식·퇴장·게임 중이면 409 (게임 수·대기 기록이 꼬인다)
+  async reopen(id: string, courtId?: string): Promise<IGame> {
     const game = await findGameOrThrow(this.prisma, id);
     if (game.status !== 'FINISHED' || !game.endedAt || !game.courtId) {
       throw new ConflictException('끝난 게임만 되돌릴 수 있어요.');
@@ -240,40 +240,37 @@ export class GamesService {
       const names = moved.map((player) => player.attendance.member.name).join(', ');
       throw new ConflictException(`${names} 님이 이미 다른 상태라 되돌릴 수 없어요.`);
     }
-    const courtId = game.courtId;
-    const startedLater = { id: { not: id }, sessionId: game.sessionId, startedAt: { gt: game.endedAt } };
-    const laterOnCourt = await this.prisma.game.findFirst({
-      where: { ...startedLater, courtId },
-      select: { court: { select: { courtNo: true } } },
-    });
-    if (laterOnCourt) {
-      throw new ConflictException(`${laterOnCourt.court?.courtNo}번 코트에 이미 다른 게임이 들어가 되돌릴 수 없어요.`);
-    }
     const attendanceIds = game.players.map((player) => player.attendanceId);
     const playedLater = await this.prisma.gamePlayer.findMany({
-      where: { attendanceId: { in: attendanceIds }, game: startedLater },
+      where: {
+        attendanceId: { in: attendanceIds },
+        game: { id: { not: id }, sessionId: game.sessionId, startedAt: { gt: game.endedAt } },
+      },
       select: { attendance: { select: { member: { select: { name: true } } } } },
     });
     if (playedLater.length > 0) {
       const names = [...new Set(playedLater.map((p) => p.attendance.member.name))].join(', ');
       throw new ConflictException(`${names} 님이 그 뒤에 다른 게임을 해서 되돌릴 수 없어요.`);
     }
+    // 원래 코트는 종료 때 공유 코트 차례를 넘겼을 수 있어 차례 검사 없이 받는다(되돌리며 우리 차례로 돌린다)
+    const targetCourtId = courtId ?? game.courtId;
+    if (targetCourtId !== game.courtId) await this.findOurCourt(game.sessionId, targetCourtId);
 
     const reopened = await this.prisma.$transaction(async (tx) => {
       // 두 기기가 동시에 눌러도 한 번만 — 아직 FINISHED일 때만 바꾼다
       const flipped = await tx.game.updateMany({
         where: { id, status: 'FINISHED' },
-        data: { status: 'PLAYING', endedAt: null },
+        data: { status: 'PLAYING', endedAt: null, courtId: targetCourtId },
       });
       if (flipped.count === 0) throw new ConflictException('끝난 게임만 되돌릴 수 있어요.');
-      const court = await tx.court.findUniqueOrThrow({ where: { id: courtId } });
-      const occupied = await tx.game.count({ where: { courtId, status: 'PLAYING', id: { not: id } } });
+      const court = await tx.court.findUniqueOrThrow({ where: { id: targetCourtId } });
+      const occupied = await tx.game.count({ where: { courtId: targetCourtId, status: 'PLAYING', id: { not: id } } });
       if (court.deletedAt || occupied > 0) {
         throw new ConflictException(`${court.courtNo}번 코트에 이미 다른 게임이 들어가 되돌릴 수 없어요.`);
       }
       // 공유 코트는 종료 때 넘긴 차례도 다시 우리 것으로
       await tx.court.update({
-        where: { id: courtId },
+        where: { id: targetCourtId },
         data: { status: 'IN_GAME', ...(court.isShared ? { ourTurn: true } : {}) },
       });
       for (const player of game.players) {
@@ -290,6 +287,8 @@ export class GamesService {
       return tx.game.findUniqueOrThrow({ where: { id }, include: GAME_INCLUDE });
     });
     this.realtime.broadcastSnapshot(game.sessionId);
+    // 다른 코트로 살렸으면 4명에게 새 코트를 알린다(원래 코트면 이미 그 자리에 있다)
+    if (targetCourtId !== game.courtId) this.push.notifyGame(id);
     return toGameResponse(reopened);
   }
 
