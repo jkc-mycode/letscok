@@ -305,23 +305,24 @@ export function GameActionSheet({
 }
 
 // 폰 대기 줄 [⋯] 시트 — 호출·휴식/복귀·콕 확인 취소·퇴장을 큰 버튼으로. 상태에 맞는 것만 보인다
+export type AttendanceChange = 'rest' | 'resume' | 'leave' | 'shuttle/cancel';
+
 export function WaitingActionSheet({
   attendance,
-  run,
+  onChange,
   onClose,
 }: {
   attendance: IAttendance;
-  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
+  onChange: (change: AttendanceChange) => void; // 화면에 먼저 반영하고 서버로 보낸다(보드가 맡음)
   onClose: () => void;
 }) {
   const member = attendance.member;
   const resting = attendance.status === 'RESTING';
   const busy = attendance.status === 'PLAYING' || attendance.status === 'MATCHED'; // 게임 중·조합에 든 사람은 호출만
-  const act = (path: string, admin: boolean) =>
-    void run(async () => {
-      await api(`/attendances/${attendance.id}/${path}`, { method: 'PATCH', ...(admin && { admin: true }) });
-      onClose();
-    }, `attendance:${attendance.id}`);
+  const act = (change: AttendanceChange) => {
+    onChange(change);
+    onClose();
+  };
   const row = 'h-12 w-full rounded-xl px-4 text-left text-sm font-medium';
   return (
     <Sheet
@@ -348,12 +349,12 @@ export function WaitingActionSheet({
         idleCls="text-ink"
       />
       {resting && (
-        <button onClick={() => act('resume', false)} className={`${row} bg-sky/10 text-sky`}>
+        <button onClick={() => act('resume')} className={`${row} bg-sky/10 text-sky`}>
           복귀 — 대기로 돌아가기(대기 시간 이어서)
         </button>
       )}
       {!busy && !resting && (
-        <button onClick={() => act('rest', false)} className={`${row} bg-panel2 text-ink`}>
+        <button onClick={() => act('rest')} className={`${row} bg-panel2 text-ink`}>
           휴식 — 게임 조합에서 잠깐 빼기
         </button>
       )}
@@ -361,7 +362,7 @@ export function WaitingActionSheet({
         <ConfirmButton
           label="콕 확인 취소 — 콕 확인 대기로 되돌리기"
           confirmLabel="한 번 더 누르면 콕 확인 취소"
-          onConfirm={() => act('shuttle/cancel', true)}
+          onConfirm={() => act('shuttle/cancel')}
           className={row}
           idleCls="bg-panel2 text-amber"
         />
@@ -370,7 +371,7 @@ export function WaitingActionSheet({
         <ConfirmButton
           label="퇴장"
           confirmLabel="한 번 더 누르면 퇴장"
-          onConfirm={() => act('leave', true)}
+          onConfirm={() => act('leave')}
           className={row}
           idleCls="bg-coral/10 text-coral"
         />

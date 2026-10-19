@@ -56,6 +56,7 @@ import {
   ReplacePlayerModal,
   SlotFillSheet,
   WaitingActionSheet,
+  type AttendanceChange,
 } from '@/components/admin/action-sheets';
 import { StartScreen } from '@/components/admin/start-screen';
 
@@ -864,16 +865,44 @@ function BoardBody({
       return next.size === prev.size ? prev : next;
     });
   }, [attendances]);
+  // 대기 줄 [⋯] 휴식·복귀·퇴장·콕 확인 취소도 누르자마자 반영 — 서버 화면이 같아지면 지우고, 실패하면 되돌린다
+  const [optAttendance, setOptAttendance] = useState<Map<string, AttendanceChange>>(new Map());
+  useEffect(() => {
+    setOptAttendance((prev) => {
+      const next = new Map([...prev].filter(([id, change]) => {
+        const a = attendances.find((x) => x.id === id);
+        return a !== undefined && !changeApplied(a, change);
+      }));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [attendances]);
   const shuttleView = useMemo(
     () =>
-      confirming.size === 0
+      confirming.size === 0 && optAttendance.size === 0
         ? attendances
         : attendances.map((a) => {
             const at = confirming.get(a.id);
-            return at && !a.shuttleConfirmedAt ? { ...a, shuttleConfirmedAt: at, waitingSince: at } : a;
+            const confirmed = at && !a.shuttleConfirmedAt ? { ...a, shuttleConfirmedAt: at, waitingSince: at } : a;
+            const change = optAttendance.get(a.id);
+            return change ? applyChange(confirmed, change) : confirmed;
           }),
-    [attendances, confirming],
+    [attendances, confirming, optAttendance],
   );
+  const changeAttendance = (attendanceId: string, change: AttendanceChange) => {
+    if (optAttendance.has(attendanceId)) return;
+    setOptAttendance((prev) => new Map(prev).set(attendanceId, change));
+    const admin = change === 'leave' || change === 'shuttle/cancel';
+    void runParallel(() =>
+      api(`/attendances/${attendanceId}/${change}`, { method: 'PATCH', ...(admin && { admin: true }) }),
+    ).then((ok) => {
+      if (ok) return;
+      setOptAttendance((prev) => {
+        const next = new Map(prev);
+        next.delete(attendanceId); // 실패 — 서버 화면대로(알림은 runParallel)
+        return next;
+      });
+    });
+  };
   const confirmShuttle = (attendanceId: string) => {
     if (confirming.has(attendanceId)) return;
     setConfirming((prev) => new Map(prev).set(attendanceId, new Date().toISOString()));
@@ -1003,8 +1032,8 @@ function BoardBody({
       () => api(`/games/${gameId}/players`, { method: 'POST', admin: true, body: { attendanceId } }),
     );
   };
-  const leftCount = attendances.filter((a) => a.status === 'LEFT').length;
-  const presentCount = attendances.length - leftCount;
+  const leftCount = shuttleView.filter((a) => a.status === 'LEFT').length;
+  const presentCount = shuttleView.length - leftCount;
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -1645,7 +1674,11 @@ function BoardBody({
         />
       )}
       {actionTarget && (
-        <WaitingActionSheet attendance={actionTarget} run={run} onClose={() => setActionId(null)} />
+        <WaitingActionSheet
+          attendance={actionTarget}
+          onChange={(change) => changeAttendance(actionTarget.id, change)}
+          onClose={() => setActionId(null)}
+        />
       )}
       {slotOpen && (
         <SlotFillSheet
@@ -1678,3 +1711,17 @@ function BoardBody({
 
 const CHEER_TAPS = 13;
 const CHEER_TAP_GAP_MS = 1000; // 이 간격 안에 이어서 눌러야 카운트 유지
+
+// 대기 줄 [⋯] 동작을 서버 규칙대로 미리 덧씌운다 — 휴식·복귀는 대기 시간 유지, 콕 확인 취소는 콕 확인 대기로
+function applyChange<T extends ISessionSnapshot['attendances'][number]>(a: T, change: AttendanceChange): T {
+  if (change === 'rest') return { ...a, status: 'RESTING' };
+  if (change === 'resume') return { ...a, status: 'CHECKED_IN' };
+  if (change === 'leave') return { ...a, status: 'LEFT' };
+  return { ...a, shuttleConfirmedAt: null };
+}
+function changeApplied(a: ISessionSnapshot['attendances'][number], change: AttendanceChange): boolean {
+  if (change === 'rest') return a.status === 'RESTING';
+  if (change === 'resume') return a.status === 'CHECKED_IN';
+  if (change === 'leave') return a.status === 'LEFT';
+  return !a.shuttleConfirmedAt;
+}
