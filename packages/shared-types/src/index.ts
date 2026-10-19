@@ -108,14 +108,28 @@ export interface ISession {
   id: string;
   date: string; // YYYY-MM-DD
   status: SessionStatus;
+  label: string | null; // 동시에 여는 모임 이름(여복·남복 등). 하나만 열 땐 보통 null
   openedAt: string;
   closedAt: string | null;
 }
 
 // 모임 시작 — 같은 날 종료한 모임이 있으면 기본은 그 모임을 다시 연다(실수 종료 복구).
 // fresh: true면 같은 날이어도 새 모임으로 시작(장소·모임원이 다른 두 번째 모임)
+// label: 다른 모임이 열려 있을 때 같이 열려면 필수(열린 모임끼리 겹치면 안 됨). 이때는 재개하지 않고 늘 새 모임
 export interface IOpenSessionDto {
   fresh?: boolean;
+  label?: string;
+}
+
+// 모임 이름 바꾸기 (운영진 전용) — 빈 문자열이면 이름을 지운다
+export interface IUpdateSessionLabelDto {
+  label: string;
+}
+
+// 지금 열려 있는 모임 — 화면 위쪽 모임 전환에 쓴다(먼저 연 순서)
+export interface IOpenSessionBrief {
+  id: string;
+  label: string | null;
 }
 
 // 오늘 종료한 모임 중 마지막 것 — 관제판이 [이어서 하기]/[새 모임] 고르는 창을 띄울지 판단 (운영진 전용)
@@ -422,6 +436,7 @@ export interface IHistoryRankingEntry {
 
 export interface ISessionSnapshot {
   session: ISession;
+  openSessions: IOpenSessionBrief[]; // 이 모임을 포함한 열린 모임 전부 — 둘 이상이면 화면이 전환 칩을 보여 준다
   courts: ICourt[];
   attendances: IAttendance[];
   games: IGame[]; // QUEUED + PLAYING (오늘 FINISHED 포함 여부는 쿼리 옵션)

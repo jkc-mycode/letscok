@@ -325,12 +325,13 @@ export class MembersService {
 
   // 회원 정보가 바뀐 사람이 진행 중 모임에 출석 중이면 스냅샷 재전파
   // 삭제·익명화는 체크인 중이면 애초에 막히므로(assertNotInOpenSession) 수정 경로만 필요하다
+  // 동시에 연 모임에서 한쪽은 퇴장했어도 명단엔 남아 있으니 출석 행이 있는 모임 전부
   private async broadcastIfInOpenSession(memberId: string) {
-    const active = await this.prisma.attendance.findFirst({
+    const rows = await this.prisma.attendance.findMany({
       where: { memberId, session: { status: 'OPEN' } },
       select: { sessionId: true },
     });
-    if (active) this.realtime.broadcastSnapshot(active.sessionId);
+    for (const { sessionId } of rows) this.realtime.broadcastSnapshot(sessionId);
   }
 
   private async assertNotInOpenSession(memberId: string) {

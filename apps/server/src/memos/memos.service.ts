@@ -48,14 +48,14 @@ export class MemosService {
     return { deleted: count };
   }
 
-  // 메모는 세션 무관이지만 실시간 룸은 세션 단위 — 진행 중 모임이 있을 때만 재조회 신호를 보낸다
+  // 메모는 세션 무관이지만 실시간 룸은 세션 단위 — 진행 중 모임에만 재조회 신호를 보낸다(여복·남복처럼 둘이면 둘 다)
   // (모임 밖 변경은 어차피 관제판이 떠 있지 않아 신호 받을 기기가 없다)
   private async broadcastIfSessionOpen(): Promise<void> {
-    const session = await this.prisma.session.findFirst({
+    const sessions = await this.prisma.session.findMany({
       where: { status: 'OPEN' },
       select: { id: true },
     });
-    if (session) this.realtime.notifyMemosChanged(session.id);
+    for (const { id } of sessions) this.realtime.notifyMemosChanged(id);
   }
 }
 

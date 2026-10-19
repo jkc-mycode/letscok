@@ -48,6 +48,7 @@ export function toSessionResponse(session: Session): ISession {
     id: session.id,
     date: toDateString(session.date),
     status: session.status,
+    label: session.label,
     openedAt: session.openedAt.toISOString(),
     closedAt: session.closedAt?.toISOString() ?? null,
   };

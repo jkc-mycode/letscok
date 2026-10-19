@@ -33,7 +33,7 @@ export class RealtimeService implements OnModuleDestroy {
     }
 
     // 스냅샷 구성 요소를 한 번에 조회 (순차 대기 없이 병렬)
-    const [courts, attendances, games] = await Promise.all([
+    const [courts, attendances, games, openSessions] = await Promise.all([
       this.prisma.court.findMany({
         where: { sessionId, deletedAt: null }, // 해제된 코트는 보드에서 제외
         orderBy: { courtNo: 'asc' },
@@ -49,10 +49,17 @@ export class RealtimeService implements OnModuleDestroy {
         include: { players: { include: { attendance: { include: { member: true } } } } },
         orderBy: { queueOrder: 'asc' },
       }),
+      // 여복·남복처럼 동시에 연 모임 — 화면 위쪽 전환 칩용
+      this.prisma.session.findMany({
+        where: { status: 'OPEN' },
+        orderBy: { openedAt: 'asc' },
+        select: { id: true, label: true },
+      }),
     ]);
 
     return {
       session: toSessionResponse(session),
+      openSessions,
       courts: courts.map(toCourtResponse),
       attendances: attendances.map(toAttendanceResponse),
       games: games.map(toGameResponse),
@@ -80,6 +87,12 @@ export class RealtimeService implements OnModuleDestroy {
           );
       }, BROADCAST_DEBOUNCE_MS),
     );
+  }
+
+  // 모임을 열거나 닫거나 이름을 바꾸면 다른 모임 화면의 전환 칩도 바뀌어야 한다 — 열린 모임 전부에 현황을 다시 보낸다
+  async broadcastOpenSessions(): Promise<void> {
+    const open = await this.prisma.session.findMany({ where: { status: 'OPEN' }, select: { id: true } });
+    for (const { id } of open) this.broadcastSnapshot(id);
   }
 
   // 보낼 예정이던 현황은 버린다 — 종료 알림 뒤에 현황이 도착하면 폰이 종료 화면에서 보드로 되돌아간다
