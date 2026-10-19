@@ -17,6 +17,7 @@ import { InstallPrompt } from '@/components/install-prompt';
 import { LogoLoader } from '@/components/logo-loader';
 import { MotionCard } from '@/components/motion-card';
 import { PushToggle } from '@/components/push-toggle';
+import { sessionName } from '@/components/session-switcher';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { api, ApiError } from '@/lib/api';
 import { clearMemberId, getMemberId } from '@/lib/member';
@@ -30,7 +31,8 @@ import {
 import { useToast } from '@/lib/use-toast';
 
 export default function MyStatusPage() {
-  const { snapshot, noSession, failed, loading, refetch } = useSnapshot();
+  // 여복·남복처럼 동시에 연 모임이 있으면 내가 출석한 모임을 받는다
+  const { snapshot, noSession, failed, loading, refetch } = useSnapshot({ byMember: true });
   const now = useNow();
 
   // localStorage는 클라이언트 전용 — hydration 불일치 방지를 위해 마운트 후 판독
@@ -157,10 +159,17 @@ export default function MyStatusPage() {
 
   return (
     <Shell bottom={disconnect}>
-      {/* 로고 = 홈 링크 */}
-      <HomeLink className="flex h-11 items-center self-start text-caption font-bold tracking-[0.3em] text-court transition-opacity hover:opacity-70">
-        LETSCOK
-      </HomeLink>
+      {/* 로고 = 홈 링크. 동시에 연 모임이 있으면 내 모임 이름을 옆에 */}
+      <div className="flex items-center gap-2">
+        <HomeLink className="flex h-11 items-center self-start text-caption font-bold tracking-[0.3em] text-court transition-opacity hover:opacity-70">
+          LETSCOK
+        </HomeLink>
+        {snapshot.openSessions.length > 1 && (
+          <span className="ml-auto rounded-full bg-court/15 px-3 py-1 text-body-sm font-bold text-court">
+            {sessionName(snapshot.openSessions, snapshot.session.id)} 모임
+          </span>
+        )}
+      </div>
       <MyStatus me={me} myGame={myGame} waiting={waiting} queuedGames={queuedGames} courts={courts} now={now} />
 
       {myGame && <MyGameCard game={myGame} playing={myGame.status === 'PLAYING'} memberId={memberId} />}

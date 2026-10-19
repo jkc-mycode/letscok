@@ -11,6 +11,7 @@ import { GenderMarker, GradeBadge } from '@/components/badges';
 import { ConnectionError } from '@/components/connection-error';
 import { useStandalone } from '@/components/home-link';
 import { LogoLoader } from '@/components/logo-loader';
+import { SessionSwitcher } from '@/components/session-switcher';
 import { formatElapsed, useNow, useSnapshot } from '@/lib/use-snapshot';
 
 // 띄워 두는 화면이라 꺼지지 않게 — 지원 안 하는 브라우저·거절은 그냥 넘어간다. 탭을 다시 보면 다시 요청(가려지면 풀린다)
@@ -38,7 +39,7 @@ function useWakeLock() {
 }
 
 export default function BoardDisplayPage() {
-  const { snapshot, noSession, failed, loading, refetch } = useSnapshot();
+  const { snapshot, noSession, failed, loading, refetch, selectSession } = useSnapshot();
   const now = useNow();
   useWakeLock();
   const standalone = useStandalone();
@@ -89,7 +90,14 @@ export default function BoardDisplayPage() {
           <span className="text-heading leading-none">‹</span>
           뒤로
         </button>
-        <span className="ml-auto rounded-full bg-panel px-4 py-1.5 text-body font-bold text-dim">
+        {/* 여복·남복처럼 동시에 연 모임 — 전광판마다 한 모임을 띄운다(기기가 기억) */}
+        <SessionSwitcher
+          sessions={snapshot.openSessions}
+          currentId={snapshot.session.id}
+          onSelect={(id) => void selectSession(id)}
+          className="min-w-0"
+        />
+        <span className="ml-auto shrink-0 rounded-full bg-panel px-4 py-1.5 text-body font-bold text-dim">
           대기 <span className="tabular text-ink">{waitingCount}</span>명
         </span>
       </header>

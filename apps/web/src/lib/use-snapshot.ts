@@ -11,6 +11,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { api, ApiError, API_URL } from './api';
+import { getMemberId } from './member';
 
 // 여복·남복처럼 동시에 연 모임 중 이 기기가 보는 모임 — 다시 열어도 같은 보드가 뜨게 기억한다
 const PICKED_SESSION_KEY = 'letscok.pickedSessionId';
@@ -41,7 +42,8 @@ interface SnapshotState {
   selectSession: (id: string) => Promise<void>; // 동시에 연 다른 모임으로 바꿔 보기
 }
 
-export function useSnapshot(): SnapshotState {
+// byMember: 모임원 화면 — 이 폰에 연결된 사람이 출석한 모임을 받는다(기기에 고른 모임 대신)
+export function useSnapshot({ byMember = false }: { byMember?: boolean } = {}): SnapshotState {
   const [snapshot, setSnapshot] = useState<ISessionSnapshot | null>(null);
   const [noSession, setNoSession] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -54,8 +56,10 @@ export function useSnapshot(): SnapshotState {
   const refetch = useCallback(async () => {
     lastFetchAt.current = Date.now();
     try {
-      const picked = readPicked();
-      const data = await api<ISessionSnapshot>(`/sessions/current${picked ? `?id=${encodeURIComponent(picked)}` : ''}`);
+      const memberId = byMember ? getMemberId() : null;
+      const picked = byMember ? null : readPicked();
+      const query = memberId ? `?memberId=${encodeURIComponent(memberId)}` : picked ? `?id=${encodeURIComponent(picked)}` : '';
+      const data = await api<ISessionSnapshot>(`/sessions/current${query}`);
       sessionIdRef.current = data.session.id; // 모임을 바꾼 직후 옛 모임 방의 현황이 새 화면을 덮지 않게 바로 맞춘다
       setSnapshot(data);
       setNoSession(false);
@@ -71,7 +75,7 @@ export function useSnapshot(): SnapshotState {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [byMember]);
 
   useEffect(() => {
     void refetch();

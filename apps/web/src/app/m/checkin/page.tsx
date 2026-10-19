@@ -16,6 +16,7 @@ import { ConnectionError } from '@/components/connection-error';
 import { HomeLink } from '@/components/home-link';
 import { InstallPrompt } from '@/components/install-prompt';
 import { LogoLoader } from '@/components/logo-loader';
+import { sessionName } from '@/components/session-switcher';
 import { api, ApiError } from '@/lib/api';
 import { saveMemberId } from '@/lib/member';
 import { useSnapshot } from '@/lib/use-snapshot';
@@ -29,12 +30,21 @@ export default function CheckinPage() {
   const { snapshot, noSession, failed, loading, refetch } = useSnapshot();
   const { toast, showToast } = useToast();
   const [busy, setBusy] = useState(false);
+  // 여복·남복처럼 동시에 연 모임 — 둘 이상이면 어느 모임에 왔는지 먼저 고른다(코드는 같다)
+  const [pickedSessionId, setPickedSessionId] = useState<string | null>(null);
+  const openSessions = snapshot?.openSessions ?? [];
+  const targetSessionId = openSessions.length > 1 ? pickedSessionId : (snapshot?.session.id ?? null);
 
   const checkIn = async (member: IMember, consent: boolean) => {
     if (busy || !snapshot) return;
+    if (!targetSessionId) {
+      showToast('어느 모임에 오셨는지 먼저 골라 주세요.');
+      return;
+    }
     setBusy(true);
     try {
-      await api<IAttendance>(`/sessions/${snapshot.session.id}/attendances`, {
+      // 다른 모임에 이미 출석 중이어도 409 — 아래처럼 내 상태로 가면 그 모임 보드가 뜬다
+      await api<IAttendance>(`/sessions/${targetSessionId}/attendances`, {
         method: 'POST',
         body: { memberId: member.id, code, ...(consent && { consent: true }) },
       });
@@ -83,6 +93,26 @@ export default function CheckinPage() {
         {/* 운영진이 미리 체크인해 뒀으면 폰 연결만, 아니면 체크인까지 — 둘 다 이 한 번으로 끝난다 */}
         <p className="text-body text-dim">미리 출석돼 있으면 내 폰과 연결되고, 아니면 출석까지 돼요</p>
       </header>
+
+      {openSessions.length > 1 && (
+        <div className="flex flex-col gap-2.5">
+          <p className="text-body-sm font-bold text-dim">어느 모임에 오셨나요?</p>
+          <div className="grid grid-cols-2 gap-2">
+            {openSessions.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setPickedSessionId(s.id)}
+                aria-pressed={pickedSessionId === s.id}
+                className={`h-14 rounded-xl text-body font-bold ${
+                  pickedSessionId === s.id ? 'bg-court text-bg' : 'bg-panel text-dim'
+                }`}
+              >
+                {sessionName(openSessions, s.id)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <CodeBoxes value={inputCode} onChange={setInputCode} />
 
