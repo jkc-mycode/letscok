@@ -1437,7 +1437,7 @@ function BoardBody({
       <SessionSwitcher
         sessions={snapshot.openSessions}
         currentId={session.id}
-        onSelect={(id) => void onSelectSession(id)}
+        onSelect={onSelectSession}
         className="pb-2 md:pb-3"
       />
 

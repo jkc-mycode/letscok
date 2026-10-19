@@ -94,7 +94,7 @@ export default function BoardDisplayPage() {
         <SessionSwitcher
           sessions={snapshot.openSessions}
           currentId={snapshot.session.id}
-          onSelect={(id) => void selectSession(id)}
+          onSelect={selectSession}
           className="min-w-0"
         />
         <span className="ml-auto shrink-0 rounded-full bg-panel px-4 py-1.5 text-body font-bold text-dim">
