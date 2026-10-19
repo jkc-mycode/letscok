@@ -221,6 +221,121 @@ function isSettled(t: OptimisticGame, games: IGame[]): boolean {
   });
 }
 
+// ===== 누르자마자 반영 — 서버 화면 위에 아직 서버에 닿지 않은 조작을 서버 규칙대로 덧씌운다(상태 없는 계산만) =====
+
+type OptimisticBoard = {
+  optAssign: Map<string, { courtId: string; startedAt: string }>; // 코트 배정
+  optCreated: OptimisticGame[]; // 새 조합
+  optEnded: Map<string, { kind: 'FINISHED' | 'UNASSIGNED'; at: string }>; // 게임 종료·대기로
+  optPlayers: Map<string, { players: GamePlayer[]; base: string; pending: number }>; // 조합 안 사람 바꾸기
+};
+
+function overlayGames(serverGames: IGame[], { optAssign, optCreated, optEnded, optPlayers }: OptimisticBoard): IGame[] {
+  if (optAssign.size === 0 && optCreated.length === 0 && optEnded.size === 0 && optPlayers.size === 0) return serverGames;
+  const pending = optCreated.filter((t) => !isSettled(t, serverGames));
+  // 대기로 돌린 조합은 서버처럼 대기 조합 맨 뒤
+  let lastOrder = Math.max(0, ...serverGames.map((g) => (g.status === 'QUEUED' ? (g.queueOrder ?? 0) : 0)));
+  const base = serverGames
+    // 빈칸 조합을 한 명씩 채우는 중엔 서버 쪽 반쪽 조합 대신 고른 사람 전부를 보여 준다
+    .filter((g) => !pending.some((t) => t.realId === g.id))
+    .map((g) => {
+      const patch = optPlayers.get(g.id);
+      if (patch && (g.status === 'QUEUED' || g.status === 'PLAYING')) {
+        // 마지막 한 명까지 빼면 서버처럼 조합 해체
+        g = patch.players.length === 0 ? { ...g, status: 'CANCELED' as const, queueOrder: null, players: [] } : { ...g, players: patch.players };
+      }
+      const ended = g.status === 'PLAYING' ? optEnded.get(g.id) : undefined;
+      if (ended?.kind === 'FINISHED') return { ...g, status: 'FINISHED' as const, endedAt: ended.at };
+      if (ended) return { ...g, status: 'QUEUED' as const, courtId: null, startedAt: null, queueOrder: ++lastOrder };
+      const assigned = g.status === 'QUEUED' ? optAssign.get(g.id) : undefined;
+      return assigned ? { ...g, status: 'PLAYING' as const, courtId: assigned.courtId, startedAt: assigned.startedAt } : g;
+    });
+  // 대기 조합 목록은 배열 순서대로 그려진다 — 대기로 돌린 조합을 배열에서도 맨 뒤로
+  const back = base.filter((g) => g.status === 'QUEUED' && optEnded.get(g.id)?.kind === 'UNASSIGNED');
+  const rest = back.length ? base.filter((g) => !back.includes(g)) : base;
+  return [...rest, ...back, ...pending.map((t) => t.game)];
+}
+
+function overlayAttendances(
+  serverAttendances: ISessionSnapshot['attendances'],
+  serverGames: IGame[],
+  games: IGame[], // overlayGames 결과
+  { optAssign, optCreated, optEnded, optPlayers }: OptimisticBoard,
+): ISessionSnapshot['attendances'] {
+  if (optAssign.size === 0 && optCreated.length === 0 && optEnded.size === 0 && optPlayers.size === 0) return serverAttendances;
+  const playing = new Set(
+    games.filter((g) => optAssign.has(g.id)).flatMap((g) => (g.players ?? []).map((p) => p.attendanceId)),
+  );
+  const matched = new Set(optCreated.flatMap((t) => t.ids));
+  // 종료: 전원 대기 시간 리셋 + 게임 수 +1, 다른 조합에 들어 있으면 '대기 조합', 아니면 대기로(서버 finish와 같은 규칙)
+  // 대기로: 조합이 그대로 대기 조합에 남으니 전원 '대기 조합'
+  const finished = new Map<string, string>();
+  const unassigned = new Set<string>();
+  for (const g of serverGames) {
+    const ended = g.status === 'PLAYING' ? optEnded.get(g.id) : undefined;
+    if (!ended) continue;
+    for (const p of g.players ?? []) {
+      if (ended.kind === 'FINISHED') finished.set(p.attendanceId, ended.at);
+      else unassigned.add(p.attendanceId);
+    }
+  }
+  const inOtherGame = new Set(
+    games.filter((g) => g.status === 'QUEUED' || g.status === 'PLAYING').flatMap((g) => (g.players ?? []).map((p) => p.attendanceId)),
+  );
+  // 조합에서 뺀 사람 — 다른 조합에도 없으면 서버처럼 대기로(대기 시간은 그대로)
+  // 다른 카드에서 옮겨 넣은 사람 — 게임 중 카드면 '게임 중', 대기 조합이면 대기였던 사람만 '대기 조합'
+  const removed = new Set<string>();
+  const removedFromPlaying = new Set<string>(); // 게임 중 카드에서 교체로 빠진 사람
+  const added = new Map<string, 'PLAYING' | 'MATCHED'>();
+  for (const [id, patch] of optPlayers) {
+    const kept = new Set(patch.players.map((p) => p.attendanceId));
+    const server = serverGames.find((g) => g.id === id);
+    const before = new Set((server?.players ?? []).map((p) => p.attendanceId));
+    for (const p of server?.players ?? []) {
+      if (kept.has(p.attendanceId)) continue;
+      removed.add(p.attendanceId);
+      if (server?.status === 'PLAYING') removedFromPlaying.add(p.attendanceId);
+    }
+    for (const p of patch.players) if (!before.has(p.attendanceId)) added.set(p.attendanceId, server?.status === 'PLAYING' ? 'PLAYING' : 'MATCHED');
+  }
+  return serverAttendances.map((a) => {
+    if (playing.has(a.id)) return { ...a, status: 'PLAYING' as const };
+    const finishedAt = finished.get(a.id);
+    if (finishedAt) {
+      return {
+        ...a,
+        status: inOtherGame.has(a.id) ? ('MATCHED' as const) : ('CHECKED_IN' as const),
+        waitingSince: finishedAt,
+        gamesPlayed: a.gamesPlayed + 1,
+      };
+    }
+    if (unassigned.has(a.id)) return { ...a, status: 'MATCHED' as const };
+    const addedAs = added.get(a.id);
+    if (addedAs === 'PLAYING' || (addedAs && a.status === 'CHECKED_IN')) return { ...a, status: addedAs };
+    if (removedFromPlaying.has(a.id)) return { ...a, status: inOtherGame.has(a.id) ? ('MATCHED' as const) : ('CHECKED_IN' as const) };
+    if (removed.has(a.id) && a.status === 'MATCHED' && !inOtherGame.has(a.id)) return { ...a, status: 'CHECKED_IN' as const };
+    return a.status === 'CHECKED_IN' && matched.has(a.id) ? { ...a, status: 'MATCHED' as const } : a;
+  });
+}
+
+// 종료한 공유 코트는 서버처럼 '다른 모임 차례'로, [우리 차례로]·[넘기기]는 누른 값으로
+function overlayCourts(
+  serverCourts: ISessionSnapshot['courts'],
+  serverGames: IGame[],
+  optEnded: OptimisticBoard['optEnded'],
+  optTurn: Map<string, boolean>,
+): ISessionSnapshot['courts'] {
+  if (optEnded.size === 0 && optTurn.size === 0) return serverCourts;
+  const yielded = new Set(
+    serverGames.filter((g) => g.status === 'PLAYING' && optEnded.get(g.id)?.kind === 'FINISHED').map((g) => g.courtId),
+  );
+  return serverCourts.map((c) => {
+    const turn = optTurn.get(c.id);
+    if (turn !== undefined) return { ...c, ourTurn: turn };
+    return c.isShared && yielded.has(c.id) ? { ...c, ourTurn: false } : c;
+  });
+}
+
 function BoardBody({
   snapshot,
   run,
@@ -293,13 +408,11 @@ function BoardBody({
 
   // 코트 배정·조합 만들기는 누르자마자 보여 준다 — 서버 응답과 화면 새로고침(두 번 오감)을 기다리면 멈춘 것처럼 보였다.
   // 서버 화면에 실리면 이 표시는 지우고, 실패하면 되돌린다(알림은 runParallel)
-  const [optAssign, setOptAssign] = useState<Map<string, { courtId: string; startedAt: string }>>(new Map());
+  const [optAssign, setOptAssign] = useState<OptimisticBoard['optAssign']>(new Map());
   const [optCreated, setOptCreated] = useState<OptimisticGame[]>([]);
   // 조합 안 사람 빼기·자리 바꾸기 — 바뀐 사람 목록을 대신 보여 준다. base=처음 누를 때 서버 목록, pending=아직 안 끝난 요청 수
   // 요청이 다 끝났고 서버 목록이 base와 달라지면(반영됨) 지운다 — 연달아 누르는 중엔 지우지 않아 앞 단계로 깜빡이지 않게
-  const [optPlayers, setOptPlayers] = useState<Map<string, { players: GamePlayer[]; base: string; pending: number }>>(
-    new Map(),
-  );
+  const [optPlayers, setOptPlayers] = useState<OptimisticBoard['optPlayers']>(new Map());
   useEffect(() => {
     setOptPlayers((prev) => {
       const next = new Map(
@@ -313,7 +426,7 @@ function BoardBody({
     });
   }, [snapshot.games]);
   // 게임 종료·대기로도 누르자마자 — 서버 화면에서 그 게임이 더는 '게임 중'이 아니면 지운다
-  const [optEnded, setOptEnded] = useState<Map<string, { kind: 'FINISHED' | 'UNASSIGNED'; at: string }>>(new Map());
+  const [optEnded, setOptEnded] = useState<OptimisticBoard['optEnded']>(new Map());
   useEffect(() => {
     setOptEnded((prev) => {
       const next = new Map([...prev].filter(([id]) => snapshot.games.find((g) => g.id === id)?.status === 'PLAYING'));
@@ -330,87 +443,14 @@ function BoardBody({
       return next.length === prev.length ? prev : next;
     });
   }, [snapshot.games]);
-  const games = useMemo(() => {
-    if (optAssign.size === 0 && optCreated.length === 0 && optEnded.size === 0 && optPlayers.size === 0) return snapshot.games;
-    const pending = optCreated.filter((t) => !isSettled(t, snapshot.games));
-    // 대기로 돌린 조합은 서버처럼 대기 조합 맨 뒤
-    let lastOrder = Math.max(0, ...snapshot.games.map((g) => (g.status === 'QUEUED' ? (g.queueOrder ?? 0) : 0)));
-    const base = snapshot.games
-      // 빈칸 조합을 한 명씩 채우는 중엔 서버 쪽 반쪽 조합 대신 고른 사람 전부를 보여 준다
-      .filter((g) => !pending.some((t) => t.realId === g.id))
-      .map((g) => {
-        const patch = optPlayers.get(g.id);
-        if (patch && (g.status === 'QUEUED' || g.status === 'PLAYING')) {
-          // 마지막 한 명까지 빼면 서버처럼 조합 해체
-          g = patch.players.length === 0 ? { ...g, status: 'CANCELED' as const, queueOrder: null, players: [] } : { ...g, players: patch.players };
-        }
-        const ended = g.status === 'PLAYING' ? optEnded.get(g.id) : undefined;
-        if (ended?.kind === 'FINISHED') return { ...g, status: 'FINISHED' as const, endedAt: ended.at };
-        if (ended) return { ...g, status: 'QUEUED' as const, courtId: null, startedAt: null, queueOrder: ++lastOrder };
-        const assigned = g.status === 'QUEUED' ? optAssign.get(g.id) : undefined;
-        return assigned ? { ...g, status: 'PLAYING' as const, courtId: assigned.courtId, startedAt: assigned.startedAt } : g;
-      });
-    // 대기 조합 목록은 배열 순서대로 그려진다 — 대기로 돌린 조합을 배열에서도 맨 뒤로
-    const back = base.filter((g) => g.status === 'QUEUED' && optEnded.get(g.id)?.kind === 'UNASSIGNED');
-    const rest = back.length ? base.filter((g) => !back.includes(g)) : base;
-    return [...rest, ...back, ...pending.map((t) => t.game)];
-  }, [snapshot.games, optAssign, optCreated, optEnded, optPlayers]);
-  const attendances = useMemo(() => {
-    if (optAssign.size === 0 && optCreated.length === 0 && optEnded.size === 0 && optPlayers.size === 0) return snapshot.attendances;
-    const playing = new Set(
-      games.filter((g) => optAssign.has(g.id)).flatMap((g) => (g.players ?? []).map((p) => p.attendanceId)),
-    );
-    const matched = new Set(optCreated.flatMap((t) => t.ids));
-    // 종료: 전원 대기 시간 리셋 + 게임 수 +1, 다른 조합에 들어 있으면 '대기 조합', 아니면 대기로(서버 finish와 같은 규칙)
-    // 대기로: 조합이 그대로 대기 조합에 남으니 전원 '대기 조합'
-    const finished = new Map<string, string>();
-    const unassigned = new Set<string>();
-    for (const g of snapshot.games) {
-      const ended = g.status === 'PLAYING' ? optEnded.get(g.id) : undefined;
-      if (!ended) continue;
-      for (const p of g.players ?? []) {
-        if (ended.kind === 'FINISHED') finished.set(p.attendanceId, ended.at);
-        else unassigned.add(p.attendanceId);
-      }
-    }
-    const inOtherGame = new Set(
-      games.filter((g) => g.status === 'QUEUED' || g.status === 'PLAYING').flatMap((g) => (g.players ?? []).map((p) => p.attendanceId)),
-    );
-    // 조합에서 뺀 사람 — 다른 조합에도 없으면 서버처럼 대기로(대기 시간은 그대로)
-    // 다른 카드에서 옮겨 넣은 사람 — 게임 중 카드면 '게임 중', 대기 조합이면 대기였던 사람만 '대기 조합'
-    const removed = new Set<string>();
-    const removedFromPlaying = new Set<string>(); // 게임 중 카드에서 교체로 빠진 사람
-    const added = new Map<string, 'PLAYING' | 'MATCHED'>();
-    for (const [id, patch] of optPlayers) {
-      const kept = new Set(patch.players.map((p) => p.attendanceId));
-      const server = snapshot.games.find((g) => g.id === id);
-      const before = new Set((server?.players ?? []).map((p) => p.attendanceId));
-      for (const p of server?.players ?? []) {
-        if (kept.has(p.attendanceId)) continue;
-        removed.add(p.attendanceId);
-        if (server?.status === 'PLAYING') removedFromPlaying.add(p.attendanceId);
-      }
-      for (const p of patch.players) if (!before.has(p.attendanceId)) added.set(p.attendanceId, server?.status === 'PLAYING' ? 'PLAYING' : 'MATCHED');
-    }
-    return snapshot.attendances.map((a) => {
-      if (playing.has(a.id)) return { ...a, status: 'PLAYING' as const };
-      const finishedAt = finished.get(a.id);
-      if (finishedAt) {
-        return {
-          ...a,
-          status: inOtherGame.has(a.id) ? ('MATCHED' as const) : ('CHECKED_IN' as const),
-          waitingSince: finishedAt,
-          gamesPlayed: a.gamesPlayed + 1,
-        };
-      }
-      if (unassigned.has(a.id)) return { ...a, status: 'MATCHED' as const };
-      const addedAs = added.get(a.id);
-      if (addedAs === 'PLAYING' || (addedAs && a.status === 'CHECKED_IN')) return { ...a, status: addedAs };
-      if (removedFromPlaying.has(a.id)) return { ...a, status: inOtherGame.has(a.id) ? ('MATCHED' as const) : ('CHECKED_IN' as const) };
-      if (removed.has(a.id) && a.status === 'MATCHED' && !inOtherGame.has(a.id)) return { ...a, status: 'CHECKED_IN' as const };
-      return a.status === 'CHECKED_IN' && matched.has(a.id) ? { ...a, status: 'MATCHED' as const } : a;
-    });
-  }, [snapshot.attendances, snapshot.games, games, optAssign, optCreated, optEnded, optPlayers]);
+  const games = useMemo(
+    () => overlayGames(snapshot.games, { optAssign, optCreated, optEnded, optPlayers }),
+    [snapshot.games, optAssign, optCreated, optEnded, optPlayers],
+  );
+  const attendances = useMemo(
+    () => overlayAttendances(snapshot.attendances, snapshot.games, games, { optAssign, optCreated, optEnded, optPlayers }),
+    [snapshot.attendances, snapshot.games, games, optAssign, optCreated, optEnded, optPlayers],
+  );
   // 공유 코트 [우리 차례로]·[넘기기]도 누르자마자 — 서버 화면이 같아지면 지우고, 실패하면 되돌린다
   const [optTurn, setOptTurn] = useState<Map<string, boolean>>(new Map());
   useEffect(() => {
@@ -422,18 +462,10 @@ function BoardBody({
       return next.size === prev.size ? prev : next;
     });
   }, [snapshot.courts]);
-  // 종료한 공유 코트는 서버처럼 '다른 모임 차례'로
-  const courts = useMemo(() => {
-    if (optEnded.size === 0 && optTurn.size === 0) return snapshot.courts;
-    const yielded = new Set(
-      snapshot.games.filter((g) => g.status === 'PLAYING' && optEnded.get(g.id)?.kind === 'FINISHED').map((g) => g.courtId),
-    );
-    return snapshot.courts.map((c) => {
-      const turn = optTurn.get(c.id);
-      if (turn !== undefined) return { ...c, ourTurn: turn };
-      return c.isShared && yielded.has(c.id) ? { ...c, ourTurn: false } : c;
-    });
-  }, [snapshot.courts, snapshot.games, optEnded, optTurn]);
+  const courts = useMemo(
+    () => overlayCourts(snapshot.courts, snapshot.games, optEnded, optTurn),
+    [snapshot.courts, snapshot.games, optEnded, optTurn],
+  );
   const setCourtTurn = useCallback(
     (courtId: string, ourTurn: boolean) => {
       setOptTurn((prev) => new Map(prev).set(courtId, ourTurn));
