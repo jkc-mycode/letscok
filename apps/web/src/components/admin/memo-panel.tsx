@@ -9,6 +9,8 @@ import { api } from '@/lib/api';
 // 운영 메모 — 대기 인원 구역 아래 상시 노출
 
 const TEMP_MEMO_PREFIX = 'temp-memo:';
+// 마지막으로 받은 목록 — 여복·남복 사이를 오가면 보드를 새로 그리는데, 메모는 두 모임 공용이라 비었다가 채워지지 않게 바로 보여 준다
+let lastMemos: IAdminMemo[] = [];
 
 // 세션 무관 전역 메모 — 모임 종료에도 유지, 처리한 건 ✕(=완료), [초기화]는 2탭 확인.
 // 운영진 전용 데이터라 공개 스냅샷에 없음 → 서버의 '메모 바뀜' 신호(version)가 올 때만 다시 읽는다
@@ -19,7 +21,10 @@ export function MemoPanel({
   version: number;
   run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
 }) {
-  const [memos, setMemos] = useState<IAdminMemo[]>([]); // 서버 목록
+  const [memos, setMemos] = useState<IAdminMemo[]>(() => lastMemos); // 서버 목록
+  useEffect(() => {
+    lastMemos = memos;
+  }, [memos]);
   // 추가·삭제는 누르자마자 보이게 — 서버 응답이나 재조회를 기다리지 않는다. 재조회가 와도 이 표시는 남아 깜빡이지 않는다
   const [adding, setAdding] = useState<IAdminMemo[]>([]);
   const [removing, setRemoving] = useState<Set<string>>(new Set());

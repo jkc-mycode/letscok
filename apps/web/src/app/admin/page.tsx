@@ -89,6 +89,7 @@ function Board({ onLogout }: { onLogout: () => void }) {
     typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('session'),
   );
   const showBoard = (id: string | null) => {
+    if (!id) switchedInBoard.current = false; // 첫 화면을 거쳐 들어가면 다시 등장 효과
     setBoardId(id);
     window.history.replaceState(window.history.state, '', id ? `/admin?session=${encodeURIComponent(id)}` : '/admin');
   };
@@ -106,6 +107,15 @@ function Board({ onLogout }: { onLogout: () => void }) {
     await selectSession(id);
     showBoard(id);
   };
+  // 보드에서 칩으로 모임을 바꿀 땐 보드를 새로 그려도(다른 모임 임시 표시가 섞이지 않게) 등장 효과·보던 구역은 그대로 —
+  // 바꿀 때마다 보드가 흐려졌다 나타나고 폰은 '명단' 구역으로 튀었다
+  const switchedInBoard = useRef(false);
+  const switchBoard = (id: string) => {
+    switchedInBoard.current = true;
+    return enter(id);
+  };
+  // 폰 전용 구역 탭 — 조작 시작점인 대기 인원이 기본
+  const [mobileTab, setMobileTab] = useState<MobileTab>('waiting');
   const entered = boardId !== null && (snapshot?.openSessions.some((s) => s.id === boardId) ?? false);
   // 주소의 모임이 그사이 끝났으면 첫 화면으로(주소도 정리)
   useEffect(() => {
@@ -217,7 +227,10 @@ function Board({ onLogout }: { onLogout: () => void }) {
         key={snapshot.session.id}
         snapshot={snapshot}
         memosVersion={memosVersion}
-        onSelectSession={enter}
+        onSelectSession={switchBoard}
+        animateIn={!switchedInBoard.current}
+        mobileTab={mobileTab}
+        setMobileTab={setMobileTab}
         run={run}
         runParallel={runParallel}
         busy={busy}
@@ -392,10 +405,16 @@ function BoardBody({
   onLogout,
   onSessionClosed,
   onSelectSession,
+  animateIn,
+  mobileTab,
+  setMobileTab,
 }: {
   snapshot: ISessionSnapshot;
   memosVersion: number;
   onSelectSession: (id: string) => Promise<void>; // 동시에 연 다른 모임으로 바꿔 보기
+  animateIn: boolean; // 처음 들어갈 때만 등장 효과
+  mobileTab: MobileTab; // 폰 구역 탭 — 모임을 바꿔도 보던 구역 유지(Board가 들고 있다)
+  setMobileTab: (tab: MobileTab) => void;
   run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   runParallel: (a: () => Promise<unknown>) => Promise<boolean>;
   busy: boolean;
@@ -436,8 +455,7 @@ function BoardBody({
     }
   };
   const [gamesLogOpen, setGamesLogOpen] = useState(false); // 오늘 완료 게임 조회·이름 검색
-  // 폰(<md)에서는 3구역을 한 번에 못 보여주므로 탭 전환 — 조작 시작점인 대기 인원이 기본
-  const [mobileTab, setMobileTab] = useState<MobileTab>('waiting');
+  // 폰(<md)에서는 3구역을 한 번에 못 보여주므로 탭 전환(mobileTab) — 상태는 Board가 들고 있다
   // 탭 스와이프 — 미는 동안은 React 렌더 없이 CSS 변수(--drag)만 바꿔 화면이 손가락을 따라오게 한다
   const boardRef = useRef<HTMLElement>(null);
   const swipe = useRef<{ x: number; y: number; dir: 'h' | 'v' | null; dx: number } | null>(null);
@@ -1366,7 +1384,7 @@ function BoardBody({
     <main
       ref={boardRef}
       style={{ '--tab-index': tabIndex } as React.CSSProperties}
-      className="fade-in flex h-dvh flex-col overflow-x-hidden p-2 md:p-4"
+      className={`${animateIn ? 'fade-in ' : ''}flex h-dvh flex-col overflow-x-hidden p-2 md:p-4`}
     >
       {/* 설치 안내 — 카톡으로 연 운영진도 브라우저로 나가게. 설치된 앱에선 뜨지 않는다 */}
       <InstallPrompt app="admin" className="mb-2 shrink-0" />
