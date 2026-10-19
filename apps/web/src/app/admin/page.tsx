@@ -467,17 +467,21 @@ function BoardBody({
     [runParallel, turnOpt],
   );
   const endGame = useCallback(
-    (gameId: string, kind: 'FINISHED' | 'UNASSIGNED') => {
+    (gameId: string, kind: 'FINISHED' | 'UNASSIGNED'): Promise<boolean> => {
       // 이미 누른 게임·배정이 서버에 아직 안 닿은 게임(종료하면 409)은 무시
-      if (optEnded.has(gameId) || optAssign.has(gameId)) return;
+      if (optEnded.has(gameId) || optAssign.has(gameId)) return Promise.resolve(false);
       endedOpt.set(gameId, { kind, at: new Date().toISOString() });
       const path = kind === 'FINISHED' ? 'finish' : 'unassign';
       const clearEnded = () => endedOpt.remove(gameId);
       const courtNo = snapshot.courts.find((c) => c.id === games.find((g) => g.id === gameId)?.courtId)?.courtNo;
-      void runParallel(() => api(`/games/${gameId}/${path}`, { method: 'PATCH', admin: true })).then((ok) => {
-        if (!ok) return clearEnded();
-        if (kind !== 'FINISHED') return;
-        // 잘못 누른 종료는 보통 바로 알아챈다 — 10초 동안 [되돌리기](서버는 30초까지 받는다)
+      // 결과(성공 여부)를 돌려준다 — AI 명령은 서버에 닿은 뒤 다음 단계로 넘어간다(다음 추천이 끝난 사람을 대기로 보게)
+      return runParallel(() => api(`/games/${gameId}/${path}`, { method: 'PATCH', admin: true })).then((ok) => {
+        if (!ok) {
+          clearEnded();
+          return false;
+        }
+        if (kind !== 'FINISHED') return true;
+        // 잘못 누른 종료는 보통 바로 알아챈다 — 10초 동안 [되돌리기](그 뒤엔 게임 기록에서 길게 눌러 되돌린다)
         showToast(`${courtNo ? `${courtNo}번 코트 ` : ''}게임 종료`, 'success', 10_000, {
           label: '되돌리기',
           onClick: () => {
@@ -487,6 +491,7 @@ function BoardBody({
             void run(() => api(`/games/${gameId}/reopen`, { method: 'PATCH', admin: true }), `game:${gameId}`);
           },
         });
+        return true;
       });
     },
     [optEnded, optAssign, endedOpt, runParallel, run, snapshot.courts, games, showToast, hideToast],
@@ -666,7 +671,7 @@ function BoardBody({
   // 임시 조합 → 서버 조합 id(만들어지면). 빈칸 채우기에서 만드는 중인 조합에 이어서 넣을 때 기다린다
   const tempReal = useRef(new Map<string, Promise<string | null>>());
   const startGame = useCallback(
-    (ids: string[], removeFrom?: string) => {
+    (ids: string[], removeFrom?: string, onDone?: (ok: boolean) => void) => {
       // 원래 카드가 그 사이 해체됐으면 뺄 곳이 없다 — 만들기만
       const origin = removeFrom && snapshot.games.some((g) => g.id === removeFrom) ? removeFrom : undefined;
       const tempId = `${TEMP_GAME_PREFIX}${Date.now()}`;
@@ -719,9 +724,9 @@ function BoardBody({
         }
       };
       if (origin) {
-        void patchGames([[origin, (players) => players.filter((p) => p.attendanceId !== ids[0])]], request);
+        void patchGames([[origin, (players) => players.filter((p) => p.attendanceId !== ids[0])]], request).then((ok) => onDone?.(ok));
       } else {
-        void runParallel(request);
+        void runParallel(request).then((ok) => onDone?.(ok));
       }
       return tempId;
     },
@@ -963,13 +968,16 @@ function BoardBody({
           }),
     [attendances, confirming, optAttendance],
   );
-  const changeAttendance = (attendanceId: string, change: AttendanceChange) => {
-    if (optAttendance.has(attendanceId)) return;
+  const changeAttendance = (attendanceId: string, change: AttendanceChange): Promise<boolean> => {
+    if (optAttendance.has(attendanceId)) return Promise.resolve(false);
     attendanceOpt.set(attendanceId, change);
     const admin = change === 'leave' || change === 'shuttle/cancel';
-    void runParallel(() =>
+    return runParallel(() =>
       api(`/attendances/${attendanceId}/${change}`, { method: 'PATCH', ...(admin && { admin: true }) }),
-    ).then((ok) => !ok && attendanceOpt.remove(attendanceId)); // 실패 — 서버 화면대로(알림은 runParallel)
+    ).then((ok) => {
+      if (!ok) attendanceOpt.remove(attendanceId); // 실패 — 서버 화면대로(알림은 runParallel)
+      return ok;
+    });
   };
   const confirmShuttle = (attendanceId: string) => {
     if (confirming.has(attendanceId)) return;
@@ -1743,6 +1751,11 @@ function BoardBody({
           sessionId={session.id}
           live={{ attendances, games }}
           run={run}
+          board={{
+            endGame: (gameId) => endGame(gameId, 'FINISHED'),
+            changeAttendance,
+            startGame: (ids) => new Promise((resolve) => startGame(ids, undefined, resolve)),
+          }}
           onClose={() => setCommandOpen(false)}
         />
       )}

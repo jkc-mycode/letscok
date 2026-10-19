@@ -90,11 +90,18 @@ export function CommandSheet({
   sessionId,
   live,
   run,
+  board,
   onClose,
 }: {
   sessionId: string;
   live: Live; // 관제판 실시간 스냅샷(출석·게임)
   run: (a: () => Promise<unknown>) => Promise<void>; // 실행은 보드 공용 실행기(실패 알림·새로고침)
+  // 보드에 같은 버튼이 있는 동작은 보드 것을 그대로 — 누르자마자 화면에 반영되고 종료엔 [되돌리기]도 뜬다. 성공 여부를 돌려준다(실패 알림은 보드가)
+  board: {
+    endGame: (gameId: string) => Promise<boolean>;
+    changeAttendance: (attendanceId: string, change: 'rest' | 'resume') => Promise<boolean>;
+    startGame: (attendanceIds: string[]) => Promise<boolean>;
+  };
   onClose: () => void;
 }) {
   const [text, setText] = useState('');
@@ -224,8 +231,7 @@ export function CommandSheet({
   const execute = (preview: ActionPreview) =>
     exec(async () => {
       if (preview.action === 'finish_game' && preview.gameId) {
-        await api(`/games/${preview.gameId}/finish`, { method: 'PATCH', admin: true });
-        done(preview.label);
+        if (await board.endGame(preview.gameId)) done(preview.label);
         return;
       }
       if (preview.action === 'call') {
@@ -255,8 +261,10 @@ export function CommandSheet({
         done(preview.label);
         return;
       }
-      await Promise.all(preview.targets.map((t) => api(`/attendances/${t.attendanceId}/${preview.action}`, { method: 'PATCH' })));
-      done(preview.label);
+      const action = preview.action;
+      if (action !== 'rest' && action !== 'resume') return; // 남은 건 휴식·복귀뿐(코트 번호 없는 종료는 미리보기에서 막힌다)
+      const results = await Promise.all(preview.targets.map((t) => board.changeAttendance(t.attendanceId, action)));
+      if (results.every(Boolean)) done(preview.label);
     });
 
   // 게스트 추가 — 새 게스트는 등록 후 체크인, 등록된 게스트는 체크인만(수동 체크인과 같은 API). 콕 확인은 명단에서 따로
@@ -318,12 +326,9 @@ export function CommandSheet({
 
   const addGame = (recommendation: IGameRecommendation) =>
     exec(async () => {
-      await api(`/sessions/${sessionId}/games`, {
-        method: 'POST',
-        admin: true,
-        body: { attendanceIds: recommendation.players.map((p) => p.attendanceId) },
-      });
-      done(`${recommendation.players.map((p) => p.name).join(', ')} 대기 조합에 넣었어요`);
+      if (await board.startGame(recommendation.players.map((p) => p.attendanceId))) {
+        done(`${recommendation.players.map((p) => p.name).join(', ')} 대기 조합에 넣었어요`);
+      }
     });
 
   return (
