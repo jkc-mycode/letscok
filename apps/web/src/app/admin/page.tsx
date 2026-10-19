@@ -27,6 +27,7 @@ import { HomeLink } from '@/components/home-link';
 import { InstallPrompt } from '@/components/install-prompt';
 import { LogoLoader } from '@/components/logo-loader';
 import { api, ApiError } from '@/lib/api';
+import { useOptimisticMap } from '@/lib/use-optimistic-map';
 import { useSnapshot } from '@/lib/use-snapshot';
 import { ToastState, useToast } from '@/lib/use-toast';
 import { MembersManagerModal } from '@/components/admin/members-manager';
@@ -408,7 +409,10 @@ function BoardBody({
 
   // 코트 배정·조합 만들기는 누르자마자 보여 준다 — 서버 응답과 화면 새로고침(두 번 오감)을 기다리면 멈춘 것처럼 보였다.
   // 서버 화면에 실리면 이 표시는 지우고, 실패하면 되돌린다(알림은 runParallel)
-  const [optAssign, setOptAssign] = useState<OptimisticBoard['optAssign']>(new Map());
+  const [optAssign, assignOpt] = useOptimisticMap<{ courtId: string; startedAt: string }>(
+    (id) => snapshot.games.find((g) => g.id === id)?.status === 'QUEUED', // 서버에서 '게임 중'이 되면 지운다
+    snapshot.games,
+  );
   const [optCreated, setOptCreated] = useState<OptimisticGame[]>([]);
   // 조합 안 사람 빼기·자리 바꾸기 — 바뀐 사람 목록을 대신 보여 준다. base=처음 누를 때 서버 목록, pending=아직 안 끝난 요청 수
   // 요청이 다 끝났고 서버 목록이 base와 달라지면(반영됨) 지운다 — 연달아 누르는 중엔 지우지 않아 앞 단계로 깜빡이지 않게
@@ -426,18 +430,11 @@ function BoardBody({
     });
   }, [snapshot.games]);
   // 게임 종료·대기로도 누르자마자 — 서버 화면에서 그 게임이 더는 '게임 중'이 아니면 지운다
-  const [optEnded, setOptEnded] = useState<OptimisticBoard['optEnded']>(new Map());
+  const [optEnded, endedOpt] = useOptimisticMap<{ kind: 'FINISHED' | 'UNASSIGNED'; at: string }>(
+    (id) => snapshot.games.find((g) => g.id === id)?.status === 'PLAYING',
+    snapshot.games,
+  );
   useEffect(() => {
-    setOptEnded((prev) => {
-      const next = new Map([...prev].filter(([id]) => snapshot.games.find((g) => g.id === id)?.status === 'PLAYING'));
-      return next.size === prev.size ? prev : next;
-    });
-  }, [snapshot.games]);
-  useEffect(() => {
-    setOptAssign((prev) => {
-      const next = new Map([...prev].filter(([id]) => snapshot.games.find((g) => g.id === id)?.status === 'QUEUED'));
-      return next.size === prev.size ? prev : next;
-    });
     setOptCreated((prev) => {
       const next = prev.filter((t) => !isSettled(t, snapshot.games));
       return next.length === prev.length ? prev : next;
@@ -452,46 +449,30 @@ function BoardBody({
     [snapshot.attendances, snapshot.games, games, optAssign, optCreated, optEnded, optPlayers],
   );
   // 공유 코트 [우리 차례로]·[넘기기]도 누르자마자 — 서버 화면이 같아지면 지우고, 실패하면 되돌린다
-  const [optTurn, setOptTurn] = useState<Map<string, boolean>>(new Map());
-  useEffect(() => {
-    setOptTurn((prev) => {
-      const next = new Map([...prev].filter(([id, ourTurn]) => {
-        const court = snapshot.courts.find((c) => c.id === id);
-        return court !== undefined && court.ourTurn !== ourTurn;
-      }));
-      return next.size === prev.size ? prev : next;
-    });
-  }, [snapshot.courts]);
+  const [optTurn, turnOpt] = useOptimisticMap<boolean>((id, ourTurn) => {
+    const court = snapshot.courts.find((c) => c.id === id);
+    return court !== undefined && court.ourTurn !== ourTurn;
+  }, snapshot.courts);
   const courts = useMemo(
     () => overlayCourts(snapshot.courts, snapshot.games, optEnded, optTurn),
     [snapshot.courts, snapshot.games, optEnded, optTurn],
   );
   const setCourtTurn = useCallback(
     (courtId: string, ourTurn: boolean) => {
-      setOptTurn((prev) => new Map(prev).set(courtId, ourTurn));
-      void runParallel(() => api(`/courts/${courtId}/turn`, { method: 'PATCH', admin: true, body: { ourTurn } })).then((ok) => {
-        if (ok) return;
-        setOptTurn((prev) => {
-          const next = new Map(prev);
-          next.delete(courtId); // 실패 — 서버 화면대로(알림은 runParallel)
-          return next;
-        });
-      });
+      turnOpt.set(courtId, ourTurn);
+      void runParallel(() => api(`/courts/${courtId}/turn`, { method: 'PATCH', admin: true, body: { ourTurn } })).then(
+        (ok) => !ok && turnOpt.remove(courtId), // 실패 — 서버 화면대로(알림은 runParallel)
+      );
     },
-    [runParallel],
+    [runParallel, turnOpt],
   );
   const endGame = useCallback(
     (gameId: string, kind: 'FINISHED' | 'UNASSIGNED') => {
       // 이미 누른 게임·배정이 서버에 아직 안 닿은 게임(종료하면 409)은 무시
       if (optEnded.has(gameId) || optAssign.has(gameId)) return;
-      setOptEnded((prev) => new Map(prev).set(gameId, { kind, at: new Date().toISOString() }));
+      endedOpt.set(gameId, { kind, at: new Date().toISOString() });
       const path = kind === 'FINISHED' ? 'finish' : 'unassign';
-      const clearEnded = () =>
-        setOptEnded((prev) => {
-          const next = new Map(prev);
-          next.delete(gameId);
-          return next;
-        });
+      const clearEnded = () => endedOpt.remove(gameId);
       const courtNo = snapshot.courts.find((c) => c.id === games.find((g) => g.id === gameId)?.courtId)?.courtNo;
       void runParallel(() => api(`/games/${gameId}/${path}`, { method: 'PATCH', admin: true })).then((ok) => {
         if (!ok) return clearEnded();
@@ -508,7 +489,7 @@ function BoardBody({
         });
       });
     },
-    [optEnded, optAssign, runParallel, run, snapshot.courts, games, showToast, hideToast],
+    [optEnded, optAssign, endedOpt, runParallel, run, snapshot.courts, games, showToast, hideToast],
   );
   const gamesRef = useRef(games);
   gamesRef.current = games;
@@ -626,17 +607,12 @@ function BoardBody({
   const assignToCourt = useCallback(
     (gameId: string, courtId: string) => {
       if (gameId.startsWith(TEMP_GAME_PREFIX) || optAssign.has(gameId)) return; // 아직 서버에 없는 조합·이미 누른 조합
-      setOptAssign((prev) => new Map(prev).set(gameId, { courtId, startedAt: new Date().toISOString() }));
-      void runParallel(() => api(`/games/${gameId}/assign`, { method: 'PATCH', admin: true, body: { courtId } })).then((ok) => {
-        if (ok) return;
-        setOptAssign((prev) => {
-          const next = new Map(prev);
-          next.delete(gameId);
-          return next;
-        });
-      });
+      assignOpt.set(gameId, { courtId, startedAt: new Date().toISOString() });
+      void runParallel(() => api(`/games/${gameId}/assign`, { method: 'PATCH', admin: true, body: { courtId } })).then(
+        (ok) => !ok && assignOpt.remove(gameId),
+      );
     },
-    [optAssign, runParallel],
+    [optAssign, assignOpt, runParallel],
   );
 
   const playingByCourt = useMemo(() => {
@@ -934,17 +910,8 @@ function BoardBody({
     if (filling.current || plan.length === 0) return;
     filling.current = true;
     const startedAt = new Date().toISOString();
-    setOptAssign((prev) => {
-      const next = new Map(prev);
-      plan.forEach(({ gameId, courtId }) => next.set(gameId, { courtId, startedAt }));
-      return next;
-    });
-    const undo = (gameIds: string[]) =>
-      setOptAssign((prev) => {
-        const next = new Map(prev);
-        gameIds.forEach((id) => next.delete(id));
-        return next;
-      });
+    plan.forEach(({ gameId, courtId }) => assignOpt.set(gameId, { courtId, startedAt }));
+    const undo = (gameIds: string[]) => assignOpt.remove(...gameIds);
     void run(async () => {
       let result: IFillCourtsResult;
       try {
@@ -975,24 +942,15 @@ function BoardBody({
   // (운영진은 이 섹션이 비었는지만 확인하면 된다)
   // 콕 확인은 누르자마자 반영한다 — 서버 응답·화면 새로고침(두 번 오감)을 기다리면 멈춘 것처럼 보이고,
   // 여러 명을 연달아 누를 때 앞사람이 끝나기 전 누른 건 무시됐다. 서버 화면에 확인이 실리면 이 표시는 지운다
-  const [confirming, setConfirming] = useState<Map<string, string>>(new Map()); // 출석 id → 누른 시각
-  useEffect(() => {
-    setConfirming((prev) => {
-      const next = new Map([...prev].filter(([id]) => !attendances.find((a) => a.id === id)?.shuttleConfirmedAt));
-      return next.size === prev.size ? prev : next;
-    });
-  }, [attendances]);
+  const [confirming, confirmingOpt] = useOptimisticMap<string>( // 출석 id → 누른 시각
+    (id) => !attendances.find((a) => a.id === id)?.shuttleConfirmedAt,
+    attendances,
+  );
   // 대기 줄 [⋯] 휴식·복귀·퇴장·콕 확인 취소도 누르자마자 반영 — 서버 화면이 같아지면 지우고, 실패하면 되돌린다
-  const [optAttendance, setOptAttendance] = useState<Map<string, AttendanceChange>>(new Map());
-  useEffect(() => {
-    setOptAttendance((prev) => {
-      const next = new Map([...prev].filter(([id, change]) => {
-        const a = attendances.find((x) => x.id === id);
-        return a !== undefined && !changeApplied(a, change);
-      }));
-      return next.size === prev.size ? prev : next;
-    });
-  }, [attendances]);
+  const [optAttendance, attendanceOpt] = useOptimisticMap<AttendanceChange>((id, change) => {
+    const a = attendances.find((x) => x.id === id);
+    return a !== undefined && !changeApplied(a, change);
+  }, attendances);
   const shuttleView = useMemo(
     () =>
       confirming.size === 0 && optAttendance.size === 0
@@ -1007,30 +965,18 @@ function BoardBody({
   );
   const changeAttendance = (attendanceId: string, change: AttendanceChange) => {
     if (optAttendance.has(attendanceId)) return;
-    setOptAttendance((prev) => new Map(prev).set(attendanceId, change));
+    attendanceOpt.set(attendanceId, change);
     const admin = change === 'leave' || change === 'shuttle/cancel';
     void runParallel(() =>
       api(`/attendances/${attendanceId}/${change}`, { method: 'PATCH', ...(admin && { admin: true }) }),
-    ).then((ok) => {
-      if (ok) return;
-      setOptAttendance((prev) => {
-        const next = new Map(prev);
-        next.delete(attendanceId); // 실패 — 서버 화면대로(알림은 runParallel)
-        return next;
-      });
-    });
+    ).then((ok) => !ok && attendanceOpt.remove(attendanceId)); // 실패 — 서버 화면대로(알림은 runParallel)
   };
   const confirmShuttle = (attendanceId: string) => {
     if (confirming.has(attendanceId)) return;
-    setConfirming((prev) => new Map(prev).set(attendanceId, new Date().toISOString()));
-    void runParallel(() => api(`/attendances/${attendanceId}/shuttle`, { method: 'PATCH', admin: true })).then((ok) => {
-      if (ok) return;
-      setConfirming((prev) => {
-        const next = new Map(prev);
-        next.delete(attendanceId); // 실패 — 콕 확인 대기로 되돌린다(알림은 runParallel이 띄움)
-        return next;
-      });
-    });
+    confirmingOpt.set(attendanceId, new Date().toISOString());
+    void runParallel(() => api(`/attendances/${attendanceId}/shuttle`, { method: 'PATCH', admin: true })).then(
+      (ok) => !ok && confirmingOpt.remove(attendanceId), // 실패 — 콕 확인 대기로 되돌린다(알림은 runParallel이 띄움)
+    );
   };
   // 모임장 → 운영진을 맨 위에(현장에서 찾기 쉽게), 나머지는 명단 정렬과 상관없이 항상 이름순 — 콕 낸 사람을 이름으로 찾는다
   const pendingShuttle = useMemo(

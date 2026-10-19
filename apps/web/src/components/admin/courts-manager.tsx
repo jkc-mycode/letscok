@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { ConfirmButton } from '@/components/confirm-button';
 import { Sheet } from '@/components/sheet';
 import { api } from '@/lib/api';
+import { useOptimisticMap } from '@/lib/use-optimistic-map';
 
 // 코트 관리(추가·공유·번호 바꾸기·해제)와 코트 고르기 시트(배정·옮기기)
 
@@ -24,24 +25,18 @@ export function CourtsManager({
   const [courtNo, setCourtNo] = useState('');
   // 누르자마자 반영 — 서버 응답·화면 새로고침(두 번 오감)을 기다리면 느리고, 공통 잠금 때문에 다른 버튼도 막혔다.
   // 서버 화면에 실리면 표시를 지우고, 실패하면 되돌린다(알림은 runParallel)
-  const [sharedOverride, setSharedOverride] = useState<Map<string, boolean>>(new Map());
-  const [removing, setRemoving] = useState<Set<string>>(new Set());
+  const [sharedOverride, sharedOpt] = useOptimisticMap<boolean>(
+    (id, v) => courts.some((c) => c.id === id && c.isShared !== v),
+    courts,
+  );
+  const [removing, removingOpt] = useOptimisticMap<true>((id) => courts.some((c) => c.id === id), courts);
   const [adding, setAdding] = useState<number[]>([]);
-  const [numberOverride, setNumberOverride] = useState<Map<string, number>>(new Map()); // 번호 바꾸는 중
+  const [numberOverride, numberOpt] = useOptimisticMap<number>( // 번호 바꾸는 중
+    (id, no) => courts.some((c) => c.id === id && c.courtNo !== no),
+    courts,
+  );
   const [editing, setEditing] = useState<{ id: string; value: string } | null>(null); // 번호를 눌러 고치는 줄
   useEffect(() => {
-    setNumberOverride((prev) => {
-      const next = new Map([...prev].filter(([id, no]) => courts.some((c) => c.id === id && c.courtNo !== no)));
-      return next.size === prev.size ? prev : next;
-    });
-    setSharedOverride((prev) => {
-      const next = new Map([...prev].filter(([id, v]) => courts.find((c) => c.id === id)?.isShared !== v && courts.some((c) => c.id === id)));
-      return next.size === prev.size ? prev : next;
-    });
-    setRemoving((prev) => {
-      const next = new Set([...prev].filter((id) => courts.some((c) => c.id === id)));
-      return next.size === prev.size ? prev : next;
-    });
     setAdding((prev) => {
       const next = prev.filter((no) => !courts.some((c) => c.courtNo === no));
       return next.length === prev.length ? prev : next;
@@ -63,15 +58,9 @@ export function CourtsManager({
   };
   const toggleShared = (court: ICourt) => {
     const isShared = !court.isShared;
-    setSharedOverride((prev) => new Map(prev).set(court.id, isShared));
+    sharedOpt.set(court.id, isShared);
     void runParallel(() => api(`/courts/${court.id}/shared`, { method: 'PATCH', admin: true, body: { isShared } })).then(
-      (ok) =>
-        !ok &&
-        setSharedOverride((prev) => {
-          const next = new Map(prev);
-          next.delete(court.id);
-          return next;
-        }),
+      (ok) => !ok && sharedOpt.remove(court.id),
     );
   };
   // 잘못 등록한 번호 고치기 — 다른 코트가 쓰는 번호면 서버가 막고 이유를 알려 준다
@@ -79,27 +68,15 @@ export function CourtsManager({
     setEditing(null);
     const no = Number(value);
     if (!no || no === court.courtNo) return;
-    setNumberOverride((prev) => new Map(prev).set(court.id, no));
+    numberOpt.set(court.id, no);
     void runParallel(() => api(`/courts/${court.id}`, { method: 'PATCH', admin: true, body: { courtNo: no } })).then(
-      (ok) =>
-        !ok &&
-        setNumberOverride((prev) => {
-          const next = new Map(prev);
-          next.delete(court.id);
-          return next;
-        }),
+      (ok) => !ok && numberOpt.remove(court.id),
     );
   };
   const remove = (court: ICourt) => {
-    setRemoving((prev) => new Set(prev).add(court.id));
+    removingOpt.set(court.id, true);
     void runParallel(() => api(`/courts/${court.id}`, { method: 'DELETE', admin: true })).then(
-      (ok) =>
-        !ok &&
-        setRemoving((prev) => {
-          const next = new Set(prev);
-          next.delete(court.id);
-          return next;
-        }),
+      (ok) => !ok && removingOpt.remove(court.id),
     );
   };
 
