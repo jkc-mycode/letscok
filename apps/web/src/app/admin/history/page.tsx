@@ -7,6 +7,7 @@ import { AdminGate } from '@/components/admin-gate';
 import { HistoryTabs } from '@/components/history-tabs';
 import { InstallPrompt } from '@/components/install-prompt';
 import { api, ApiError } from '@/lib/api';
+import { sessionTag } from '@/lib/session-report';
 
 const PAGE_SIZE = 20;
 
@@ -65,7 +66,7 @@ function HistoryList() {
           >
             <span className="font-bold">
               {session.date}
-              {session.part && <span className="ml-1.5 text-sm text-sky">{session.part}부</span>}
+              {sessionTag(session) && <span className="ml-1.5 text-sm text-sky">{sessionTag(session)}</span>}
             </span>
             <span className="ml-auto text-sm text-dim">
               출석 {session.attendeeCount}명 · 게임 {session.finishedGameCount}판

@@ -10,6 +10,7 @@ import { EntryFeeSheet } from '@/components/entry-fee-sheet';
 import { SessionReportModal } from '@/components/session-report-modal';
 import { InstallPrompt } from '@/components/install-prompt';
 import { api, ApiError } from '@/lib/api';
+import { sessionTag } from '@/lib/session-report';
 import { timeLabel } from '@/lib/session-report';
 
 export default function HistoryDetailPage() {
@@ -40,7 +41,7 @@ function HistoryDetail() {
         <Link href="/admin/history" className="text-sm text-dim transition-opacity hover:opacity-70">
           ← 모임 목록
         </Link>
-        <h1 className="mt-1 text-2xl font-bold">{detail ? `${detail.session.date}${detail.session.part ? ` ${detail.session.part}부` : ''}` : '모임 상세'}</h1>
+        <h1 className="mt-1 text-2xl font-bold">{detail ? [detail.session.date, sessionTag(detail.session)].filter(Boolean).join(' ') : '모임 상세'}</h1>
         {detail && (
           <div className="mt-1 flex items-center gap-2">
             <p className="text-sm text-dim">

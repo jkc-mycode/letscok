@@ -8,6 +8,7 @@ import { AdminGate } from '@/components/admin-gate';
 import { GenderMarker, GradeBadge } from '@/components/badges';
 import { InstallPrompt } from '@/components/install-prompt';
 import { api, ApiError } from '@/lib/api';
+import { sessionTag } from '@/lib/session-report';
 
 export default function MemberStatsPage() {
   return (
@@ -106,7 +107,7 @@ function MemberStats() {
                 >
                   <span className="font-medium">
                     {session.date}
-                    {session.part && <span className="ml-1.5 text-xs text-sky">{session.part}부</span>}
+                    {sessionTag(session) && <span className="ml-1.5 text-xs text-sky">{sessionTag(session)}</span>}
                   </span>
                   <span className="tabular ml-auto font-mono text-xs text-dim">
                     {session.gamesPlayed}게임

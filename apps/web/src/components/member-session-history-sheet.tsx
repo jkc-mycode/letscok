@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { GradeBadge } from '@/components/badges';
 import { Sheet } from '@/components/sheet';
 import { api } from '@/lib/api';
-import { timeLabel } from '@/lib/session-report';
+import { sessionTag, timeLabel } from '@/lib/session-report';
 
 const PAGE_SIZE = 50;
 
@@ -190,7 +190,7 @@ export function MemberSessionHistorySheet({
                 className="flex min-h-11 w-full items-center px-3 text-left text-sm"
               >
                 <span className="tabular font-mono">{item.date}</span>
-                {item.part && <span className="ml-1.5 text-xs text-sky">{item.part}부</span>}
+                {sessionTag(item) && <span className="ml-1.5 text-xs text-sky">{sessionTag(item)}</span>}
                 <span className={`tabular ml-auto font-mono text-xs ${item.gamesPlayed ? 'text-dim' : 'text-faint'}`}>
                   {item.gamesPlayed}게임
                 </span>

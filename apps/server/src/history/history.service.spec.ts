@@ -130,6 +130,19 @@ describe('같은 날 여러 모임', () => {
     const page = await service.getMemberSessions(member.id, 1, 10);
     expect(page.items.map((i) => i.part)).toEqual([2, 1]);
   });
+
+  it('동시에 연 모임(여복·남복)은 이름도 함께 준다', async () => {
+    const women = await prisma.session.create({
+      data: { date: new Date('2026-03-08'), label: '여복', status: 'CLOSED', closedAt: new Date() },
+    });
+    const member = await seedMember();
+    await seedAttendance(women.id, member.id, 1);
+
+    expect((await service.listSessions(1, 10)).sessions[0].label).toBe('여복');
+    expect((await service.getSessionDetail(women.id)).session.label).toBe('여복');
+    expect((await service.getMemberStats(member.id)).recentSessions[0].label).toBe('여복');
+    expect((await service.getMemberSessions(member.id, 1, 10)).items[0].label).toBe('여복');
+  });
 });
 
 describe('getSessionDetail', () => {
@@ -303,8 +316,8 @@ describe('getMemberSessions', () => {
     const first = await service.getMemberSessions(me.id, 1, 2);
     expect(first.total).toBe(3);
     expect(first.items).toEqual([
-      { sessionId: sessions[2].id, date: '2026-01-15', part: null, gamesPlayed: 3 },
-      { sessionId: sessions[1].id, date: '2026-01-08', part: null, gamesPlayed: 2 },
+      { sessionId: sessions[2].id, date: '2026-01-15', part: null, label: null, gamesPlayed: 3 },
+      { sessionId: sessions[1].id, date: '2026-01-08', part: null, label: null, gamesPlayed: 2 },
     ]);
 
     const second = await service.getMemberSessions(me.id, 2, 2);

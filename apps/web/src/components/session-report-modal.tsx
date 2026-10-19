@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Sheet } from '@/components/sheet';
 import { ClearableTextarea } from '@/components/clearable-input';
 import { api, ApiError } from '@/lib/api';
-import { sessionReportText } from '@/lib/session-report';
+import { sessionReportText, sessionTag } from '@/lib/session-report';
 
 const DEFAULT_CLOSING = '오늘도 수고 많으셨어요! 다음 모임에서 만나요 😊';
 
@@ -31,7 +31,7 @@ export function SessionReportModal({ sessionId, onClose }: { sessionId: string; 
   const text = detail
     ? sessionReportText({
         date: detail.session.date,
-        part: detail.session.part,
+        tag: sessionTag(detail.session),
         attendeeCount: detail.session.attendeeCount,
         gameCount: detail.session.finishedGameCount,
         attendees: detail.attendees,

@@ -44,6 +44,7 @@ export class HistoryService {
         id: session.id,
         date: toDateString(session.date),
         part: parts.get(session.id) ?? null,
+        label: session.label,
         attendeeCount: session._count.attendances,
         finishedGameCount: session._count.games,
       })),
@@ -88,6 +89,7 @@ export class HistoryService {
         id: session.id,
         date: toDateString(session.date),
         part: (await this.dayParts([session])).get(session.id) ?? null,
+        label: session.label,
         attendeeCount: session._count.attendances,
         finishedGameCount: session._count.games,
       },
@@ -213,6 +215,7 @@ export class HistoryService {
         sessionId: attendance.sessionId,
         date: toDateString(attendance.session.date),
         part: recentParts.get(attendance.sessionId) ?? null,
+        label: attendance.session.label,
         gamesPlayed: attendance.gamesPlayed,
       })),
     };
@@ -231,7 +234,7 @@ export class HistoryService {
         orderBy: [{ session: { date: 'desc' } }, { session: { openedAt: 'desc' } }, { id: 'desc' }], // 같은 날짜 두 모임도 2부가 위로, 쪽 경계에서 겹치거나 빠지지 않게
         skip: (page - 1) * limit,
         take: limit,
-        select: { sessionId: true, gamesPlayed: true, session: { select: { id: true, date: true } } },
+        select: { sessionId: true, gamesPlayed: true, session: { select: { id: true, date: true, label: true } } },
       }),
       this.prisma.attendance.count({ where: { memberId } }),
     ]);
@@ -242,6 +245,7 @@ export class HistoryService {
         sessionId: attendance.sessionId,
         date: toDateString(attendance.session.date),
         part: parts.get(attendance.sessionId) ?? null,
+        label: attendance.session.label,
         gamesPlayed: attendance.gamesPlayed,
       })),
       total,

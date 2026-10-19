@@ -10,6 +10,11 @@ const monthDay = (date: string) => {
   return `${month}월 ${day}일`;
 };
 
+// 같은 날 모임을 가르는 꼬리표 — 여복·남복처럼 이름이 있으면 이름, 없으면 시작 순서 'N부', 하루 한 모임이면 null
+export function sessionTag({ part, label }: { part: number | null; label: string | null }): string | null {
+  return label ?? (part ? `${part}부` : null);
+}
+
 // 많이 뛴 사람 — 3위의 게임 수 이상인 사람을 모두(동점 포함), 0게임은 제외
 export function topPlayers(attendees: IHistoryAttendee[]): IHistoryAttendee[] {
   const played = [...attendees].filter((a) => a.gamesPlayed > 0).sort((a, b) => b.gamesPlayed - a.gamesPlayed);
@@ -20,7 +25,7 @@ export function topPlayers(attendees: IHistoryAttendee[]): IHistoryAttendee[] {
 
 export function sessionReportText({
   date,
-  part,
+  tag,
   attendeeCount,
   gameCount,
   attendees,
@@ -29,7 +34,7 @@ export function sessionReportText({
   closing,
 }: {
   date: string;
-  part: number | null; // 같은 날 두 번째 모임이면 "2부"
+  tag: string | null; // sessionTag — "2부"·"남복"
   attendeeCount: number;
   gameCount: number;
   attendees: IHistoryAttendee[];
@@ -37,7 +42,7 @@ export function sessionReportText({
   showTop: boolean;
   closing: string;
 }): string {
-  const blocks: string[] = [`🏸 ${monthDay(date)}${part ? ` ${part}부` : ''} 모임 마무리`];
+  const blocks: string[] = [`🏸 ${monthDay(date)}${tag ? ` ${tag}` : ''} 모임 마무리`];
   if (showSummary) blocks.push(`오늘 ${attendeeCount}명이 함께했고 총 ${gameCount}게임을 쳤어요!`);
   const top = topPlayers(attendees);
   if (showTop && top.length > 0) {
