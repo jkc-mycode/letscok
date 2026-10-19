@@ -51,15 +51,13 @@ export function RecommendModal({
   sessionId,
   attendances,
   fillGame,
-  run,
-  busy,
+  onAdd,
   onClose,
 }: {
   sessionId: string;
   attendances: IAttendance[];
   fillGame?: IGame; // 있으면 이 짜는 중 조합의 사람을 고정하고 빈자리만 추천
-  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
-  busy: boolean;
+  onAdd: (rec: IGameRecommendation) => void; // 화면에 먼저 넣고 서버로 보낸다(보드가 맡음)
   onClose: () => void;
 }) {
   const [category, setCategory] = useState<RecommendationCategory>('ALL');
@@ -86,23 +84,11 @@ export function RecommendModal({
     void load();
   }, [load]);
 
-  // 추천은 참고용 초안 — 대기 추가는 기존 게임 생성 API 그대로
-  // 빈자리 추천은 조합에 없는 사람만 기존 [빈칸 채우기] API로 한 명씩 넣는다
-  const addToQueue = (rec: IGameRecommendation) =>
-    run(async () => {
-      if (fillGame) {
-        for (const p of rec.players.filter((p) => !fixedIds.includes(p.attendanceId))) {
-          await api(`/games/${fillGame.id}/players`, { method: 'POST', admin: true, body: { attendanceId: p.attendanceId } });
-        }
-      } else {
-        await api(`/sessions/${sessionId}/games`, {
-          method: 'POST',
-          admin: true,
-          body: { attendanceIds: rec.players.map((p) => p.attendanceId) },
-        });
-      }
-      onClose();
-    }, fillGame && `game:${fillGame.id}`);
+  // 추천은 참고용 초안 — 넣는 길은 [조합 만들기]·[빈칸 채우기]와 같다
+  const addToQueue = (rec: IGameRecommendation) => {
+    onAdd(rec);
+    onClose();
+  };
 
   return (
     <Sheet
@@ -207,9 +193,8 @@ export function RecommendModal({
                   </p>
                 )}
                 <button
-                  onClick={() => void addToQueue(rec)}
-                  disabled={busy}
-                  className="mt-3 h-11 rounded-lg bg-court text-sm font-bold text-bg disabled:opacity-50"
+                  onClick={() => addToQueue(rec)}
+                  className="mt-3 h-11 rounded-lg bg-court text-sm font-bold text-bg"
                 >
                   {fillGame ? '빈자리에 넣기' : '대기에 추가'}
                 </button>

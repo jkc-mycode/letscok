@@ -1,6 +1,6 @@
 'use client';
 
-import { GAME_SIZE, IFillCourtsResult, IGame, ISessionSnapshot } from '@letscok/shared-types';
+import { GAME_SIZE, IFillCourtsResult, IGame, IGameRecommendation, ISessionSnapshot } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react';
@@ -1032,6 +1032,40 @@ function BoardBody({
       () => api(`/games/${gameId}/players`, { method: 'POST', admin: true, body: { attendanceId } }),
     );
   };
+  // 추천 [대기에 추가]·[빈자리에 넣기] — 누르자마자 대기 조합에 보이게(조합 만들기·빈칸 채우기와 같은 길)
+  const addRecommended = (rec: IGameRecommendation, fillGame?: IGame) => {
+    const ids = rec.players.map((p) => p.attendanceId);
+    if (!fillGame) {
+      startGame(ids);
+      return;
+    }
+    const missing = ids.filter((id) => !(fillGame.players ?? []).some((p) => p.attendanceId === id));
+    const temp = slotTempOf(fillGame.id);
+    if (temp) {
+      missing.forEach((id) => growTemp(temp.game.id, id));
+      return;
+    }
+    // 여러 명을 한 번에 그려야 한다 — fillSlot을 사람마다 부르면 같은 빈자리를 두고 앞사람 모습을 덮어쓴다
+    void patchGames(
+      [
+        [
+          fillGame.id,
+          (players) =>
+            missing.reduce((next, attendanceId) => {
+              const slot = firstFreeSlot(next);
+              if (slot === undefined || next.some((p) => p.attendanceId === attendanceId)) return next;
+              const attendance = snapshot.attendances.find((a) => a.id === attendanceId);
+              return [...next, { id: `${TEMP_GAME_PREFIX}${attendanceId}`, gameId: fillGame.id, attendanceId, slot, attendance }];
+            }, players),
+        ],
+      ],
+      async () => {
+        for (const attendanceId of missing) {
+          await api(`/games/${fillGame.id}/players`, { method: 'POST', admin: true, body: { attendanceId } });
+        }
+      },
+    );
+  };
   const leftCount = shuttleView.filter((a) => a.status === 'LEFT').length;
   const presentCount = shuttleView.length - leftCount;
 
@@ -1505,8 +1539,7 @@ function BoardBody({
         <RecommendModal
           sessionId={session.id}
           attendances={attendances}
-          run={run}
-          busy={busy}
+          onAdd={(rec) => addRecommended(rec)}
           onClose={() => setRecommendOpen(false)}
         />
       )}
@@ -1520,8 +1553,7 @@ function BoardBody({
               sessionId={session.id}
               attendances={attendances}
               fillGame={fillGame}
-              run={run}
-              busy={busy}
+              onAdd={(rec) => addRecommended(rec, fillGame)}
               onClose={() => setRecommendFillId(null)}
             />
           )
