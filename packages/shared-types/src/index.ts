@@ -607,6 +607,7 @@ export interface IApiResponse<T> {
 export const SocketEvents = {
   SNAPSHOT_UPDATED: 'snapshot.updated', // payload: ISessionSnapshot
   SESSION_CLOSED: 'session.closed', // payload: { sessionId: string }
+  MEMOS_CHANGED: 'memos.changed', // payload 없음 — 운영 메모가 바뀌었다는 신호만(내용은 운영진이 /memos로 다시 읽는다)
 } as const;
 export type SocketEvent = (typeof SocketEvents)[keyof typeof SocketEvents];
 

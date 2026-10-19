@@ -81,7 +81,7 @@ export default function AdminPage() {
 // ===== 보드 =====
 
 function Board({ onLogout }: { onLogout: () => void }) {
-  const { snapshot, noSession, failed, loading, refetch } = useSnapshot();
+  const { snapshot, noSession, failed, loading, refetch, memosVersion } = useSnapshot();
   const { toast, showToast, hideToast } = useToast();
   const [inFlight, setInFlight] = useState(0); // 진행 중인 요청 수 — 팝업 버튼은 이게 0일 때만 켠다
   const busy = inFlight > 0;
@@ -105,9 +105,15 @@ function Board({ onLogout }: { onLogout: () => void }) {
   useEffect(() => () => {
     if (refetchTimer.current) clearTimeout(refetchTimer.current);
   }, []);
+  // 그 사이 실시간 현황이 도착했으면 다시 부르지 않는다 — 보통 소켓이 먼저 와서 같은 현황을 두 번 받고 있었다(놓쳤을 때만 보충)
+  const latestSnapshot = useRef(snapshot);
+  latestSnapshot.current = snapshot;
   const scheduleRefetch = () => {
     if (refetchTimer.current) clearTimeout(refetchTimer.current);
-    refetchTimer.current = setTimeout(() => void refetch(), 400);
+    const seen = latestSnapshot.current;
+    refetchTimer.current = setTimeout(() => {
+      if (latestSnapshot.current === seen) void refetch();
+    }, 400);
   };
 
   // 모든 변경 액션의 공통 실행기 — 실패 시 서버의 한국어 메시지를 토스트로
@@ -178,6 +184,7 @@ function Board({ onLogout }: { onLogout: () => void }) {
     <>
       <BoardBody
         snapshot={snapshot}
+        memosVersion={memosVersion}
         run={run}
         runParallel={runParallel}
         busy={busy}
@@ -339,6 +346,7 @@ function overlayCourts(
 
 function BoardBody({
   snapshot,
+  memosVersion,
   run,
   runParallel,
   busy,
@@ -349,6 +357,7 @@ function BoardBody({
   onSessionClosed,
 }: {
   snapshot: ISessionSnapshot;
+  memosVersion: number;
   run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   runParallel: (a: () => Promise<unknown>) => Promise<boolean>;
   busy: boolean;
@@ -1565,7 +1574,7 @@ function BoardBody({
         </Zone>
         </RosterDrop>
         <div className={`${pane} flex-1 md:max-h-[35%] md:flex-none`}>
-          <MemoPanel snapshot={snapshot} run={run} />
+          <MemoPanel version={memosVersion} run={run} />
         </div>
         </div>
       </div>

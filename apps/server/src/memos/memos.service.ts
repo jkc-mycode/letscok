@@ -6,7 +6,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 
 // 관제판 운영 메모 — 세션 무관 전역(처리 전 요청·건강 메모는 다음 모임으로 이어진다), 삭제 = 완료 처리.
 // 이름·건강 정보가 적히므로 공개 응답에 절대 안 싣고 admin 경로로만 노출.
-// 변경 시 스냅샷 브로드캐스트는 다른 운영진 기기의 "메모 재조회 트리거"로만 쓴다
+// 변경 시 다른 운영진 기기에 '메모 바뀜' 신호만 보낸다(받은 기기가 /memos를 다시 읽는다)
 @Injectable()
 export class MemosService {
   constructor(
@@ -55,7 +55,7 @@ export class MemosService {
       where: { status: 'OPEN' },
       select: { id: true },
     });
-    if (session) this.realtime.broadcastSnapshot(session.id);
+    if (session) this.realtime.notifyMemosChanged(session.id);
   }
 }
 

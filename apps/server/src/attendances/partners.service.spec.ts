@@ -7,7 +7,7 @@ import { PartnersService } from './partners.service';
 
 // 대회 연습 파트너 지정·해제 — 실DB로 서로 가리키기·이전 짝 풀기·메모 기록을 확인한다
 
-const realtimeStub = { broadcastSnapshot: () => undefined } as unknown as RealtimeService;
+const realtimeStub = { broadcastSnapshot: () => undefined, notifyMemosChanged: () => undefined } as unknown as RealtimeService;
 const prisma = new PrismaService();
 const sessionsService = new SessionsService(prisma, realtimeStub);
 const service = new PartnersService(prisma, sessionsService, realtimeStub, new MemosService(prisma, realtimeStub));

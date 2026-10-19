@@ -1,6 +1,6 @@
 'use client';
 
-import { IAdminMemo, ISessionSnapshot } from '@letscok/shared-types';
+import { IAdminMemo } from '@letscok/shared-types';
 import { useCallback, useEffect, useState } from 'react';
 import { ClearableInput } from '@/components/clearable-input';
 import { ConfirmButton } from '@/components/confirm-button';
@@ -11,12 +11,12 @@ import { api } from '@/lib/api';
 const TEMP_MEMO_PREFIX = 'temp-memo:';
 
 // 세션 무관 전역 메모 — 모임 종료에도 유지, 처리한 건 ✕(=완료), [초기화]는 2탭 확인.
-// 운영진 전용 데이터라 공개 스냅샷에 없음 → 스냅샷 이벤트를 재조회 트리거로만 사용
+// 운영진 전용 데이터라 공개 스냅샷에 없음 → 서버의 '메모 바뀜' 신호(version)가 올 때만 다시 읽는다
 export function MemoPanel({
-  snapshot,
+  version,
   run,
 }: {
-  snapshot: ISessionSnapshot;
+  version: number;
   run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
 }) {
   const [memos, setMemos] = useState<IAdminMemo[]>([]); // 서버 목록
@@ -32,10 +32,10 @@ export function MemoPanel({
       // 조회 실패는 치명적이지 않음 — 다음 스냅샷 이벤트에서 재시도된다
     }
   }, []);
-  // 스냅샷이 바뀔 때마다 재조회 — 다른 운영진 기기의 메모 변경이 브로드캐스트를 타고 반영된다
+  // 처음과 '메모 바뀜' 신호마다 재조회 — 다른 운영진 기기의 메모 변경이 반영된다(예전엔 현황이 올 때마다 다시 읽었다)
   useEffect(() => {
     void load();
-  }, [load, snapshot]);
+  }, [load, version]);
   // 재조회가 응답보다 먼저 와서 서버 목록에 이미 실렸으면 임시 메모는 숨긴다(같은 글이 두 줄로 보이지 않게)
   const view = [
     ...memos.filter((m) => !removing.has(m.id)),

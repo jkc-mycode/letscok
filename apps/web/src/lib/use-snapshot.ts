@@ -20,6 +20,7 @@ interface SnapshotState {
   failed: boolean;
   loading: boolean;
   refetch: () => Promise<void>;
+  memosVersion: number; // 운영 메모가 바뀐 신호를 받을 때마다 +1 — 메모 패널은 이때만 다시 읽는다
 }
 
 export function useSnapshot(): SnapshotState {
@@ -27,10 +28,13 @@ export function useSnapshot(): SnapshotState {
   const [noSession, setNoSession] = useState(false);
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [memosVersion, setMemosVersion] = useState(0);
   const socketRef = useRef<Socket | null>(null);
+  const lastFetchAt = useRef(0); // 마지막 조회를 시작한 시각 — 첫 접속 때 방금 한 조회를 또 하지 않게
   const sessionIdRef = useRef<string | null>(null); // connect 핸들러가 최신 세션 id를 참조
 
   const refetch = useCallback(async () => {
+    lastFetchAt.current = Date.now();
     try {
       const data = await api<ISessionSnapshot>('/sessions/current');
       setSnapshot(data);
@@ -56,8 +60,9 @@ export function useSnapshot(): SnapshotState {
     socketRef.current = socket;
 
     // 접속(재접속 포함)마다 REST로 최신 상태 복구 — 끊긴 사이 놓친 브로드캐스트 대비
+    // 첫 접속은 보통 위의 첫 조회 직후라 3초 안이면 건너뛴다(같은 현황을 두 번 받던 것)
     socket.on('connect', () => {
-      void refetch();
+      if (Date.now() - lastFetchAt.current > 3000) void refetch();
       if (sessionIdRef.current) {
         socket.emit(SocketClientEvents.JOIN_SESSION, {
           sessionId: sessionIdRef.current,
@@ -68,6 +73,7 @@ export function useSnapshot(): SnapshotState {
       setSnapshot(data);
       setNoSession(false);
     });
+    socket.on(SocketEvents.MEMOS_CHANGED, () => setMemosVersion((v) => v + 1));
     socket.on(SocketEvents.SESSION_CLOSED, () => {
       setSnapshot(null);
       setNoSession(true);
@@ -95,7 +101,7 @@ export function useSnapshot(): SnapshotState {
     }
   }, [sessionId]);
 
-  return { snapshot, noSession, failed, loading, refetch };
+  return { snapshot, noSession, failed, loading, refetch, memosVersion };
 }
 
 // 경과 시간 표시용 1초 틱

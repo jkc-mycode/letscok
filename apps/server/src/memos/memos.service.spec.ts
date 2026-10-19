@@ -8,7 +8,7 @@ import { MemosService } from './memos.service';
 
 // 브로드캐스트는 메모 CRUD와 무관 — 소켓 없이 서비스만 조립하기 위한 스텁
 const realtimeStub = {
-  broadcastSnapshot: () => undefined,
+  notifyMemosChanged: () => undefined,
 } as unknown as RealtimeService;
 
 const prisma = new PrismaService();

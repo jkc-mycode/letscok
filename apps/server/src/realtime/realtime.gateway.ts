@@ -53,6 +53,10 @@ export class RealtimeGateway {
       .emit(SocketEvents.SNAPSHOT_UPDATED, snapshot);
   }
 
+  emitMemosChanged(sessionId: string): void {
+    this.server.to(sessionRoom(sessionId)).emit(SocketEvents.MEMOS_CHANGED);
+  }
+
   emitSessionClosed(sessionId: string): void {
     this.server
       .to(sessionRoom(sessionId))

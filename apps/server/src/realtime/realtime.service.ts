@@ -59,6 +59,11 @@ export class RealtimeService implements OnModuleDestroy {
     };
   }
 
+  // 운영 메모가 바뀌었다는 신호만 — 메모는 현황에 없어서 현황 전체를 다시 만들어 보낼 필요가 없다
+  notifyMemosChanged(sessionId: string): void {
+    this.gateway.emitMemosChanged(sessionId);
+  }
+
   // 변경을 일으킨 서비스가 응답을 지연시키지 않도록 fire-and-forget으로 호출한다
   // (브로드캐스트 실패는 로그만 — 이미 커밋된 변경의 응답을 실패시키면 안 됨)
   // 이미 보낼 예정이면 그대로 둔다 — 보낼 때 그 시점의 현황을 새로 읽으므로 사이의 변경이 다 들어간다
