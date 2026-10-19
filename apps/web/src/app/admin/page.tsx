@@ -83,7 +83,16 @@ export default function AdminPage() {
 // ===== 보드 =====
 
 function Board({ onLogout }: { onLogout: () => void }) {
-  const { snapshot, noSession, failed, loading, refetch, memosVersion, selectSession } = useSnapshot();
+  // 들어간 모임은 주소(/admin?session=id)에 적는다 — 새로고침해도 그 보드가 유지되고, 주소가 없으면 첫 화면에서 고른다
+  // 기록을 쌓지 않고 바꾸기만 한다: 쌓으면 설치 앱의 "뒤로 한 번 더 누르면 종료"와 엉킨다
+  const [boardId, setBoardId] = useState<string | null>(() =>
+    typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('session'),
+  );
+  const showBoard = (id: string | null) => {
+    setBoardId(id);
+    window.history.replaceState(window.history.state, '', id ? `/admin?session=${encodeURIComponent(id)}` : '/admin');
+  };
+  const { snapshot, noSession, failed, loading, refetch, memosVersion, selectSession } = useSnapshot({ prefer: boardId });
   const { toast, showToast, hideToast } = useToast();
   const [inFlight, setInFlight] = useState(0); // 진행 중인 요청 수 — 팝업 버튼은 이게 0일 때만 켠다
   const busy = inFlight > 0;
@@ -93,11 +102,15 @@ function Board({ onLogout }: { onLogout: () => void }) {
   const [reportSessionId, setReportSessionId] = useState<string | null>(null);
   // 열린 모임이 있어도 바로 보드로 가지 않고 첫 화면에서 들어갈 모임을 고른다 — 여복·남복 날 다른 모임 보드를 거치지 않고
   // 바로 모임을 열 수 있게. 이 기기에서 모임을 시작·새로 열었으면 바로 들어간다
-  const [entered, setEntered] = useState(false);
   const enter = async (id: string) => {
     await selectSession(id);
-    setEntered(true);
+    showBoard(id);
   };
+  const entered = boardId !== null && (snapshot?.openSessions.some((s) => s.id === boardId) ?? false);
+  // 주소의 모임이 그사이 끝났으면 첫 화면으로(주소도 정리)
+  useEffect(() => {
+    if (boardId && !loading && !failed && (noSession || (snapshot && !entered))) showBoard(null);
+  }, [boardId, loading, failed, noSession, snapshot, entered]);
   const report = reportSessionId && (
     <SessionReportModal
       sessionId={reportSessionId}
@@ -192,7 +205,6 @@ function Board({ onLogout }: { onLogout: () => void }) {
           onLogout={onLogout}
           openSessions={noSession ? [] : (snapshot?.openSessions ?? [])}
           onEnter={enter}
-          onStarted={() => setEntered(true)}
         />
         {report}
       </>
@@ -205,7 +217,7 @@ function Board({ onLogout }: { onLogout: () => void }) {
         key={snapshot.session.id}
         snapshot={snapshot}
         memosVersion={memosVersion}
-        onSelectSession={selectSession}
+        onSelectSession={enter}
         run={run}
         runParallel={runParallel}
         busy={busy}
@@ -215,7 +227,7 @@ function Board({ onLogout }: { onLogout: () => void }) {
         onLogout={onLogout}
         onSessionClosed={(id) => {
           setReportSessionId(id);
-          setEntered(false); // 남은 모임이 있으면 첫 화면 목록에서 다시 고른다
+          showBoard(null); // 남은 모임이 있으면 첫 화면 목록에서 다시 고른다
         }}
       />
       {report}

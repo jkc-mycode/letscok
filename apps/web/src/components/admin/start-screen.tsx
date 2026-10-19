@@ -1,6 +1,6 @@
 'use client';
 
-import { IClosedTodaySession, IOpenSessionBrief } from '@letscok/shared-types';
+import { IClosedTodaySession, IOpenSessionBrief, ISession } from '@letscok/shared-types';
 import Link from 'next/link';
 import { useState } from 'react';
 import { BirthdayCalendarModal } from '@/components/birthday-calendar';
@@ -26,15 +26,13 @@ export function StartScreen({
   onLogout,
   openSessions,
   onEnter,
-  onStarted,
 }: {
   run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   busy: boolean;
   toast: ToastState | null;
   onLogout: () => void;
   openSessions: IOpenSessionBrief[]; // 지금 열려 있는 모임(먼저 연 순서)
-  onEnter: (sessionId: string) => Promise<void>; // 고른 모임 보드로
-  onStarted: () => void; // 이 기기에서 모임을 시작했다 — 고르지 않고 바로 보드로
+  onEnter: (sessionId: string) => Promise<void>; // 고른 모임 보드로(이 기기에서 시작·새로 연 모임도 바로)
 }) {
   // 명단 정리는 모임 전이 한가하다 — 세션 없이도 모임원 관리에 들어갈 수 있게
   const [membersOpen, setMembersOpen] = useState(false);
@@ -52,16 +50,13 @@ export function StartScreen({
     void run(async () => {
       const last = await api<IClosedTodaySession | null>('/sessions/closed-today', { admin: true });
       if (last) setClosedToday(last);
-      else {
-        await api('/sessions', { method: 'POST', admin: true });
-        onStarted();
-      }
+      else await onEnter((await api<ISession>('/sessions', { method: 'POST', admin: true })).id);
     });
   const open = (fresh: boolean) => {
     setClosedToday(null);
     void run(async () => {
-      await api('/sessions', { method: 'POST', admin: true, ...(fresh && { body: { fresh: true } }) });
-      onStarted();
+      const session = await api<ISession>('/sessions', { method: 'POST', admin: true, ...(fresh && { body: { fresh: true } }) });
+      await onEnter(session.id);
     });
   };
   return (

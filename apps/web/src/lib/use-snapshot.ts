@@ -43,7 +43,8 @@ interface SnapshotState {
 }
 
 // byMember: 모임원 화면 — 이 폰에 연결된 사람이 출석한 모임을 받는다(기기에 고른 모임 대신)
-export function useSnapshot({ byMember = false }: { byMember?: boolean } = {}): SnapshotState {
+// prefer: 주소에 적힌 모임(관제판 /admin?session=) — 새로고침해도 그 모임을 받는다
+export function useSnapshot({ byMember = false, prefer = null }: { byMember?: boolean; prefer?: string | null } = {}): SnapshotState {
   const [snapshot, setSnapshot] = useState<ISessionSnapshot | null>(null);
   const [noSession, setNoSession] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -52,12 +53,14 @@ export function useSnapshot({ byMember = false }: { byMember?: boolean } = {}): 
   const socketRef = useRef<Socket | null>(null);
   const lastFetchAt = useRef(0); // 마지막 조회를 시작한 시각 — 첫 접속 때 방금 한 조회를 또 하지 않게
   const sessionIdRef = useRef<string | null>(null); // connect 핸들러가 최신 세션 id를 참조
+  const preferRef = useRef(prefer); // 바뀌어도 소켓을 다시 열지 않게 ref로 읽는다
+  preferRef.current = prefer;
 
   const refetch = useCallback(async () => {
     lastFetchAt.current = Date.now();
     try {
       const memberId = byMember ? getMemberId() : null;
-      const picked = byMember ? null : readPicked();
+      const picked = byMember ? null : (preferRef.current ?? readPicked());
       const query = memberId ? `?memberId=${encodeURIComponent(memberId)}` : picked ? `?id=${encodeURIComponent(picked)}` : '';
       const data = await api<ISessionSnapshot>(`/sessions/current${query}`);
       sessionIdRef.current = data.session.id; // 모임을 바꾼 직후 옛 모임 방의 현황이 새 화면을 덮지 않게 바로 맞춘다
