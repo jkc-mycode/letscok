@@ -62,28 +62,32 @@ export function ManualCheckInModal({
       return next;
     });
 
-  // 선택한 인원을 한 번에 체크인 — 서버 엔드포인트가 1명 단위라 순차 호출한다
+  // 선택한 인원을 한 번에 체크인 — 서버 엔드포인트가 1명 단위라 사람마다 보내되 동시에 보낸다(차례로 보내면 인원수만큼 느려졌다)
   // run()의 공통 에러 토스트는 첫 실패에서 끊기므로 여기서 개별로 잡아 성공/실패를 나눠 보고
   const checkInSelected = () => {
     const targets = [...selected.values()];
     if (targets.length === 0) return;
     void run(async () => {
+      const results = await Promise.all(
+        targets.map(async (member) => {
+          try {
+            await api(`/sessions/${sessionId}/attendances/manual`, {
+              method: 'POST',
+              admin: true,
+              body: { memberId: member.id },
+            });
+            return null;
+          } catch (e) {
+            return { member, message: e instanceof ApiError ? e.message : '요청에 실패했습니다.' };
+          }
+        }),
+      );
       const errors: { name: string; message: string }[] = [];
       const remaining = new Map<string, IMember>();
-      for (const member of targets) {
-        try {
-          await api(`/sessions/${sessionId}/attendances/manual`, {
-            method: 'POST',
-            admin: true,
-            body: { memberId: member.id },
-          });
-        } catch (e) {
-          errors.push({
-            name: member.name,
-            message: e instanceof ApiError ? e.message : '요청에 실패했습니다.',
-          });
-          remaining.set(member.id, member); // 실패한 사람만 선택으로 남겨 재시도하게
-        }
+      for (const failure of results) {
+        if (!failure) continue;
+        errors.push({ name: failure.member.name, message: failure.message });
+        remaining.set(failure.member.id, failure.member); // 실패한 사람만 선택으로 남겨 재시도하게
       }
       setSelected(remaining);
       setFailed(errors);

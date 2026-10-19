@@ -92,21 +92,34 @@ export function MultiMemberForm({
   const blocked = rows.some((row) => blockedByName(row, !!sameName[row.key]));
   const ready = rows.length > 0 && !blocked && rows.every((row) => toBody(row) !== null);
 
-  // 서버 엔드포인트가 1명 단위라 순차 처리 — 성공한 카드는 지우고 실패한 카드만 이유와 함께 남긴다
+  // 서버 엔드포인트가 1명 단위라 카드마다 보내되 동시에 보낸다(차례로 보내면 인원수만큼 느려졌다)
+  // 같은 이름 카드끼리만 차례로 — 동시에 보내면 서버의 중복 검사를 둘 다 통과해 같은 사람이 두 번 생길 수 있다
+  // 성공한 카드는 지우고 실패한 카드만 이유와 함께 남긴다
   const submit = async () => {
     if (!ready || submitting) return;
     setSubmitting(true);
+    const chains = new Map<string, Promise<unknown>>();
+    const results = await Promise.all(
+      rows.map((row) => {
+        const body = toBody(row);
+        if (!body) return Promise.resolve(null);
+        const attempt = (chains.get(body.name) ?? Promise.resolve()).then(async () => {
+          try {
+            await register(body);
+            return { done: body.name };
+          } catch (e) {
+            return { failed: { ...row, error: e instanceof ApiError ? e.message : '등록에 실패했어요.' } };
+          }
+        });
+        chains.set(body.name, attempt);
+        return attempt;
+      }),
+    );
     const done: string[] = [];
     const remaining: Row[] = [];
-    for (const row of rows) {
-      const body = toBody(row);
-      if (!body) continue;
-      try {
-        await register(body);
-        done.push(body.name);
-      } catch (e) {
-        remaining.push({ ...row, error: e instanceof ApiError ? e.message : '등록에 실패했어요.' });
-      }
+    for (const result of results) {
+      if (result?.done) done.push(result.done);
+      if (result?.failed) remaining.push(result.failed);
     }
     setRows(remaining.length > 0 ? remaining : [newRow(defaultGuest)]);
     setSubmitting(false);
