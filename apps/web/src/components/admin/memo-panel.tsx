@@ -115,7 +115,7 @@ export function MemoPanel({
         )}
       </h2>
       {view.length > 0 && (
-        <ul className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3">
+        <ul className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain px-3">
           {view.map((memo) => (
             <li
               key={memo.id}

@@ -473,6 +473,16 @@ function BoardBody({
   const { session } = snapshot;
   const concurrent = snapshot.openSessions.length > 1; // 여복·남복처럼 동시에 연 모임이 있다
   const dragEnabled = useBoardDragEnabled(); // 태블릿 이상 — 자석판처럼 끌어다 놓기
+  // 보드가 떠 있는 동안 페이지 전체가 고무줄처럼 출렁이지 않게 — 짧아서 스크롤이 없는 목록에서 민 손짓은 곧장 페이지로 간다
+  // 보드는 화면에 딱 맞춰 그려서 페이지 자체를 끌어당길 일이 없다(당겨서 새로고침도 보드에선 실수에 가깝다)
+  useEffect(() => {
+    const root = document.documentElement;
+    const previous = root.style.overscrollBehavior;
+    root.style.overscrollBehavior = 'none';
+    return () => {
+      root.style.overscrollBehavior = previous;
+    };
+  }, []);
 
   // 코트 배정·조합 만들기는 누르자마자 보여 준다 — 서버 응답과 화면 새로고침(두 번 오감)을 기다리면 멈춘 것처럼 보였다.
   // 서버 화면에 실리면 이 표시는 지우고, 실패하면 되돌린다(알림은 runParallel)
@@ -1384,7 +1394,7 @@ function BoardBody({
     <main
       ref={boardRef}
       style={{ '--tab-index': tabIndex } as React.CSSProperties}
-      className={`${animateIn ? 'fade-in ' : ''}flex h-dvh flex-col overflow-x-hidden p-2 md:p-4`}
+      className={`${animateIn ? 'fade-in ' : ''}flex h-dvh flex-col overflow-x-hidden overscroll-none p-2 md:p-4`}
     >
       {/* 설치 안내 — 카톡으로 연 운영진도 브라우저로 나가게. 설치된 앱에선 뜨지 않는다 */}
       <InstallPrompt app="admin" className="mb-2 shrink-0" />

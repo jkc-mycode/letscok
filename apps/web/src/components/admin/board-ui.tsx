@@ -51,7 +51,8 @@ export function Zone({
         <span className="tabular font-mono text-caption text-faint">{count}</span>
         {headerExtra}
       </h2>
-      <div className="no-shrink flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3">
+      {/* overscroll-contain — 목록 끝에서 더 밀어도 그 손짓이 바깥(화면 전체)으로 넘어가 출렁이지 않게 */}
+      <div className="no-shrink flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain px-3 pb-3">
         {children}
       </div>
       {footer && <div className="flex gap-2 p-3">{footer}</div>}
