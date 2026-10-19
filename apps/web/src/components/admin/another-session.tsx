@@ -6,25 +6,25 @@ import { Sheet } from '@/components/sheet';
 import { api } from '@/lib/api';
 
 // 모임 하나 더 열기 — 여복·남복처럼 같은 체육관에서 코트를 나눠 동시에 운영한다
-// 두 모임을 칩으로 구분해야 하니 이름이 필수. 지금 모임에 이름이 없으면 여기서 같이 정한다
+// 두 모임을 칩으로 구분해야 하니 이름이 필수. 이름 없이 먼저 연 모임이 있으면 여기서 같이 정한다(관제판 첫 화면·더보기 공용)
 
 const SUGGESTIONS = ['여복', '남복', '혼복'];
 const MAX_LABEL = 10; // 서버와 같은 길이 제한
 
 export function AnotherSessionSheet({
-  current,
+  unnamed,
   openSessions,
   run,
   onOpened,
   onClose,
 }: {
-  current: ISession;
+  unnamed?: IOpenSessionBrief; // 이름 없이 열려 있는 모임 — 보통 먼저 연 쪽
   openSessions: IOpenSessionBrief[];
   run: (a: () => Promise<unknown>) => Promise<void>;
   onOpened: (sessionId: string) => Promise<void>; // 새 모임으로 화면을 바꾼다(코트부터 등록하게)
   onClose: () => void;
 }) {
-  const needsCurrent = !current.label;
+  const needsCurrent = unnamed !== undefined;
   const [currentLabel, setCurrentLabel] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const used = [...openSessions.map((s) => s.label), needsCurrent ? currentLabel.trim() : null].filter(Boolean);
@@ -36,7 +36,7 @@ export function AnotherSessionSheet({
     onClose();
     void run(async () => {
       if (needsCurrent) {
-        await api(`/sessions/${current.id}/label`, { method: 'PATCH', admin: true, body: { label: currentLabel.trim() } });
+        await api(`/sessions/${unnamed.id}/label`, { method: 'PATCH', admin: true, body: { label: currentLabel.trim() } });
       }
       const opened = await api<ISession>('/sessions', { method: 'POST', admin: true, body: { label: name } });
       await onOpened(opened.id);
@@ -63,7 +63,7 @@ export function AnotherSessionSheet({
         같은 체육관에서 코트를 나눠 따로 운영해요. 출석·대기·게임은 모임마다 따로이고, 입장 코드는 같아요. 위쪽 칩으로 오갈 수 있어요.
       </p>
       {needsCurrent && (
-        <LabelField label="지금 모임 이름" value={currentLabel} onChange={setCurrentLabel} taken={[name]} />
+        <LabelField label="먼저 연 모임 이름" value={currentLabel} onChange={setCurrentLabel} taken={[name]} />
       )}
       <LabelField label="새 모임 이름" value={newLabel} onChange={setNewLabel} taken={used as string[]} />
       {name !== '' && used.includes(name) && <p className="text-body-sm text-coral">이미 쓰는 이름이에요</p>}

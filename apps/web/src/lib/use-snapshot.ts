@@ -131,6 +131,7 @@ export function useSnapshot({ byMember = false }: { byMember?: boolean } = {}): 
   const selectSession = useCallback(
     async (id: string) => {
       savePicked(id);
+      if (sessionIdRef.current === id) return; // 이미 받아 둔 모임 — 관제판 첫 화면에서 [들어가기]가 같은 현황을 또 읽지 않게
       await refetch();
     },
     [refetch],

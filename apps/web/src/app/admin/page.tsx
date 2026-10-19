@@ -91,12 +91,19 @@ function Board({ onLogout }: { onLogout: () => void }) {
   // 방금 종료한 모임의 마무리 문구 — 종료하면 보드(BoardBody)가 사라지므로 상태는 여기서 들고 있다.
   // 문구 팝업을 닫아야 패스코드를 지우고 로그인 화면으로 간다(종료 = 그날 운영 끝)
   const [reportSessionId, setReportSessionId] = useState<string | null>(null);
+  // 열린 모임이 있어도 바로 보드로 가지 않고 첫 화면에서 들어갈 모임을 고른다 — 여복·남복 날 다른 모임 보드를 거치지 않고
+  // 바로 모임을 열 수 있게. 이 기기에서 모임을 시작·새로 열었으면 바로 들어간다
+  const [entered, setEntered] = useState(false);
+  const enter = async (id: string) => {
+    await selectSession(id);
+    setEntered(true);
+  };
   const report = reportSessionId && (
     <SessionReportModal
       sessionId={reportSessionId}
       onClose={() => {
         setReportSessionId(null);
-        // 동시에 연 다른 모임이 남아 있으면 그 보드로 넘어가 있다 — 그날 운영이 끝난 게 아니라 잠그지 않는다
+        // 동시에 연 다른 모임이 남아 있으면 첫 화면 목록에 있다 — 그날 운영이 끝난 게 아니라 잠그지 않는다
         if (!snapshot) onLogout();
       }}
     />
@@ -175,10 +182,18 @@ function Board({ onLogout }: { onLogout: () => void }) {
       </main>
     );
   }
-  if (noSession || !snapshot) {
+  if (noSession || !snapshot || !entered) {
     return (
       <>
-        <StartScreen run={run} busy={busy} toast={toast} onLogout={onLogout} />
+        <StartScreen
+          run={run}
+          busy={busy}
+          toast={toast}
+          onLogout={onLogout}
+          openSessions={noSession ? [] : (snapshot?.openSessions ?? [])}
+          onEnter={enter}
+          onStarted={() => setEntered(true)}
+        />
         {report}
       </>
     );
@@ -198,7 +213,10 @@ function Board({ onLogout }: { onLogout: () => void }) {
         showToast={showToast}
         hideToast={hideToast}
         onLogout={onLogout}
-        onSessionClosed={setReportSessionId}
+        onSessionClosed={(id) => {
+          setReportSessionId(id);
+          setEntered(false); // 남은 모임이 있으면 첫 화면 목록에서 다시 고른다
+        }}
       />
       {report}
     </>
@@ -1779,7 +1797,7 @@ function BoardBody({
       )}
       {anotherOpen && (
         <AnotherSessionSheet
-          current={session}
+          unnamed={session.label ? undefined : session}
           openSessions={snapshot.openSessions}
           run={run}
           onOpened={onSelectSession}

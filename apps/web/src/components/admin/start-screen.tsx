@@ -1,6 +1,6 @@
 'use client';
 
-import { IClosedTodaySession } from '@letscok/shared-types';
+import { IClosedTodaySession, IOpenSessionBrief } from '@letscok/shared-types';
 import Link from 'next/link';
 import { useState } from 'react';
 import { BirthdayCalendarModal } from '@/components/birthday-calendar';
@@ -12,36 +12,57 @@ import { InstallPrompt } from '@/components/install-prompt';
 import { Sheet } from '@/components/sheet';
 import { api } from '@/lib/api';
 import { ToastState } from '@/lib/use-toast';
+import { AnotherSessionSheet } from '@/components/admin/another-session';
 import { MembersManagerModal } from '@/components/admin/members-manager';
+import { sessionName } from '@/components/session-switcher';
 
-// 모임 시작 전 화면 — [오늘 모임 시작]과 모임 밖 메뉴(모임원 관리·지난 기록·생일·정산)
+// 관제판 첫 화면 — 열린 모임이 없으면 [오늘 모임 시작], 있으면 들어갈 모임 고르기와 [모임 하나 더 열기]
+// 아래는 모임 밖 메뉴(모임원 관리·지난 기록·생일·정산)
 
 export function StartScreen({
   run,
   busy,
   toast,
   onLogout,
+  openSessions,
+  onEnter,
+  onStarted,
 }: {
   run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   busy: boolean;
   toast: ToastState | null;
   onLogout: () => void;
+  openSessions: IOpenSessionBrief[]; // 지금 열려 있는 모임(먼저 연 순서)
+  onEnter: (sessionId: string) => Promise<void>; // 고른 모임 보드로
+  onStarted: () => void; // 이 기기에서 모임을 시작했다 — 고르지 않고 바로 보드로
 }) {
   // 명단 정리는 모임 전이 한가하다 — 세션 없이도 모임원 관리에 들어갈 수 있게
   const [membersOpen, setMembersOpen] = useState(false);
   const [birthdayOpen, setBirthdayOpen] = useState(false);
   const [settlementOpen, setSettlementOpen] = useState(false); // 뒤풀이는 모임이 끝난(종료한) 뒤에 정산하는 경우가 많다
   const [closedToday, setClosedToday] = useState<IClosedTodaySession | null>(null); // 오늘 이미 끝낸 모임 — 이어 할지 새로 할지 고른다
+  const [anotherOpen, setAnotherOpen] = useState(false); // 여복·남복처럼 모임 하나 더 열기
+  const [entering, setEntering] = useState<string | null>(null); // 들어가는 중인 모임(보드를 읽는 동안)
+  const enter = (id: string) => {
+    setEntering(id);
+    void onEnter(id).finally(() => setEntering(null));
+  };
   // 오늘 끝낸 모임이 없으면 바로 시작, 있으면 고르는 창을 띄운다
   const start = () =>
     void run(async () => {
       const last = await api<IClosedTodaySession | null>('/sessions/closed-today', { admin: true });
       if (last) setClosedToday(last);
-      else await api('/sessions', { method: 'POST', admin: true });
+      else {
+        await api('/sessions', { method: 'POST', admin: true });
+        onStarted();
+      }
     });
   const open = (fresh: boolean) => {
     setClosedToday(null);
-    void run(() => api('/sessions', { method: 'POST', admin: true, ...(fresh && { body: { fresh: true } }) }));
+    void run(async () => {
+      await api('/sessions', { method: 'POST', admin: true, ...(fresh && { body: { fresh: true } }) });
+      onStarted();
+    });
   };
   return (
     // 디자인 시스템: 큰 제목 + 주요 버튼 하나(모임 시작), 모임 전에 하기 좋은 일은 한 덩어리 목록
@@ -50,18 +71,50 @@ export function StartScreen({
       <HomeLink className="flex h-11 items-center self-start text-caption font-bold tracking-[0.3em] text-court transition-opacity hover:opacity-70">
         LETSCOK
       </HomeLink>
-      <header className="flex flex-col gap-1.5">
-        <p className="text-body-sm text-dim">{todayLabel()}</p>
-        <h1 className="text-display font-bold">아직 모임 전이에요</h1>
-        <p className="text-body text-dim">모임을 시작하면 출석을 받을 수 있어요</p>
-      </header>
-      <button
-        onClick={start}
-        disabled={busy}
-        className="h-16 rounded-2xl bg-court text-heading font-bold text-bg disabled:opacity-50"
-      >
-        오늘 모임 시작
-      </button>
+      {openSessions.length === 0 ? (
+        <>
+          <header className="flex flex-col gap-1.5">
+            <p className="text-body-sm text-dim">{todayLabel()}</p>
+            <h1 className="text-display font-bold">아직 모임 전이에요</h1>
+            <p className="text-body text-dim">모임을 시작하면 출석을 받을 수 있어요</p>
+          </header>
+          <button
+            onClick={start}
+            disabled={busy}
+            className="h-16 rounded-2xl bg-court text-heading font-bold text-bg disabled:opacity-50"
+          >
+            오늘 모임 시작
+          </button>
+        </>
+      ) : (
+        <>
+          <header className="flex flex-col gap-1.5">
+            <p className="text-body-sm text-dim">{todayLabel()}</p>
+            <h1 className="text-display font-bold">진행 중인 모임이 있어요</h1>
+            <p className="text-body text-dim">들어갈 모임을 고르거나, 코트를 나눠 하나 더 열 수 있어요</p>
+          </header>
+          <div className="flex flex-col gap-2">
+            {openSessions.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => enter(s.id)}
+                disabled={entering !== null}
+                className="tap flex h-16 items-center rounded-2xl bg-court px-5 text-left text-heading font-bold text-bg disabled:opacity-50"
+              >
+                {sessionName(openSessions, s.id)}
+                <span className="ml-auto text-body">{entering === s.id ? '여는 중…' : '들어가기 ›'}</span>
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setAnotherOpen(true)}
+            disabled={busy}
+            className="h-13 rounded-2xl bg-panel text-body font-bold text-court disabled:opacity-50"
+          >
+            모임 하나 더 열기
+          </button>
+        </>
+      )}
       {/* 모임 전이 한가하니 명단 정리·기록 열람을 여기서 바로 들어가게 둔다
           (지난 기록은 원래 홈에만 링크가 있었는데, 홈은 관제판 앱 scope 밖이라 설치본에선 못 간다) */}
       <section className="flex flex-col gap-2.5">
@@ -89,6 +142,15 @@ export function StartScreen({
       {settlementOpen && <SettlementModal onClose={() => setSettlementOpen(false)} />}
       {closedToday && (
         <SameDaySheet last={closedToday} busy={busy} onPick={open} onClose={() => setClosedToday(null)} />
+      )}
+      {anotherOpen && (
+        <AnotherSessionSheet
+          unnamed={openSessions.find((s) => !s.label)}
+          openSessions={openSessions}
+          run={run}
+          onOpened={onEnter}
+          onClose={() => setAnotherOpen(false)}
+        />
       )}
       {toast && <Toast toast={toast} />}
     </main>
