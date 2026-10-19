@@ -40,9 +40,22 @@ export default function MyStatusPage() {
     setMounted(true);
   }, []);
 
+  // 타임(잠깐 쉴래요)은 누르자마자 바뀐 상태로 보여 준다 — 서버 화면이 같아지면 지우고, 실패하면 되돌린다
+  const [optStatus, setOptStatus] = useState<'RESTING' | 'CHECKED_IN' | null>(null);
+  const serverMe = snapshot?.attendances.find((a) => a.memberId === memberId) ?? null;
+  useEffect(() => {
+    if (optStatus && serverMe?.status === optStatus) setOptStatus(null);
+  }, [optStatus, serverMe?.status]);
+  const view = useMemo(
+    () =>
+      snapshot && optStatus
+        ? { ...snapshot, attendances: snapshot.attendances.map((a) => (a.memberId === memberId ? { ...a, status: optStatus } : a)) }
+        : snapshot,
+    [snapshot, optStatus, memberId],
+  );
   const me = useMemo(
-    () => snapshot?.attendances.find((a) => a.memberId === memberId) ?? null,
-    [snapshot, memberId],
+    () => view?.attendances.find((a) => a.memberId === memberId) ?? null,
+    [view, memberId],
   );
 
   // 타임(잠깐 쉴래요) — 유일한 셀프 액션. 조합에 묶여 있으면 서버 409 안내를 토스트로
@@ -51,10 +64,14 @@ export default function MyStatusPage() {
   const toggleRest = async () => {
     if (busy || !me) return;
     setBusy(true);
+    const action = me.status === 'RESTING' ? 'resume' : 'rest';
+    // 조합에 든 사람(MATCHED)은 서버가 막으니 미리 바꿔 보이지 않는다 — 막힌 이유만 알림으로
+    if (me.status !== 'MATCHED') setOptStatus(action === 'rest' ? 'RESTING' : 'CHECKED_IN');
     try {
-      const action = me.status === 'RESTING' ? 'resume' : 'rest';
       await api(`/attendances/${me.id}/${action}`, { method: 'PATCH' });
+      void refetch(); // 실시간 화면을 놓쳐도 바뀐 상태가 실리게
     } catch (e) {
+      setOptStatus(null);
       showToast(e instanceof ApiError ? e.message : '요청에 실패했습니다.', 'error', 4000);
     } finally {
       setBusy(false);
@@ -106,7 +123,7 @@ export default function MyStatusPage() {
     );
   }
 
-  const { courts, attendances, games } = snapshot;
+  const { courts, attendances, games } = view ?? snapshot;
   const playingByCourt = new Map(
     games.filter((g) => g.status === 'PLAYING' && g.courtId).map((g) => [g.courtId as string, g]),
   );
