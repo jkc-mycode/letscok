@@ -5,7 +5,8 @@ import { useState } from 'react';
 import { Sheet } from '@/components/sheet';
 import { GenderMarker, GradeBadge } from '@/components/badges';
 import { MegaphoneIcon } from '@/components/icons';
-import { CallButton, ConfirmButton, RoleCrown, WaitingMinutesText } from '@/components/admin/board-ui';
+import { CallButton, RoleCrown, WaitingMinutesText } from '@/components/admin/board-ui';
+import { ConfirmButton } from '@/components/confirm-button';
 import { RosterSort, RosterSortSelect, sortCandidates } from '@/components/admin/roster-sort';
 
 // 보드에서 여는 시트 — 카드·명단 [⋯], 빈칸 채우기, 선수 교체

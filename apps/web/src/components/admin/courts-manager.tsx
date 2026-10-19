@@ -2,7 +2,7 @@
 
 import { ICourt, IGame } from '@letscok/shared-types';
 import { useEffect, useState } from 'react';
-import { ConfirmButton } from '@/components/admin/board-ui';
+import { ConfirmButton } from '@/components/confirm-button';
 import { Sheet } from '@/components/sheet';
 import { api } from '@/lib/api';
 

@@ -9,6 +9,7 @@ import { AnimatePresence } from 'motion/react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { gamePartnerPeople, GenderMarker, GradeBadge, MeChip, PartnerNote, Toast } from '@/components/badges';
+import { ConfirmButton } from '@/components/confirm-button';
 import { ConnectionError } from '@/components/connection-error';
 import { HomeLink } from '@/components/home-link';
 import { ExitGuard } from '@/components/exit-guard';
@@ -535,24 +536,13 @@ function Shell({ children, bottom }: { children: React.ReactNode; bottom?: React
   );
 }
 
-// 두 번 눌러야 끊긴다(운영진 [모임 종료]와 같은 방식) — 알림 구독도 함께 지워야
+// 두 번 눌러야 끊긴다(운영진 [모임 종료]와 같은 버튼) — 알림 구독도 함께 지워야
 // 앞사람의 코트 알림이 이 폰으로 계속 오지 않는다. 오늘 출석은 그대로(출석 취소는 운영진 몫)
 function DisconnectButton({ name, onDone }: { name: string | null; onDone: () => void }) {
-  const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    if (!confirming) return;
-    const timer = setTimeout(() => setConfirming(false), 4000);
-    return () => clearTimeout(timer);
-  }, [confirming]);
-
-  const run = async () => {
+  const disconnect = async () => {
     if (busy) return;
-    if (!confirming) {
-      setConfirming(true);
-      return;
-    }
     setBusy(true);
     await disablePush().catch(() => undefined); // 알림 해제가 실패해도 연결은 끊는다
     clearMemberId();
@@ -561,19 +551,15 @@ function DisconnectButton({ name, onDone }: { name: string | null; onDone: () =>
   };
 
   return (
-    <button
-      onClick={() => void run()}
+    <ConfirmButton
+      label={busy ? '연결을 끊는 중…' : name ? `${name}님이 아니에요? 연결 해제` : '이 폰의 연결 해제'}
+      confirmLabel="한 번 더 누르면 이 폰의 연결과 알림이 해제돼요"
+      onConfirm={() => void disconnect()}
       disabled={busy}
-      className={`tap mx-auto min-h-11 px-3 text-caption ${confirming ? 'font-bold text-coral' : 'text-faint'}`}
-    >
-      {busy
-        ? '연결을 끊는 중…'
-        : confirming
-          ? '한 번 더 누르면 이 폰의 연결과 알림이 해제돼요'
-          : name
-            ? `${name}님이 아니에요? 연결 해제`
-            : '이 폰의 연결 해제'}
-    </button>
+      className="tap mx-auto min-h-11 px-3 text-caption"
+      idleCls="text-faint"
+      armedCls="font-bold text-coral"
+    />
   );
 }
 

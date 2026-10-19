@@ -2,6 +2,7 @@
 
 import { Gender, Grade, IMemberAlias, IMemberSummary, MemberRole } from '@letscok/shared-types';
 import { useEffect, useState } from 'react';
+import { ConfirmButton } from '@/components/confirm-button';
 import { Sheet } from '@/components/sheet';
 import { ClearableInput } from '@/components/clearable-input';
 import { GRADES } from '@/components/multi-member-form';
@@ -44,8 +45,6 @@ export function MemberEditSheet({
   const [gender, setGender] = useState<Gender | null>(member.gender);
   const [role, setRole] = useState<MemberRole>(member.role);
   const [promote, setPromote] = useState(false); // 게스트→모임원 승격 의사
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [confirmAnon, setConfirmAnon] = useState(false);
   const birthDate = parseBirthDate(birth);
   const birthDigits = birth.replace(/\D/g, '');
   const deleted = member.deletedAt !== null;
@@ -223,43 +222,35 @@ export function MemberEditSheet({
             복구 — 명단에 다시 표시
           </button>
         ) : (
-          <button
-            onClick={() => {
-              if (!confirmDelete) {
-                setConfirmDelete(true);
-                return;
-              }
+          <ConfirmButton
+            label="명단에서 삭제"
+            confirmLabel="한 번 더 누르면 삭제돼요 (복구 가능)"
+            onConfirm={() =>
               void run(async () => {
                 await api(`/members/${member.id}`, { method: 'DELETE', admin: true });
                 onClose();
-              });
-            }}
-            disabled={busy}
-            className={`min-h-11 rounded-xl border px-3 text-sm font-medium whitespace-normal disabled:opacity-50 ${
-              confirmDelete ? 'border-coral bg-coral/15 text-coral' : 'border-line text-dim'
-            }`}
-          >
-            {confirmDelete ? '한 번 더 누르면 삭제돼요 (복구 가능)' : '명단에서 삭제'}
-          </button>
-        )}
-        <button
-          onClick={() => {
-            if (!confirmAnon) {
-              setConfirmAnon(true);
-              return;
+              })
             }
+            disabled={busy}
+            className="min-h-11 rounded-xl border px-3 text-sm font-medium whitespace-normal disabled:opacity-50"
+            idleCls="border-line text-dim"
+            armedCls="border-coral bg-coral/15 text-coral"
+          />
+        )}
+        <ConfirmButton
+          label="개인정보 삭제 (본인 요청 시)"
+          confirmLabel="한 번 더 누르면 개인정보가 지워져요 (복구 불가)"
+          onConfirm={() =>
             void run(async () => {
               await api(`/members/${member.id}/anonymize`, { method: 'PATCH', admin: true });
               onClose();
-            });
-          }}
+            })
+          }
           disabled={busy}
-          className={`min-h-11 rounded-xl border px-3 text-sm font-medium whitespace-normal disabled:opacity-50 ${
-            confirmAnon ? 'border-coral bg-coral/15 text-coral' : 'border-line text-dim'
-          }`}
-        >
-          {confirmAnon ? '한 번 더 누르면 개인정보가 지워져요 (복구 불가)' : '개인정보 삭제 (본인 요청 시)'}
-        </button>
+          className="min-h-11 rounded-xl border px-3 text-sm font-medium whitespace-normal disabled:opacity-50"
+          idleCls="border-line text-dim"
+          armedCls="border-coral bg-coral/15 text-coral"
+        />
         <p className="text-caption leading-relaxed text-faint">
           삭제는 명단에서만 감춰요(기록 유지·복구 가능). 개인정보 삭제는 이름·생년월일·성별을
           지우고 출석·게임 기록만 남겨요 — 본인이 요청했을 때만 사용하세요.

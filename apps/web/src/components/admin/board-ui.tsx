@@ -6,7 +6,7 @@ import { CrownIcon } from '@/components/icons';
 import { api, ApiError } from '@/lib/api';
 import { formatElapsed, formatWaitingMinutes, useNow } from '@/lib/use-snapshot';
 
-// 관제판 공용 작은 부품 — 구역 틀, 2탭 확인 버튼, 호출 버튼, [⋯] 버튼, 왕관·게스트 표시, 길게 누르기, 시간 글자
+// 관제판 공용 작은 부품 — 구역 틀, 호출 버튼, [⋯] 버튼, 왕관·게스트 표시, 길게 누르기, 시간 글자
 
 // 1초마다 바뀌는 시간 글자 — 시계를 이 글자 안에만 둔다. 보드가 시계를 들면 매초 카드·명단 전체를 다시 그려 끌기가 끊긴다
 export function ElapsedText({ since }: { since: string }) {
@@ -64,49 +64,6 @@ export function Empty({ children }: { children: React.ReactNode }) {
     <p className="flex flex-1 items-center justify-center p-6 text-center text-body-sm text-faint">
       {children}
     </p>
-  );
-}
-
-// 되돌리기 어려운 동작의 2탭 확인 버튼 — 첫 탭은 빨갛게 "한 번 더"로 바뀌기만 하고, 3초 안에 다시 눌러야 실행된다
-// (행 안에 있는 버튼이 많아 행 선택 토글로 번지지 않게 항상 stopPropagation)
-export function ConfirmButton({
-  label,
-  confirmLabel = '한 번 더',
-  title,
-  className,
-  idleCls,
-  onConfirm,
-}: {
-  label: React.ReactNode;
-  confirmLabel?: string;
-  title?: string;
-  className: string; // 크기·모양만 — 색은 상태별로 갈린다
-  idleCls: string;
-  onConfirm: () => void;
-}) {
-  const [armed, setArmed] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
-  }, []);
-  return (
-    <button
-      onClick={(e) => {
-        e.stopPropagation();
-        if (timer.current) clearTimeout(timer.current);
-        if (!armed) {
-          setArmed(true);
-          timer.current = setTimeout(() => setArmed(false), 3000); // 눌러둔 채 잊는 실수 방지
-          return;
-        }
-        setArmed(false);
-        onConfirm();
-      }}
-      title={title}
-      className={`${className} ${armed ? 'border border-coral bg-coral/15 font-bold text-coral' : idleCls}`}
-    >
-      {armed ? confirmLabel : label}
-    </button>
   );
 }
 

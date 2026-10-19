@@ -4,7 +4,8 @@ import { ICourt, IGame } from '@letscok/shared-types';
 import { useDropTarget } from '@/components/board-dnd';
 import { MotionCard } from '@/components/motion-card';
 import { BoardSlots, SlotActions, gameRef } from '@/components/admin/board-slots';
-import { ConfirmButton, ElapsedText, MoreButton } from '@/components/admin/board-ui';
+import { ElapsedText, MoreButton } from '@/components/admin/board-ui';
+import { ConfirmButton } from '@/components/confirm-button';
 
 // 게임 중 코트 카드
 

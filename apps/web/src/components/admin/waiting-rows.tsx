@@ -5,7 +5,8 @@ import { usePersonDrag } from '@/components/board-dnd';
 import { GenderMarker, GradeBadge } from '@/components/badges';
 import { MotionCard } from '@/components/motion-card';
 import { api } from '@/lib/api';
-import { ConfirmButton, GuestMark, RoleCrown, WaitingMinutesText } from '@/components/admin/board-ui';
+import { GuestMark, RoleCrown, WaitingMinutesText } from '@/components/admin/board-ui';
+import { ConfirmButton } from '@/components/confirm-button';
 
 // 대기 명단 줄 — 콕 확인 대기 줄과 명단 줄
 

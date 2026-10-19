@@ -3,6 +3,7 @@
 import { IAdminMemo, ISessionSnapshot } from '@letscok/shared-types';
 import { useCallback, useEffect, useState } from 'react';
 import { ClearableInput } from '@/components/clearable-input';
+import { ConfirmButton } from '@/components/confirm-button';
 import { api } from '@/lib/api';
 
 // 운영 메모 — 대기 인원 구역 아래 상시 노출
@@ -23,7 +24,6 @@ export function MemoPanel({
   const [adding, setAdding] = useState<IAdminMemo[]>([]);
   const [removing, setRemoving] = useState<Set<string>>(new Set());
   const [input, setInput] = useState('');
-  const [confirmClear, setConfirmClear] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -81,12 +81,6 @@ export function MemoPanel({
   };
 
   const clearAll = () => {
-    if (!confirmClear) {
-      setConfirmClear(true);
-      setTimeout(() => setConfirmClear(false), 4000); // 4초 내 재탭 시 실행
-      return;
-    }
-    setConfirmClear(false);
     const ids = memos.map((m) => m.id);
     setRemoving((prev) => new Set([...prev, ...ids]));
     void run(async () => {
@@ -105,14 +99,14 @@ export function MemoPanel({
         메모
         <span className="tabular font-mono text-xs text-faint">{view.length}</span>
         {view.length > 0 && (
-          <button
-            onClick={clearAll}
-            className={`tap ml-auto h-7 rounded-lg border px-2.5 text-xs font-medium ${
-              confirmClear ? 'border-coral bg-coral/15 text-coral' : 'border-line text-dim'
-            }`}
-          >
-            {confirmClear ? '한 번 더 누르면 전체 삭제' : '초기화'}
-          </button>
+          <ConfirmButton
+            label="초기화"
+            confirmLabel="한 번 더 누르면 전체 삭제"
+            onConfirm={clearAll}
+            className="tap ml-auto h-7 rounded-lg border px-2.5 text-xs font-medium"
+            idleCls="border-line text-dim"
+            armedCls="border-coral bg-coral/15 text-coral"
+          />
         )}
       </h2>
       {view.length > 0 && (

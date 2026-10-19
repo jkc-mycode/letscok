@@ -4,7 +4,8 @@ import { GAME_SIZE, ICourt, IGame } from '@letscok/shared-types';
 import { useDropTarget, useGameDrag } from '@/components/board-dnd';
 import { MotionCard } from '@/components/motion-card';
 import { BoardSlots, SlotActions, gameRef, isFullGame } from '@/components/admin/board-slots';
-import { ConfirmButton, MoreButton } from '@/components/admin/board-ui';
+import { MoreButton } from '@/components/admin/board-ui';
+import { ConfirmButton } from '@/components/confirm-button';
 
 // 대기 조합 카드
 

@@ -9,6 +9,7 @@ import {
 } from '@letscok/shared-types';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { MemberSessionHistorySheet } from '@/components/member-session-history-sheet';
+import { ConfirmButton } from '@/components/confirm-button';
 import { Sheet } from '@/components/sheet';
 import { ClearableInput } from '@/components/clearable-input';
 import { GenderMarker, GradeBadge, Toast } from '@/components/badges';
@@ -403,7 +404,6 @@ function StaleGuestCleanupSheet({
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(guests.map((g) => g.id)), // 기본 전체 선택 — 이미 조건으로 걸러진 명단이고 2탭 확인이 남아 있다
   );
-  const [confirm, setConfirm] = useState(false);
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -412,11 +412,7 @@ function StaleGuestCleanupSheet({
       return next;
     });
 
-  const removeSelected = () => {
-    if (!confirm) {
-      setConfirm(true);
-      return;
-    }
+  const removeSelected = () =>
     void run(async () => {
       // 서버 엔드포인트가 1명 단위라 순차 호출 — 수동 체크인 다중 선택과 같은 패턴
       for (const id of selected) {
@@ -424,7 +420,6 @@ function StaleGuestCleanupSheet({
       }
       onClose();
     });
-  };
 
   return (
     <Sheet
@@ -434,15 +429,15 @@ function StaleGuestCleanupSheet({
       header={<h3 className="shrink-0 font-bold whitespace-nowrap text-amber">오래 안 온 게스트 정리</h3>}
       bodyClassName="flex min-h-0 flex-1 flex-col"
       footer={
-        <button
-          onClick={removeSelected}
+        <ConfirmButton
+          label={`${selected.size}명 삭제`}
+          confirmLabel={`한 번 더 누르면 ${selected.size}명이 삭제돼요`}
+          onConfirm={removeSelected}
           disabled={busy || selected.size === 0}
-          className={`h-11 w-full rounded-xl border text-sm font-bold disabled:opacity-50 ${
-            confirm ? 'border-coral bg-coral/15 text-coral' : 'border-amber/40 text-amber'
-          }`}
-        >
-          {confirm ? `한 번 더 누르면 ${selected.size}명이 삭제돼요` : `${selected.size}명 삭제`}
-        </button>
+          className="h-11 w-full rounded-xl border text-sm font-bold disabled:opacity-50"
+          idleCls="border-amber/40 text-amber"
+          armedCls="border-coral bg-coral/15 text-coral"
+        />
       }
     >
       <p className="pb-3 text-xs leading-relaxed text-dim">

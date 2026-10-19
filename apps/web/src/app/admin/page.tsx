@@ -38,7 +38,8 @@ import { HelpModal } from '@/components/admin/help-sheet';
 import { CheckInCodeModal } from '@/components/admin/check-in-code';
 import { MemoPanel } from '@/components/admin/memo-panel';
 import { CheerEasterEgg } from '@/components/admin/cheer';
-import { ConfirmButton, Empty, Zone } from '@/components/admin/board-ui';
+import { Empty, Zone } from '@/components/admin/board-ui';
+import { ConfirmButton } from '@/components/confirm-button';
 import {
   ROSTER_SORT_KEY,
   RosterSort,
@@ -244,7 +245,6 @@ function BoardBody({
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [courtsOpen, setCourtsOpen] = useState(false);
-  const [confirmClose, setConfirmClose] = useState(false);
   const [recommendOpen, setRecommendOpen] = useState(false);
   const [recommendFillId, setRecommendFillId] = useState<string | null>(null); // 짜는 중 조합의 빈자리 추천
   const [codeOpen, setCodeOpen] = useState(false);
@@ -1173,11 +1173,6 @@ function BoardBody({
   };
 
   const closeSession = () => {
-    if (!confirmClose) {
-      setConfirmClose(true);
-      setTimeout(() => setConfirmClose(false), 4000); // 4초 내 재탭 시 종료
-      return;
-    }
     // 모임 종료 = 그날 운영 끝 → 마무리 문구를 띄우고, 그걸 닫으면 패스코드를 지우고 게이트로(Board가 처리)
     // (예전엔 홈으로 보냈지만, 홈은 관제판 앱 scope 밖이라 설치 상태에선 앱을 벗어나 버린다)
     void run(async () => {
@@ -1753,15 +1748,15 @@ function BoardBody({
             >
               잠금 — 저장된 패스코드 지우기
             </button>
-            {/* 2탭 확인(4초) — 첫 탭은 문구만 바뀌고 시트는 그대로 */}
-            <button
-              onClick={closeSession}
-              className={`flex h-13 items-center px-4 text-left text-body font-bold ${
-                confirmClose ? 'bg-coral/15 text-coral' : 'text-coral'
-              }`}
-            >
-              {confirmClose ? '한 번 더 누르면 모임이 종료돼요' : '모임 종료'}
-            </button>
+            {/* 2탭 확인 — 첫 탭은 문구만 바뀌고 시트는 그대로 */}
+            <ConfirmButton
+              label="모임 종료"
+              confirmLabel="한 번 더 누르면 모임이 종료돼요"
+              onConfirm={closeSession}
+              className="flex h-13 items-center px-4 text-left text-body font-bold"
+              idleCls="text-coral"
+              armedCls="bg-coral/15 text-coral"
+            />
           </div>
         </Sheet>
       )}
