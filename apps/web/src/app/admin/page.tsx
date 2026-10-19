@@ -1584,7 +1584,7 @@ function BoardBody({
         </Zone>
         </RosterDrop>
         <div className={`${pane} flex-1 md:max-h-[35%] md:flex-none`}>
-          <MemoPanel snapshot={snapshot} run={run} busy={busy} />
+          <MemoPanel snapshot={snapshot} run={run} />
         </div>
         </div>
       </div>
