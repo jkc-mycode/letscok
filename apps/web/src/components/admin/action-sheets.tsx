@@ -5,8 +5,9 @@ import { useState } from 'react';
 import { Sheet } from '@/components/sheet';
 import { GenderMarker, GradeBadge } from '@/components/badges';
 import { MegaphoneIcon } from '@/components/icons';
-import { CallButton, RoleCrown, WaitingMinutesText } from '@/components/admin/board-ui';
+import { CallButton, RoleCrown } from '@/components/admin/board-ui';
 import { ConfirmButton } from '@/components/confirm-button';
+import { GamesWaitText, placeChip, RosterPerson } from '@/components/admin/waiting-rows';
 import { RosterSort, RosterSortSelect, sortCandidates } from '@/components/admin/roster-sort';
 
 // 보드에서 여는 시트 — 카드·명단 [⋯], 빈칸 채우기, 선수 교체
@@ -17,11 +18,13 @@ export function ReplacePlayerModal({
   attendances,
   sort,
   onSort,
+  placeLabels,
   onReplace,
   onClose,
 }: {
   game: IGame;
   attendances: IAttendance[];
+  placeLabels: Map<string, string>; // 명단과 같은 위치 칩("조합 2, 3"·"1번 코트")
   sort: RosterSort; // 명단과 같은 정렬
   onSort: (sort: RosterSort) => void;
   onReplace: (outAttendanceId: string, inAttendanceId: string) => void; // 누르자마자 반영(보드가 맡음)
@@ -107,27 +110,8 @@ export function ReplacePlayerModal({
                   inId === attendance.id ? 'border-court bg-court/10' : 'border-line bg-panel2'
                 }`}
               >
-                <GradeBadge grade={member.grade} />
-                <span className="truncate font-medium">{member.name}</span>
-                <RoleCrown role={member.role} />
-                <GenderMarker gender={member.gender} />
-                {member.isGuest && <span className="text-caption text-sky">G</span>}
-                {attendance.status !== 'CHECKED_IN' && (
-                  <span
-                    className={`shrink-0 rounded px-1.5 py-0.5 text-caption font-medium ${
-                      attendance.status === 'PLAYING'
-                        ? 'bg-coral/15 text-coral'
-                        : 'bg-amber/15 text-amber'
-                    }`}
-                  >
-                    {attendance.status === 'PLAYING' ? '게임 중' : '대기 조합'}
-                  </span>
-                )}
-                {/* 대기 명단과 같은 표기 — 게임 중이면 0분 */}
-                <span className="tabular ml-auto shrink-0 font-mono text-caption text-dim">
-                  {attendance.gamesPlayed}게임 ·{' '}
-                  {attendance.status === 'PLAYING' ? '0분' : <WaitingMinutesText since={attendance.waitingSince} alert={attendance.status === 'CHECKED_IN'} />}
-                </span>
+                <RosterPerson member={member} chip={placeChip(attendance, placeLabels.get(attendance.id))} />
+                <GamesWaitText attendance={attendance} />
               </button>
             );
           })}
@@ -189,32 +173,14 @@ export function SlotFillSheet({
       {candidates.map((attendance) => {
         const member = attendance.member;
         if (!member) return null;
-        const place = placeLabels.get(attendance.id);
         return (
           <button
             key={attendance.id}
             onClick={() => onPick(attendance.id)}
             className="flex shrink-0 items-center gap-1.5 rounded-xl bg-panel2 p-3 text-left text-sm disabled:opacity-50"
           >
-            <GradeBadge grade={member.grade} />
-            <span className="shrink-0 whitespace-nowrap font-medium">{member.name}</span>
-            <RoleCrown role={member.role} />
-            <GenderMarker gender={member.gender} />
-            {member.isGuest && <span className="shrink-0 text-caption text-sky">G</span>}
-            {place && (
-              <span
-                className={`min-w-0 truncate rounded px-1.5 py-0.5 text-caption font-medium ${
-                  attendance.status === 'PLAYING' ? 'bg-coral/15 text-coral' : 'bg-amber/15 text-amber'
-                }`}
-              >
-                {place}
-              </span>
-            )}
-            {/* 대기 명단과 같은 표기 — 게임 중이면 0분 */}
-            <span className="tabular ml-auto shrink-0 font-mono text-caption text-dim">
-              {attendance.gamesPlayed}게임 ·{' '}
-              {attendance.status === 'PLAYING' ? '0분' : <WaitingMinutesText since={attendance.waitingSince} alert={attendance.status === 'CHECKED_IN'} />}
-            </span>
+            <RosterPerson member={member} chip={placeChip(attendance, placeLabels.get(attendance.id))} />
+            <GamesWaitText attendance={attendance} />
           </button>
         );
       })}

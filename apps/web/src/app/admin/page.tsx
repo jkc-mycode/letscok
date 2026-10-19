@@ -1807,6 +1807,7 @@ function BoardBody({
           attendances={attendances}
           sort={rosterSort}
           onSort={setRosterSort}
+          placeLabels={placeLabels}
           onReplace={(outId, inId) => replacePlayer(replaceTarget.id, outId, inId)}
           onClose={() => setReplaceGameId(null)}
         />

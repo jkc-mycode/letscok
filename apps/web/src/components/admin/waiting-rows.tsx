@@ -1,6 +1,6 @@
 'use client';
 
-import { IAttendance } from '@letscok/shared-types';
+import { IAttendance, IMember } from '@letscok/shared-types';
 import { usePersonDrag } from '@/components/board-dnd';
 import { GenderMarker, GradeBadge } from '@/components/badges';
 import { MotionCard } from '@/components/motion-card';
@@ -8,7 +8,54 @@ import { api } from '@/lib/api';
 import { GuestMark, RoleCrown, WaitingMinutesText } from '@/components/admin/board-ui';
 import { ConfirmButton } from '@/components/confirm-button';
 
-// 대기 명단 줄 — 콕 확인 대기 줄과 명단 줄
+// 대기 명단 줄 — 콕 확인 대기 줄과 명단 줄, 명단·교체·빈칸 채우기가 같이 쓰는 사람 줄 내용
+
+// 사람 줄 내용 — 급수·왕관·이름·성별·게스트·위치 칩. 대기 명단·선수 교체·빈칸 채우기 후보가 같은 모양으로 보이게
+// 이름은 줄이지 않는다(폰에서 "김…"이 되던 문제) — 공간이 모자라면 옆 칩이 대신 줄어든다
+export function RosterPerson({
+  member,
+  bold = false,
+  chip,
+}: {
+  member: IMember;
+  bold?: boolean;
+  chip?: { text: string; tone: 'PLAYING' | 'MATCHED' | 'RESTING' }; // 게임 중=빨강, 대기 조합=노랑, 휴식=파랑
+}) {
+  return (
+    <>
+      <GradeBadge grade={member.grade} />
+      <RoleCrown role={member.role} />
+      <span className={`shrink-0 whitespace-nowrap ${bold ? 'font-bold' : 'font-medium'}`}>{member.name}</span>
+      <GenderMarker gender={member.gender} />
+      {member.isGuest && <GuestMark />}
+      {chip && (
+        <span
+          className={`min-w-0 truncate rounded-md px-1.5 py-0.5 text-caption font-medium ${
+            chip.tone === 'PLAYING' ? 'bg-coral/15 text-coral' : chip.tone === 'MATCHED' ? 'bg-amber/15 text-amber' : 'bg-sky/15 text-sky'
+          }`}
+        >
+          {chip.text}
+        </span>
+      )}
+    </>
+  );
+}
+
+// 오른쪽 끝 "N게임 · M분" — 게임 중엔 기다리는 게 아니라 0분(대기 시간은 게임이 끝나면 다시 센다. 대기 조합은 아직 기다리는 중이라 그대로)
+export function GamesWaitText({ attendance }: { attendance: IAttendance }) {
+  return (
+    <span className="tabular ml-auto shrink-0 font-mono text-caption text-dim">
+      {attendance.gamesPlayed}게임 ·{' '}
+      {attendance.status === 'PLAYING' ? '0분' : <WaitingMinutesText since={attendance.waitingSince} alert={attendance.status === 'CHECKED_IN'} />}
+    </span>
+  );
+}
+
+// 위치 칩 — 조합·게임에 든 사람은 위치("조합 2, 3"·"1번 코트"), 위치를 모르면 상태 이름
+export function placeChip(attendance: IAttendance, placeLabel?: string): { text: string; tone: 'PLAYING' | 'MATCHED' } | undefined {
+  if (attendance.status !== 'PLAYING' && attendance.status !== 'MATCHED') return undefined;
+  return { text: placeLabel ?? (attendance.status === 'PLAYING' ? '게임 중' : '대기 조합'), tone: attendance.status };
+}
 
 // 콕 확인 대기 행 — [콕 확인] 버튼만 누른다 (행 전체를 버튼으로 두면 스크롤하다 스친 행이 확인돼 버린다)
 // 확인 전에는 게임 배정이 막히므로 선택 체크박스는 없다
@@ -97,26 +144,15 @@ export function WaitingRow({
         resting ? '' : 'cursor-pointer'
       } ${drag.dragCls}`}
     >
-      <GradeBadge grade={member.grade} />
-      <RoleCrown role={member.role} />
-      {/* 이름은 줄이지 않는다(폰에서 "김…"이 되던 문제) — 공간이 모자라면 옆 칩이 대신 줄어든다 */}
-      <span className={`shrink-0 whitespace-nowrap ${selected ? 'font-bold' : 'font-medium'}`}>{member.name}</span>
-      <GenderMarker gender={member.gender} />
-      {member.isGuest && <GuestMark />}
-      {busyStatus && (
-        <span
-          className={`min-w-0 truncate rounded-md px-1.5 py-0.5 text-caption font-medium ${
-            busyStatus === 'PLAYING' ? 'bg-coral/15 text-coral' : 'bg-amber/15 text-amber'
-          }`}
-        >
-          {placeLabel ?? (busyStatus === 'PLAYING' ? '게임 중' : '대기 조합')}
-        </span>
-      )}
-      {resting && (
-        <span className="min-w-0 truncate rounded-md bg-sky/15 px-1.5 py-0.5 text-caption font-medium text-sky">
-          휴식
-        </span>
-      )}
+      <RosterPerson
+        member={member}
+        bold={selected}
+        chip={
+          resting
+            ? { text: '휴식', tone: 'RESTING' }
+            : busyStatus && { text: placeLabel ?? (busyStatus === 'PLAYING' ? '게임 중' : '대기 조합'), tone: busyStatus }
+        }
+      />
       {partnerName && (
         <ConfirmButton
           label={`파트너 ${partnerName}`}
@@ -127,10 +163,7 @@ export function WaitingRow({
           idleCls="bg-sky/15 text-sky"
         />
       )}
-      <span className="tabular ml-auto shrink-0 font-mono text-caption text-dim">
-        {/* 게임 중엔 기다리는 게 아니라 0분 — 대기 시간은 게임이 끝나면 다시 센다(대기 조합은 아직 기다리는 중이라 그대로) */}
-        {attendance.gamesPlayed}게임 · {attendance.status === 'PLAYING' ? '0분' : <WaitingMinutesText since={attendance.waitingSince} alert={attendance.status === 'CHECKED_IN'} />}
-      </span>
+      <GamesWaitText attendance={attendance} />
       {/* 호출·휴식/복귀·콕 확인 취소·퇴장은 [⋯] 하나로 모으고 시트에서 고른다(폰·태블릿 공통) — 작은 버튼이 줄에 붙으면 잘못 누르기 쉽다 */}
       <button
         onClick={(e) => {
