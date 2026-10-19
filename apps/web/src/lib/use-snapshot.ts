@@ -56,11 +56,12 @@ export function useSnapshot({ byMember = false, prefer = null }: { byMember?: bo
   const preferRef = useRef(prefer); // 바뀌어도 소켓을 다시 열지 않게 ref로 읽는다
   preferRef.current = prefer;
 
-  const refetch = useCallback(async () => {
+  // target: 지금 막 고른 모임 — 주소(prefer)가 아직 이전 모임이라 그쪽을 다시 읽고 주소만 바뀌던 것(두 번 눌러야 바뀜)
+  const load = useCallback(async (target?: string) => {
     lastFetchAt.current = Date.now();
     try {
       const memberId = byMember ? getMemberId() : null;
-      const picked = byMember ? null : (preferRef.current ?? readPicked());
+      const picked = byMember ? null : (target ?? preferRef.current ?? readPicked());
       const query = memberId ? `?memberId=${encodeURIComponent(memberId)}` : picked ? `?id=${encodeURIComponent(picked)}` : '';
       const data = await api<ISessionSnapshot>(`/sessions/current${query}`);
       sessionIdRef.current = data.session.id; // 모임을 바꾼 직후 옛 모임 방의 현황이 새 화면을 덮지 않게 바로 맞춘다
@@ -79,6 +80,7 @@ export function useSnapshot({ byMember = false, prefer = null }: { byMember?: bo
       setLoading(false);
     }
   }, [byMember]);
+  const refetch = useCallback(() => load(), [load]); // 화면 버튼(onClick)에 그대로 넘겨도 이벤트가 target으로 들어가지 않게
 
   useEffect(() => {
     void refetch();
@@ -135,9 +137,9 @@ export function useSnapshot({ byMember = false, prefer = null }: { byMember?: bo
     async (id: string) => {
       savePicked(id);
       if (sessionIdRef.current === id) return; // 이미 받아 둔 모임 — 관제판 첫 화면에서 [들어가기]가 같은 현황을 또 읽지 않게
-      await refetch();
+      await load(id);
     },
-    [refetch],
+    [load],
   );
 
   return { snapshot, noSession, failed, loading, refetch, memosVersion, selectSession };
