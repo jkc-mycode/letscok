@@ -1314,8 +1314,7 @@ function BoardBody({
           headerExtra={
             fillableCount > 0 && (
               <button
-                onClick={fillCourts}
-                disabled={busy}
+                onClick={fillCourts} // 연타는 'fill-courts' 잠금이 막는다 — 다른 동작이 진행 중이어도 누를 수 있게
                 title="빈 코트에 대기 조합을 순서대로 한 번에 배정해요"
                 className="ml-auto h-8 shrink-0 rounded-lg bg-amber px-3 text-caption font-bold text-bg disabled:opacity-50"
               >
@@ -1397,14 +1396,13 @@ function BoardBody({
               </button>
               <button
                 onClick={() => setRecommendOpen(true)}
-                disabled={busy}
-                className="h-13 rounded-xl bg-panel2 px-4 text-body-sm font-bold text-court disabled:opacity-50"
+                className="h-13 rounded-xl bg-panel2 px-4 text-body-sm font-bold text-court"
               >
                 게임 추천
               </button>
               <button
-                onClick={createGame}
-                disabled={selected.size === 0 || busy}
+                onClick={createGame} // 누르자마자 반영되는 동작이라 다른 요청이 진행 중이어도 막지 않는다
+                disabled={selected.size === 0}
                 className="h-13 flex-1 rounded-xl bg-amber text-body font-bold text-bg disabled:bg-panel2 disabled:text-faint"
               >
                 {selected.size > 0 && selected.size < GAME_SIZE ? '빈칸 조합' : '조합 만들기'} ({selected.size}/4)
