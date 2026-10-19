@@ -101,10 +101,13 @@ function MemberStats() {
             <div className="flex flex-col gap-2">
               {stats.recentSessions.map((session) => (
                 <div
-                  key={session.date}
+                  key={session.sessionId} // 같은 날 두 모임이면 날짜가 겹친다
                   className="flex items-center rounded-xl bg-panel p-3 text-sm"
                 >
-                  <span className="font-medium">{session.date}</span>
+                  <span className="font-medium">
+                    {session.date}
+                    {session.part && <span className="ml-1.5 text-xs text-sky">{session.part}부</span>}
+                  </span>
                   <span className="tabular ml-auto font-mono text-xs text-dim">
                     {session.gamesPlayed}게임
                   </span>

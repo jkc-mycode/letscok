@@ -190,6 +190,7 @@ export function MemberSessionHistorySheet({
                 className="flex min-h-11 w-full items-center px-3 text-left text-sm"
               >
                 <span className="tabular font-mono">{item.date}</span>
+                {item.part && <span className="ml-1.5 text-xs text-sky">{item.part}부</span>}
                 <span className={`tabular ml-auto font-mono text-xs ${item.gamesPlayed ? 'text-dim' : 'text-faint'}`}>
                   {item.gamesPlayed}게임
                 </span>

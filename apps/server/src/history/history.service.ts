@@ -23,7 +23,7 @@ export class HistoryService {
     const [sessions, total] = await Promise.all([
       this.prisma.session.findMany({
         where: { status: 'CLOSED' },
-        orderBy: { date: 'desc' },
+        orderBy: [{ date: 'desc' }, { openedAt: 'desc' }], // 같은 날 두 모임은 2부가 위로
         skip: (page - 1) * limit,
         take: limit,
         include: {
@@ -38,10 +38,12 @@ export class HistoryService {
       this.prisma.session.count({ where: { status: 'CLOSED' } }),
     ]);
 
+    const parts = await this.dayParts(sessions);
     return {
       sessions: sessions.map((session) => ({
         id: session.id,
         date: toDateString(session.date),
+        part: parts.get(session.id) ?? null,
         attendeeCount: session._count.attendances,
         finishedGameCount: session._count.games,
       })),
@@ -85,6 +87,7 @@ export class HistoryService {
       session: {
         id: session.id,
         date: toDateString(session.date),
+        part: (await this.dayParts([session])).get(session.id) ?? null,
         attendeeCount: session._count.attendances,
         finishedGameCount: session._count.games,
       },
@@ -162,7 +165,7 @@ export class HistoryService {
     const attendances = await this.prisma.attendance.findMany({
       where: { memberId },
       include: { session: true },
-      orderBy: { session: { date: 'desc' } },
+      orderBy: [{ session: { date: 'desc' } }, { session: { openedAt: 'desc' } }],
     });
 
     // 이 사람이 뛴 완료 게임들 → 같은 게임의 다른 참가자를 세면 파트너 통계
@@ -192,6 +195,7 @@ export class HistoryService {
       partnerCounts.set(other.id, entry);
     }
 
+    const recentParts = await this.dayParts(attendances.slice(0, 10).map((attendance) => attendance.session));
     return {
       memberId: member.id,
       name: member.name,
@@ -206,7 +210,9 @@ export class HistoryService {
         .sort((x, y) => y.gamesTogether - x.gamesTogether)
         .slice(0, 5),
       recentSessions: attendances.slice(0, 10).map((attendance) => ({
+        sessionId: attendance.sessionId,
         date: toDateString(attendance.session.date),
+        part: recentParts.get(attendance.sessionId) ?? null,
         gamesPlayed: attendance.gamesPlayed,
       })),
     };
@@ -222,24 +228,48 @@ export class HistoryService {
     const [attendances, total] = await Promise.all([
       this.prisma.attendance.findMany({
         where: { memberId },
-        orderBy: [{ session: { date: 'desc' } }, { id: 'desc' }], // 같은 날짜 두 모임도 쪽 경계에서 겹치거나 빠지지 않게
+        orderBy: [{ session: { date: 'desc' } }, { session: { openedAt: 'desc' } }, { id: 'desc' }], // 같은 날짜 두 모임도 2부가 위로, 쪽 경계에서 겹치거나 빠지지 않게
         skip: (page - 1) * limit,
         take: limit,
-        select: { sessionId: true, gamesPlayed: true, session: { select: { date: true } } },
+        select: { sessionId: true, gamesPlayed: true, session: { select: { id: true, date: true } } },
       }),
       this.prisma.attendance.count({ where: { memberId } }),
     ]);
 
+    const parts = await this.dayParts(attendances.map((attendance) => attendance.session));
     return {
       items: attendances.map((attendance) => ({
         sessionId: attendance.sessionId,
         date: toDateString(attendance.session.date),
+        part: parts.get(attendance.sessionId) ?? null,
         gamesPlayed: attendance.gamesPlayed,
       })),
       total,
       page,
       limit,
     };
+  }
+
+  // 같은 날 모임이 둘 이상인 날짜만 시작 순서(1부·2부)를 매긴다 — 진행 중 모임도 순서에 넣는다(그날 몇 번째였는지)
+  private async dayParts(sessions: { id: string; date: Date }[]): Promise<Map<string, number>> {
+    if (sessions.length === 0) return new Map();
+    const dates = [...new Set(sessions.map((session) => session.date.getTime()))].map((time) => new Date(time));
+    const sameDays = await this.prisma.session.findMany({
+      where: { date: { in: dates } },
+      select: { id: true, date: true },
+      orderBy: [{ date: 'asc' }, { openedAt: 'asc' }],
+    });
+    const byDate = new Map<number, string[]>();
+    for (const session of sameDays) {
+      const ids = byDate.get(session.date.getTime()) ?? [];
+      ids.push(session.id);
+      byDate.set(session.date.getTime(), ids);
+    }
+    const parts = new Map<string, number>();
+    for (const ids of byDate.values()) {
+      if (ids.length > 1) ids.forEach((id, index) => parts.set(id, index + 1));
+    }
+    return parts;
   }
 
   // 그날 이 사람이 뛴 완료 게임 — 자리 0·1이 한 팀, 2·3이 상대

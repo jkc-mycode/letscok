@@ -31,6 +31,7 @@ export function SessionReportModal({ sessionId, onClose }: { sessionId: string; 
   const text = detail
     ? sessionReportText({
         date: detail.session.date,
+        part: detail.session.part,
         attendeeCount: detail.session.attendeeCount,
         gameCount: detail.session.finishedGameCount,
         attendees: detail.attendees,

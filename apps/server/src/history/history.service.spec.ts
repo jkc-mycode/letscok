@@ -99,6 +99,39 @@ describe('listSessions', () => {
   });
 });
 
+describe('같은 날 여러 모임', () => {
+  it('같은 날 모임이 둘 이상이면 시작 순서로 1부·2부, 하나뿐인 날은 null', async () => {
+    const morning = await prisma.session.create({
+      data: { date: new Date('2026-03-01'), status: 'CLOSED', openedAt: new Date('2026-03-01T01:00:00Z'), closedAt: new Date() },
+    });
+    const evening = await prisma.session.create({
+      data: { date: new Date('2026-03-01'), status: 'CLOSED', openedAt: new Date('2026-03-01T10:00:00Z'), closedAt: new Date() },
+    });
+    const single = await seedClosedSession('2026-02-01');
+    const member = await seedMember();
+    await seedAttendance(morning.id, member.id, 2);
+    await seedAttendance(evening.id, member.id, 3);
+
+    const { sessions } = await service.listSessions(1, 10);
+    expect(sessions.map((s) => [s.id, s.part])).toEqual([
+      [evening.id, 2], // 같은 날은 2부가 위로
+      [morning.id, 1],
+      [single.id, null],
+    ]);
+    expect((await service.getSessionDetail(evening.id)).session.part).toBe(2);
+
+    // 출석은 모임마다 한 번 — 같은 날 두 모임에 다 오면 2회
+    const stats = await service.getMemberStats(member.id);
+    expect(stats.totalSessions).toBe(2);
+    expect(stats.recentSessions.map((r) => [r.sessionId, r.part])).toEqual([
+      [evening.id, 2],
+      [morning.id, 1],
+    ]);
+    const page = await service.getMemberSessions(member.id, 1, 10);
+    expect(page.items.map((i) => i.part)).toEqual([2, 1]);
+  });
+});
+
 describe('getSessionDetail', () => {
   it('출석자는 그날 많이 뛴 순(LEFT 포함), 게임은 FINISHED만 4인 이름과 함께', async () => {
     const session = await seedClosedSession('2026-01-01');
@@ -270,8 +303,8 @@ describe('getMemberSessions', () => {
     const first = await service.getMemberSessions(me.id, 1, 2);
     expect(first.total).toBe(3);
     expect(first.items).toEqual([
-      { sessionId: sessions[2].id, date: '2026-01-15', gamesPlayed: 3 },
-      { sessionId: sessions[1].id, date: '2026-01-08', gamesPlayed: 2 },
+      { sessionId: sessions[2].id, date: '2026-01-15', part: null, gamesPlayed: 3 },
+      { sessionId: sessions[1].id, date: '2026-01-08', part: null, gamesPlayed: 2 },
     ]);
 
     const second = await service.getMemberSessions(me.id, 2, 2);

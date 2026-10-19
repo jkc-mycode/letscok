@@ -20,6 +20,7 @@ export function topPlayers(attendees: IHistoryAttendee[]): IHistoryAttendee[] {
 
 export function sessionReportText({
   date,
+  part,
   attendeeCount,
   gameCount,
   attendees,
@@ -28,6 +29,7 @@ export function sessionReportText({
   closing,
 }: {
   date: string;
+  part: number | null; // 같은 날 두 번째 모임이면 "2부"
   attendeeCount: number;
   gameCount: number;
   attendees: IHistoryAttendee[];
@@ -35,7 +37,7 @@ export function sessionReportText({
   showTop: boolean;
   closing: string;
 }): string {
-  const blocks: string[] = [`🏸 ${monthDay(date)} 모임 마무리`];
+  const blocks: string[] = [`🏸 ${monthDay(date)}${part ? ` ${part}부` : ''} 모임 마무리`];
   if (showSummary) blocks.push(`오늘 ${attendeeCount}명이 함께했고 총 ${gameCount}게임을 쳤어요!`);
   const top = topPlayers(attendees);
   if (showTop && top.length > 0) {

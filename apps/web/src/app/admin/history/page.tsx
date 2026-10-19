@@ -63,7 +63,10 @@ function HistoryList() {
             href={`/admin/history/${session.id}`}
             className="flex items-center gap-3 rounded-xl bg-panel p-4 transition-colors hover:bg-panel2"
           >
-            <span className="font-bold">{session.date}</span>
+            <span className="font-bold">
+              {session.date}
+              {session.part && <span className="ml-1.5 text-sm text-sky">{session.part}부</span>}
+            </span>
             <span className="ml-auto text-sm text-dim">
               출석 {session.attendeeCount}명 · 게임 {session.finishedGameCount}판
             </span>

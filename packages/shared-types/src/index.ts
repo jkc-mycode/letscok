@@ -328,6 +328,7 @@ export interface IGameRecommendation {
 export interface IHistorySessionSummary {
   id: string;
   date: string; // YYYY-MM-DD
+  part: number | null; // 같은 날 모임이 둘 이상이면 시작 순서(1부·2부), 하나뿐이면 null
   attendeeCount: number;
   finishedGameCount: number; // FINISHED만 집계 (CANCELED 제외)
 }
@@ -383,12 +384,12 @@ export interface IHistoryMemberStats {
   totalGames: number; // 총 게임 수 (세션별 gamesPlayed 합)
   lastAttendedDate: string | null; // 최근 출석일
   topPartners: IHistoryPartner[]; // 함께 뛴 top 5
-  recentSessions: { date: string; gamesPlayed: number }[]; // 최근 모임별 게임 수
+  recentSessions: { sessionId: string; date: string; part: number | null; gamesPlayed: number }[]; // 최근 모임별 게임 수
 }
 
 // 개인 출석 이력 한 쪽 — [모임원 관리]에서 무한 스크롤로 전체 출석을 최신순으로 본다
 export interface IHistoryMemberSessionPage {
-  items: { sessionId: string; date: string; gamesPlayed: number }[];
+  items: { sessionId: string; date: string; part: number | null; gamesPlayed: number }[]; // part는 IHistorySessionSummary와 같음
   total: number; // 전체 출석 수(더 불러올지 판단용)
   page: number;
   limit: number;
