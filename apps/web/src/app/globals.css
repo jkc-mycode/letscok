@@ -183,9 +183,11 @@ button:not(:disabled):active {
   transform: scale(0.97);
 }
 
-/* 화면 첫 진입 페이드인 (로그인 → 보드 전환 등) */
+/* 화면 첫 진입 페이드인 (로그인 → 보드 전환 등)
+   backwards — 끝나면 효과를 뗀다. both로 남겨 두면 transform 효과가 계속 걸린 상자가 fixed 팝업의 기준이 되어,
+   긴 화면(지난 기록 상세)에서 팝업이 화면이 아니라 긴 내용 칸 맨 아래에 그려져 어두운 배경만 보였다 */
 .fade-in {
-  animation: fade-in 0.25s ease both;
+  animation: fade-in 0.25s ease backwards;
 }
 @keyframes fade-in {
   from {
