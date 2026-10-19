@@ -36,7 +36,9 @@ import { RecommendModal } from '@/components/admin/recommend-sheet';
 import { CourtPickSheet, CourtsManager } from '@/components/admin/courts-manager';
 import { TodayGamesModal } from '@/components/admin/today-games';
 import { HelpModal } from '@/components/admin/help-sheet';
+import { AnotherSessionSheet } from '@/components/admin/another-session';
 import { CheckInCodeModal } from '@/components/admin/check-in-code';
+import { sessionName, SessionSwitcher } from '@/components/session-switcher';
 import { MemoPanel } from '@/components/admin/memo-panel';
 import { CheerEasterEgg } from '@/components/admin/cheer';
 import { Empty, Zone } from '@/components/admin/board-ui';
@@ -81,7 +83,7 @@ export default function AdminPage() {
 // ===== 보드 =====
 
 function Board({ onLogout }: { onLogout: () => void }) {
-  const { snapshot, noSession, failed, loading, refetch, memosVersion } = useSnapshot();
+  const { snapshot, noSession, failed, loading, refetch, memosVersion, selectSession } = useSnapshot();
   const { toast, showToast, hideToast } = useToast();
   const [inFlight, setInFlight] = useState(0); // 진행 중인 요청 수 — 팝업 버튼은 이게 0일 때만 켠다
   const busy = inFlight > 0;
@@ -94,7 +96,8 @@ function Board({ onLogout }: { onLogout: () => void }) {
       sessionId={reportSessionId}
       onClose={() => {
         setReportSessionId(null);
-        onLogout();
+        // 동시에 연 다른 모임이 남아 있으면 그 보드로 넘어가 있다 — 그날 운영이 끝난 게 아니라 잠그지 않는다
+        if (!snapshot) onLogout();
       }}
     />
   );
@@ -182,9 +185,12 @@ function Board({ onLogout }: { onLogout: () => void }) {
   }
   return (
     <>
+      {/* 모임을 바꾸면 보드를 새로 그린다 — 누르자마자 반영 중이던 표시·고른 사람이 다른 모임으로 넘어가지 않게 */}
       <BoardBody
+        key={snapshot.session.id}
         snapshot={snapshot}
         memosVersion={memosVersion}
+        onSelectSession={selectSession}
         run={run}
         runParallel={runParallel}
         busy={busy}
@@ -201,7 +207,7 @@ function Board({ onLogout }: { onLogout: () => void }) {
 
 // 폰 더보기 시트의 묶음 — 자주 쓰는 것 위, 관리 기능 아래(잠금·모임 종료는 시트 맨 아래 따로)
 const MORE_GROUPS: { title: string; keys: string[] }[] = [
-  { title: '모임 중', keys: ['code', 'log', 'entryFee', 'courts', 'display'] },
+  { title: '모임 중', keys: ['code', 'log', 'entryFee', 'courts', 'display', 'another'] },
   { title: '관리', keys: ['members', 'history', 'birthday', 'settlement', 'help'] },
 ];
 
@@ -355,9 +361,11 @@ function BoardBody({
   hideToast,
   onLogout,
   onSessionClosed,
+  onSelectSession,
 }: {
   snapshot: ISessionSnapshot;
   memosVersion: number;
+  onSelectSession: (id: string) => Promise<void>; // 동시에 연 다른 모임으로 바꿔 보기
   run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
   runParallel: (a: () => Promise<unknown>) => Promise<boolean>;
   busy: boolean;
@@ -379,6 +387,7 @@ function BoardBody({
   const [birthdayOpen, setBirthdayOpen] = useState(false); // 생일 캘린더
   const [settlementOpen, setSettlementOpen] = useState(false); // 뒤풀이 정산
   const [entryFeeOpen, setEntryFeeOpen] = useState(false); // 오늘의 입장비(계좌·받았는지 체크)
+  const [anotherOpen, setAnotherOpen] = useState(false); // 모임 하나 더 열기(여복·남복)
 
   // 이스터에그 — 대기 인원 헤더의 [수동 체크인] 왼쪽 빈 영역 13연타 (현장 태블릿용 서프라이즈)
   // 연타 카운트는 리렌더와 무관한 ref로, 1초 이상 쉬면 리셋(누적 탭 우연 발동 방지)
@@ -414,6 +423,7 @@ function BoardBody({
   const [slotTarget, setSlotTarget] = useState<{ gameId: string | null } | null>(null);
 
   const { session } = snapshot;
+  const concurrent = snapshot.openSessions.length > 1; // 여복·남복처럼 동시에 연 모임이 있다
   const dragEnabled = useBoardDragEnabled(); // 태블릿 이상 — 자석판처럼 끌어다 놓기
 
   // 코트 배정·조합 만들기는 누르자마자 보여 준다 — 서버 응답과 화면 새로고침(두 번 오감)을 기다리면 멈춘 것처럼 보였다.
@@ -1243,6 +1253,11 @@ function BoardBody({
       label: '도움말',
       onClick: () => setHelpOpen(true),
     },
+    {
+      key: 'another',
+      label: '모임 하나 더 열기 — 코트를 나눠 따로 운영',
+      onClick: () => setAnotherOpen(true),
+    },
   ];
 
   const MOBILE_TABS: { value: MobileTab; label: string; count?: number }[] = [
@@ -1360,6 +1375,13 @@ function BoardBody({
           </svg>
         </button>
       </header>
+      {/* 여복·남복처럼 동시에 연 모임 — 둘 이상일 때만 보인다 */}
+      <SessionSwitcher
+        sessions={snapshot.openSessions}
+        currentId={session.id}
+        onSelect={(id) => void onSelectSession(id)}
+        className="pb-2 md:pb-3"
+      />
 
       {/* 3구역 — 폰: 탭 1구역 / 태블릿 세로: 2열(게임 중 | 조합+대기) / 데스크톱: 3열 */}
       <BoardDnd onDrop={onDrop} onDraggingChange={onDraggingChange}>
@@ -1745,7 +1767,7 @@ function BoardBody({
             </button>
             {/* 2탭 확인 — 첫 탭은 문구만 바뀌고 시트는 그대로 */}
             <ConfirmButton
-              label="모임 종료"
+              label={concurrent ? `${sessionName(snapshot.openSessions, session.id)} 모임 종료` : '모임 종료'}
               confirmLabel="한 번 더 누르면 모임이 종료돼요"
               onConfirm={closeSession}
               className="flex h-13 items-center px-4 text-left text-body font-bold"
@@ -1754,6 +1776,15 @@ function BoardBody({
             />
           </div>
         </Sheet>
+      )}
+      {anotherOpen && (
+        <AnotherSessionSheet
+          current={session}
+          openSessions={snapshot.openSessions}
+          run={run}
+          onOpened={onSelectSession}
+          onClose={() => setAnotherOpen(false)}
+        />
       )}
       {commandOpen && (
         <CommandSheet

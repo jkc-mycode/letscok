@@ -12,6 +12,23 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { api, ApiError, API_URL } from './api';
 
+// 여복·남복처럼 동시에 연 모임 중 이 기기가 보는 모임 — 다시 열어도 같은 보드가 뜨게 기억한다
+const PICKED_SESSION_KEY = 'letscok.pickedSessionId';
+function readPicked(): string | null {
+  try {
+    return localStorage.getItem(PICKED_SESSION_KEY);
+  } catch {
+    return null;
+  }
+}
+function savePicked(id: string) {
+  try {
+    localStorage.setItem(PICKED_SESSION_KEY, id);
+  } catch {
+    // 저장이 막힌 브라우저 — 이번 화면에서만 바뀐다
+  }
+}
+
 interface SnapshotState {
   snapshot: ISessionSnapshot | null;
   noSession: boolean; // 진행 중 모임 없음 (404)
@@ -21,6 +38,7 @@ interface SnapshotState {
   loading: boolean;
   refetch: () => Promise<void>;
   memosVersion: number; // 운영 메모가 바뀐 신호를 받을 때마다 +1 — 메모 패널은 이때만 다시 읽는다
+  selectSession: (id: string) => Promise<void>; // 동시에 연 다른 모임으로 바꿔 보기
 }
 
 export function useSnapshot(): SnapshotState {
@@ -36,7 +54,9 @@ export function useSnapshot(): SnapshotState {
   const refetch = useCallback(async () => {
     lastFetchAt.current = Date.now();
     try {
-      const data = await api<ISessionSnapshot>('/sessions/current');
+      const picked = readPicked();
+      const data = await api<ISessionSnapshot>(`/sessions/current${picked ? `?id=${encodeURIComponent(picked)}` : ''}`);
+      sessionIdRef.current = data.session.id; // 모임을 바꾼 직후 옛 모임 방의 현황이 새 화면을 덮지 않게 바로 맞춘다
       setSnapshot(data);
       setNoSession(false);
       setFailed(false);
@@ -69,14 +89,17 @@ export function useSnapshot(): SnapshotState {
         });
       }
     });
+    // 모임을 바꿔 보면 전에 보던 모임 방에도 남아 있다 — 지금 보는 모임 것만 받는다
     socket.on(SocketEvents.SNAPSHOT_UPDATED, (data: ISessionSnapshot) => {
+      if (sessionIdRef.current && data.session.id !== sessionIdRef.current) return;
       setSnapshot(data);
       setNoSession(false);
     });
     socket.on(SocketEvents.MEMOS_CHANGED, () => setMemosVersion((v) => v + 1));
-    socket.on(SocketEvents.SESSION_CLOSED, () => {
-      setSnapshot(null);
-      setNoSession(true);
+    // 동시에 연 다른 모임이 남아 있을 수 있어 바로 "모임 전"으로 두지 않고 다시 읽는다(없으면 404 → 모임 전)
+    socket.on(SocketEvents.SESSION_CLOSED, (payload?: { sessionId?: string }) => {
+      if (payload?.sessionId && payload.sessionId !== sessionIdRef.current) return;
+      void refetch();
     });
 
     return () => {
@@ -101,7 +124,15 @@ export function useSnapshot(): SnapshotState {
     }
   }, [sessionId]);
 
-  return { snapshot, noSession, failed, loading, refetch, memosVersion };
+  const selectSession = useCallback(
+    async (id: string) => {
+      savePicked(id);
+      await refetch();
+    },
+    [refetch],
+  );
+
+  return { snapshot, noSession, failed, loading, refetch, memosVersion, selectSession };
 }
 
 // 경과 시간 표시용 1초 틱
