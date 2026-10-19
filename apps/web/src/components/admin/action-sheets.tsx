@@ -232,25 +232,24 @@ export function SlotFillSheet({
 export function GameActionSheet({
   game,
   title,
-  run,
+  onCancel,
   onReplace,
   onMoveCourt,
   onClose,
 }: {
   game: IGame;
   title: string;
-  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
+  onCancel: (gameId: string) => void; // 게임 취소·해체 — 누르자마자 반영(보드가 맡음)
   onReplace: (game: IGame) => void;
   onMoveCourt: (game: IGame) => void;
   onClose: () => void;
 }) {
   const playing = game.status === 'PLAYING';
   const names = (game.players ?? []).map((p) => p.attendance?.member?.name).filter(Boolean).join(', ');
-  const cancel = () =>
-    void run(async () => {
-      await api(`/games/${game.id}/cancel`, { method: 'PATCH', admin: true });
-      onClose();
-    }, `game:${game.id}`);
+  const cancel = () => {
+    onCancel(game.id);
+    onClose();
+  };
   const row = 'h-12 w-full rounded-xl px-4 text-left text-body-sm font-medium';
   return (
     <Sheet

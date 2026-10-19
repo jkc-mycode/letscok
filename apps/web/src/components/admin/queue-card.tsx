@@ -3,7 +3,6 @@
 import { GAME_SIZE, ICourt, IGame } from '@letscok/shared-types';
 import { useDropTarget, useGameDrag } from '@/components/board-dnd';
 import { MotionCard } from '@/components/motion-card';
-import { api } from '@/lib/api';
 import { BoardSlots, SlotActions, gameRef, isFullGame } from '@/components/admin/board-slots';
 import { ConfirmButton, MoreButton } from '@/components/admin/board-ui';
 
@@ -16,7 +15,7 @@ export function QueueCard({
   neighborDown,
   idleCourts,
   overlapIds,
-  run,
+  onCancel,
   slotActions,
   onMore,
   onPickCourt,
@@ -32,7 +31,7 @@ export function QueueCard({
   neighborDown?: IGame;
   idleCourts: ICourt[];
   overlapIds: Set<string>;
-  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
+  onCancel: (gameId: string) => void; // 해체 — 누르자마자 대기로(보드가 맡음)
   slotActions: SlotActions;
   onMore: (game: IGame) => void; // [⋯] — 교체·해체 시트(4명 조합)
   onPickCourt: (game: IGame) => void; // 빈 코트가 여럿이면 코트 고르기 시트
@@ -152,7 +151,7 @@ export function QueueCard({
             label="해체"
             confirmLabel="정말 해체"
             title="이 조합을 없애고 든 사람을 대기로 돌려보내요"
-            onConfirm={() => void run(() => api(`/games/${game.id}/cancel`, { method: 'PATCH', admin: true }), `game:${game.id}`)}
+            onConfirm={() => onCancel(game.id)}
             className="h-10 rounded-[10px] px-3 text-body-sm"
             idleCls="text-coral"
           />

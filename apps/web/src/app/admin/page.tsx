@@ -511,6 +511,12 @@ function BoardBody({
       void patchGames([[gameId, change]], request),
     [patchGames],
   );
+  // 게임 취소·조합 해체 — 사람을 다 뺀 모습(서버처럼 해체)으로 바로 보여 준다. 사람은 다른 조합에 없으면 대기로, 코트는 빈다
+  const cancelGame = useCallback(
+    (gameId: string) =>
+      void patchGames([[gameId, () => []]], () => api(`/games/${gameId}/cancel`, { method: 'PATCH', admin: true })),
+    [patchGames],
+  );
   const slotActions = useMemo(
     () => ({
       // 그 자리에 사람이 있으면 맞바꾸고, 비어 있으면 그 자리로(서버 moveSlot과 같은 규칙)
@@ -1402,7 +1408,7 @@ function BoardBody({
                 neighborDown={queuedGames[index + 1]}
                 idleCourts={idleCourts}
                 overlapIds={overlapIds}
-                run={run}
+                onCancel={cancelGame}
                 slotActions={slotActions}
                 onMore={(g) => setCardMenuId(g.id)}
                 onPickCourt={(g) => setAssignGameId(g.id)}
@@ -1726,7 +1732,7 @@ function BoardBody({
               ? `${courts.find((c) => c.id === cardMenuTarget.courtId)?.courtNo ?? ''}번 코트`
               : `다음 게임 ${queuedGames.findIndex((g) => g.id === cardMenuTarget.id) + 1}`
           }
-          run={run}
+          onCancel={cancelGame}
           onReplace={(g) => setReplaceGameId(g.id)}
           onMoveCourt={(g) => setMoveGameId(g.id)}
           onClose={() => setCardMenuId(null)}
