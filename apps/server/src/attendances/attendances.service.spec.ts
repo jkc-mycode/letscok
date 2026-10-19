@@ -455,3 +455,38 @@ describe('call (운영진 호출)', () => {
   });
 });
 
+
+describe('동시에 연 모임 (여복·남복) — 한 번에 한 모임만', () => {
+  it('다른 열린 모임에 출석 중이면 409, 모임 이름을 알려 준다', async () => {
+    const women = await prisma.session.create({ data: { date: new Date('2026-01-01'), label: '여복' } });
+    const men = await seedSession();
+    const member = await seedMember();
+    await service.manualCheckIn(women.id, member.id);
+
+    await expect(service.manualCheckIn(men.id, member.id)).rejects.toThrow("'여복' 모임에 출석 중");
+    expect(await prisma.attendance.count({ where: { sessionId: men.id } })).toBe(0);
+  });
+
+  it('그 모임에서 퇴장했으면 들어올 수 있다', async () => {
+    const women = await seedSession();
+    const men = await seedSession();
+    const member = await seedMember();
+    const first = await service.manualCheckIn(women.id, member.id);
+    await service.leave(first.id);
+
+    const moved = await service.manualCheckIn(men.id, member.id);
+
+    expect(moved.sessionId).toBe(men.id);
+  });
+
+  it('끝난 모임의 출석은 상관없다', async () => {
+    const closed = await seedSession({ status: 'CLOSED' });
+    const open = await seedSession();
+    const member = await seedMember();
+    await prisma.attendance.create({ data: { sessionId: closed.id, memberId: member.id } });
+
+    const attendance = await service.manualCheckIn(open.id, member.id);
+
+    expect(attendance.sessionId).toBe(open.id);
+  });
+});

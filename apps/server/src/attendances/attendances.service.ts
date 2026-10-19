@@ -127,6 +127,16 @@ export class AttendancesService {
       throw new NotFoundException('등록되지 않은 모임원입니다.');
     }
 
+    // 여복·남복처럼 동시에 연 모임 — 한 사람이 두 보드에 동시에 잡히지 않게 한 번에 한 모임만
+    const elsewhere = await this.prisma.attendance.findFirst({
+      where: { memberId, sessionId: { not: sessionId }, status: { not: 'LEFT' }, session: { status: 'OPEN' } },
+      select: { session: { select: { label: true } } },
+    });
+    if (elsewhere) {
+      const where = elsewhere.session.label ? `'${elsewhere.session.label}'` : '다른';
+      throw new ConflictException(`${member.name} 님은 ${where} 모임에 출석 중이에요. 그 모임에서 퇴장한 뒤 들어와 주세요.`);
+    }
+
     const existing = await this.prisma.attendance.findUnique({
       where: { sessionId_memberId: { sessionId, memberId } },
       include: { member: true },

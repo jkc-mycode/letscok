@@ -20,6 +20,7 @@ export class CourtsService {
 
   async register(sessionId: string, dto: CreateCourtDto): Promise<ICourt> {
     await this.sessionsService.findOpenSessionOrThrow(sessionId);
+    await this.assertNotUsedByOtherSession(sessionId, dto.courtNo);
 
     // 같은 번호가 이미 있으면: 해제됐던 코트는 복구, 사용 중이면 중복 에러
     // (@@unique([sessionId, courtNo]) 제약 때문에 soft-delete 행도 새로 만들 수 없음)
@@ -80,6 +81,7 @@ export class CourtsService {
     const court = await this.findCourtOrThrow(id);
     await this.sessionsService.findOpenSessionOrThrow(court.sessionId);
     if (court.courtNo === dto.courtNo) return toCourtResponse(court);
+    await this.assertNotUsedByOtherSession(court.sessionId, dto.courtNo);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       // 해제된 코트도 고유 제약상 번호를 쥐고 있다 — 기록이 없으면 지우고, 있으면 그 기록의 번호가 바뀌면 안 되니 막는다
@@ -101,6 +103,18 @@ export class CourtsService {
     });
     this.realtime.broadcastSnapshot(court.sessionId);
     return toCourtResponse(updated);
+  }
+
+  // 여복·남복처럼 같은 체육관에서 동시에 연 모임 — 한 코트를 두 보드가 같이 배정하지 않게
+  private async assertNotUsedByOtherSession(sessionId: string, courtNo: number) {
+    const other = await this.prisma.court.findFirst({
+      where: { courtNo, deletedAt: null, sessionId: { not: sessionId }, session: { status: 'OPEN' } },
+      select: { session: { select: { label: true } } },
+    });
+    if (other) {
+      const where = other.session.label ? `'${other.session.label}'` : '다른';
+      throw new ConflictException(`${courtNo}번 코트는 ${where} 모임이 쓰고 있어요.`);
+    }
   }
 
   private async findCourtOrThrow(id: string) {

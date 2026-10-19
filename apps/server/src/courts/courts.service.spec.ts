@@ -61,3 +61,33 @@ describe('renumber', () => {
     await expect(service.renumber(court.id, { courtNo: 2 })).rejects.toThrow(ConflictException);
   });
 });
+
+describe('동시에 연 모임 (여복·남복) — 코트 번호 겹침', () => {
+  it('다른 열린 모임이 쓰는 번호는 추가할 수 없다', async () => {
+    const women = await prisma.session.create({ data: { date: new Date('2026-01-01'), label: '여복' } });
+    const men = await seedSession();
+    await seedCourt(women.id, 3);
+
+    await expect(service.register(men.id, { courtNo: 3 })).rejects.toThrow("3번 코트는 '여복' 모임이 쓰고 있어요");
+  });
+
+  it('번호 바꾸기도 막는다', async () => {
+    const women = await seedSession();
+    const men = await seedSession();
+    await seedCourt(women.id, 3);
+    const court = await seedCourt(men.id, 5);
+
+    await expect(service.renumber(court.id, { courtNo: 3 })).rejects.toThrow('3번 코트는 다른 모임이 쓰고 있어요');
+  });
+
+  it('다른 모임이 해제했거나 끝난 모임의 번호는 쓸 수 있다', async () => {
+    const women = await seedSession();
+    const closed = await prisma.session.create({ data: { date: new Date('2026-01-01'), status: 'CLOSED' } });
+    const men = await seedSession();
+    await seedCourt(women.id, 3, new Date());
+    await seedCourt(closed.id, 4);
+
+    expect((await service.register(men.id, { courtNo: 3 })).courtNo).toBe(3);
+    expect((await service.register(men.id, { courtNo: 4 })).courtNo).toBe(4);
+  });
+});
