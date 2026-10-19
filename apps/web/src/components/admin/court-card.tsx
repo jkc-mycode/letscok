@@ -3,7 +3,6 @@
 import { ICourt, IGame } from '@letscok/shared-types';
 import { useDropTarget } from '@/components/board-dnd';
 import { MotionCard } from '@/components/motion-card';
-import { api } from '@/lib/api';
 import { BoardSlots, SlotActions, gameRef } from '@/components/admin/board-slots';
 import { ConfirmButton, ElapsedText, MoreButton } from '@/components/admin/board-ui';
 
@@ -19,7 +18,7 @@ function SharedBadge() {
 export function CourtCard({
   court,
   game,
-  run,
+  onTurn,
   slotActions,
   onEnd,
   onMore,
@@ -27,7 +26,7 @@ export function CourtCard({
 }: {
   court: ICourt;
   game?: IGame;
-  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
+  onTurn: (courtId: string, ourTurn: boolean) => void; // 공유 코트 차례 — 누르자마자 반영(보드가 맡음)
   slotActions: SlotActions;
   onEnd: (gameId: string, kind: 'FINISHED' | 'UNASSIGNED') => void; // 게임 종료·대기로 — 누르자마자 반영
   onMore: (game: IGame) => void; // [⋯] — 다시 알림·교체·취소 시트
@@ -46,8 +45,7 @@ export function CourtCard({
     dragEnabled && !game && (!court.isShared || court.ourTurn),
   );
   // 공유 코트 차례 전환 — 우리→상대는 수동으로도 넘길 수 있고(양보 등), 상대→우리는 이 탭이 유일한 복귀로
-  const setTurn = (ourTurn: boolean) =>
-    run(() => api(`/courts/${court.id}/turn`, { method: 'PATCH', admin: true, body: { ourTurn } }), `court:${court.id}`);
+  const setTurn = (ourTurn: boolean) => onTurn(court.id, ourTurn);
 
   if (!game) {
     // 상대 차례인 공유 코트 — 배정이 막히는 이유가 보이게 빈 코트와 구분해 크게 표시
@@ -61,7 +59,7 @@ export function CourtCard({
             <span className="text-caption text-sky">다른 모임 차례</span>
           </div>
           <button
-            onClick={() => void setTurn(true)}
+            onClick={() => setTurn(true)}
             title="상대 게임이 끝났으면 눌러주세요 — 배정이 다시 열려요"
             className="mt-3 h-10 w-full rounded-[10px] bg-sky/15 text-body-sm font-bold text-sky"
           >
@@ -91,7 +89,7 @@ export function CourtCard({
         </div>
         {court.isShared && (
           <button
-            onClick={() => void setTurn(false)}
+            onClick={() => setTurn(false)}
             title="이번 차례를 다른 모임에 양보"
             className="mt-3 h-9 w-full rounded-lg bg-panel2 text-xs text-dim"
           >

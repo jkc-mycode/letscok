@@ -411,14 +411,43 @@ function BoardBody({
       return a.status === 'CHECKED_IN' && matched.has(a.id) ? { ...a, status: 'MATCHED' as const } : a;
     });
   }, [snapshot.attendances, snapshot.games, games, optAssign, optCreated, optEnded, optPlayers]);
+  // 공유 코트 [우리 차례로]·[넘기기]도 누르자마자 — 서버 화면이 같아지면 지우고, 실패하면 되돌린다
+  const [optTurn, setOptTurn] = useState<Map<string, boolean>>(new Map());
+  useEffect(() => {
+    setOptTurn((prev) => {
+      const next = new Map([...prev].filter(([id, ourTurn]) => {
+        const court = snapshot.courts.find((c) => c.id === id);
+        return court !== undefined && court.ourTurn !== ourTurn;
+      }));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [snapshot.courts]);
   // 종료한 공유 코트는 서버처럼 '다른 모임 차례'로
   const courts = useMemo(() => {
-    if (optEnded.size === 0) return snapshot.courts;
+    if (optEnded.size === 0 && optTurn.size === 0) return snapshot.courts;
     const yielded = new Set(
       snapshot.games.filter((g) => g.status === 'PLAYING' && optEnded.get(g.id)?.kind === 'FINISHED').map((g) => g.courtId),
     );
-    return snapshot.courts.map((c) => (c.isShared && yielded.has(c.id) ? { ...c, ourTurn: false } : c));
-  }, [snapshot.courts, snapshot.games, optEnded]);
+    return snapshot.courts.map((c) => {
+      const turn = optTurn.get(c.id);
+      if (turn !== undefined) return { ...c, ourTurn: turn };
+      return c.isShared && yielded.has(c.id) ? { ...c, ourTurn: false } : c;
+    });
+  }, [snapshot.courts, snapshot.games, optEnded, optTurn]);
+  const setCourtTurn = useCallback(
+    (courtId: string, ourTurn: boolean) => {
+      setOptTurn((prev) => new Map(prev).set(courtId, ourTurn));
+      void runParallel(() => api(`/courts/${courtId}/turn`, { method: 'PATCH', admin: true, body: { ourTurn } })).then((ok) => {
+        if (ok) return;
+        setOptTurn((prev) => {
+          const next = new Map(prev);
+          next.delete(courtId); // 실패 — 서버 화면대로(알림은 runParallel)
+          return next;
+        });
+      });
+    },
+    [runParallel],
+  );
   const endGame = useCallback(
     (gameId: string, kind: 'FINISHED' | 'UNASSIGNED') => {
       // 이미 누른 게임·배정이 서버에 아직 안 닿은 게임(종료하면 409)은 무시
@@ -510,6 +539,27 @@ function BoardBody({
     (gameId: string, change: (players: GamePlayer[]) => GamePlayer[], request: () => Promise<unknown>) =>
       void patchGames([[gameId, change]], request),
     [patchGames],
+  );
+  // 선수 교체 — 나간 사람 자리에 들어온 사람을 바로 보여 준다(서버 replacePlayer와 같은 자리 규칙, 끌어서 교체와 같은 API)
+  const replacePlayer = useCallback(
+    (gameId: string, outAttendanceId: string, inAttendanceId: string) => {
+      const attendance = snapshot.attendances.find((a) => a.id === inAttendanceId);
+      void patchGames(
+        [
+          [
+            gameId,
+            (players) =>
+              players.map((p) =>
+                p.attendanceId === outAttendanceId
+                  ? { ...p, id: `${TEMP_GAME_PREFIX}${inAttendanceId}`, attendanceId: inAttendanceId, attendance }
+                  : p,
+              ),
+          ],
+        ],
+        () => api(`/games/${gameId}/players`, { method: 'PATCH', admin: true, body: { outAttendanceId, inAttendanceId } }),
+      );
+    },
+    [snapshot.attendances, patchGames],
   );
   // 게임 취소·조합 해체 — 사람을 다 뺀 모습(서버처럼 해체)으로 바로 보여 준다. 사람은 다른 조합에 없으면 대기로, 코트는 빈다
   const cancelGame = useCallback(
@@ -1363,7 +1413,7 @@ function BoardBody({
                 key={court.id}
                 court={court}
                 game={playingByCourt.get(court.id)}
-                run={run}
+                onTurn={setCourtTurn}
                 slotActions={slotActions}
                 onEnd={endGame}
                 onMore={(g) => setCardMenuId(g.id)}
@@ -1762,8 +1812,7 @@ function BoardBody({
           attendances={attendances}
           sort={rosterSort}
           onSort={setRosterSort}
-          run={run}
-          busy={busy}
+          onReplace={(outId, inId) => replacePlayer(replaceTarget.id, outId, inId)}
           onClose={() => setReplaceGameId(null)}
         />
       )}

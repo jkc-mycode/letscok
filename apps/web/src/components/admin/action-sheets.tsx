@@ -5,7 +5,6 @@ import { useState } from 'react';
 import { Sheet } from '@/components/sheet';
 import { GenderMarker, GradeBadge } from '@/components/badges';
 import { MegaphoneIcon } from '@/components/icons';
-import { api } from '@/lib/api';
 import { CallButton, ConfirmButton, RoleCrown, WaitingMinutesText } from '@/components/admin/board-ui';
 import { RosterSort, RosterSortSelect, sortCandidates } from '@/components/admin/roster-sort';
 
@@ -17,16 +16,14 @@ export function ReplacePlayerModal({
   attendances,
   sort,
   onSort,
-  run,
-  busy,
+  onReplace,
   onClose,
 }: {
   game: IGame;
   attendances: IAttendance[];
   sort: RosterSort; // 명단과 같은 정렬
   onSort: (sort: RosterSort) => void;
-  run: (a: () => Promise<unknown>, lockKey?: string) => Promise<void>;
-  busy: boolean;
+  onReplace: (outAttendanceId: string, inAttendanceId: string) => void; // 누르자마자 반영(보드가 맡음)
   onClose: () => void;
 }) {
   const [outId, setOutId] = useState<string | null>(null);
@@ -43,15 +40,11 @@ export function ReplacePlayerModal({
       !(isPlaying && a.status === 'PLAYING'),
   );
 
-  const submit = () =>
-    run(async () => {
-      await api(`/games/${game.id}/players`, {
-        method: 'PATCH',
-        admin: true,
-        body: { outAttendanceId: outId, inAttendanceId: inId },
-      });
-      onClose();
-    });
+  const submit = () => {
+    if (!outId || !inId) return;
+    onReplace(outId, inId);
+    onClose();
+  };
 
   return (
     <Sheet
@@ -141,8 +134,8 @@ export function ReplacePlayerModal({
       </div>
 
       <button
-        onClick={() => void submit()}
-        disabled={!outId || !inId || busy}
+        onClick={submit}
+        disabled={!outId || !inId}
         className="mt-4 h-12 rounded-xl bg-court text-base font-bold text-bg disabled:bg-panel2 disabled:text-faint"
       >
         교체하기
