@@ -817,33 +817,59 @@ function BoardBody({
     () => courts.filter((c) => !playingByCourt.has(c.id)),
     [courts, playingByCourt],
   );
-  // [빈 코트 채우기]로 들어갈 조합 수 — 서버 fillCourts와 같은 규칙(공유 코트는 우리 차례만, 게임 중인 사람이 든 조합은 건너뜀)
-  const fillableCount = useMemo(() => {
-    let free = idleCourts.filter((c) => !c.isShared || c.ourTurn).length;
+  // [빈 코트 채우기]로 들어갈 조합과 코트 — 서버 fillCourts와 같은 규칙(코트 번호순, 공유 코트는 우리 차례만, 게임 중인 사람이 든 조합은 건너뜀)
+  const fillPlan = useMemo(() => {
+    const free = idleCourts.filter((c) => !c.isShared || c.ourTurn).sort((a, b) => a.courtNo - b.courtNo);
     const busyIds = new Set(attendances.filter((a) => a.status === 'PLAYING').map((a) => a.id));
-    let count = 0;
+    const plan: { gameId: string; courtId: string }[] = [];
     for (const game of queuedGames) {
-      if (free === 0) break;
-      if (!isFullGame(game)) continue; // 빈칸 있는 조합은 서버도 건너뛴다
+      if (plan.length === free.length) break;
+      if (!isFullGame(game) || game.id.startsWith(TEMP_GAME_PREFIX)) continue; // 빈칸 있는 조합은 서버도 건너뛴다, 아직 서버에 없는 조합도
       const ids = (game.players ?? []).map((p) => p.attendanceId);
       if (ids.some((id) => busyIds.has(id))) continue;
       ids.forEach((id) => busyIds.add(id));
-      free -= 1;
-      count += 1;
+      plan.push({ gameId: game.id, courtId: free[plan.length].id });
     }
-    return count;
+    return plan;
   }, [idleCourts, queuedGames, attendances]);
+  const fillableCount = fillPlan.length;
   const [fillNotice, setFillNotice] = useState<string | null>(null);
   const fillNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     if (fillNoticeTimer.current) clearTimeout(fillNoticeTimer.current);
   }, []);
-  const fillCourts = () =>
-    void run(async () => {
-      const result = await api<IFillCourtsResult>(`/sessions/${session.id}/fill-courts`, {
-        method: 'POST',
-        admin: true,
+  const filling = useRef(false); // 응답 전에 또 누르면 덧씌움만 생기고 요청은 잠금에 막힌다 — 여기서 먼저 막는다
+  // 누르자마자 계획대로 코트에 넣어 보여 준다(코트 배정과 같은 덧씌움). 서버가 건너뛴 조합은 응답을 받으면 대기로 되돌리고,
+  // 다른 코트에 넣었으면 서버 화면이 오면서 맞춰진다
+  const fillCourts = () => {
+    const plan = fillPlan;
+    if (filling.current || plan.length === 0) return;
+    filling.current = true;
+    const startedAt = new Date().toISOString();
+    setOptAssign((prev) => {
+      const next = new Map(prev);
+      plan.forEach(({ gameId, courtId }) => next.set(gameId, { courtId, startedAt }));
+      return next;
+    });
+    const undo = (gameIds: string[]) =>
+      setOptAssign((prev) => {
+        const next = new Map(prev);
+        gameIds.forEach((id) => next.delete(id));
+        return next;
       });
+    void run(async () => {
+      let result: IFillCourtsResult;
+      try {
+        result = await api<IFillCourtsResult>(`/sessions/${session.id}/fill-courts`, {
+          method: 'POST',
+          admin: true,
+        });
+      } catch (error) {
+        undo(plan.map((p) => p.gameId));
+        throw error;
+      }
+      const assigned = new Set(result.assigned.map((a) => a.gameId));
+      undo(plan.filter((p) => !assigned.has(p.gameId)).map((p) => p.gameId));
       // 결과는 구역 안에 몇 초 보여 준다(보드 토스트는 오류 전용 빨간색이라)
       const lines = [
         ...result.assigned.map((a) => `${a.courtNo}번 코트 ← ${a.names[0]} 외 ${a.names.length - 1}명`),
@@ -852,7 +878,10 @@ function BoardBody({
       setFillNotice(lines.length > 0 ? lines.join(' · ') : '배정할 조합이 없어요');
       if (fillNoticeTimer.current) clearTimeout(fillNoticeTimer.current);
       fillNoticeTimer.current = setTimeout(() => setFillNotice(null), 5000);
-    }, 'fill-courts');
+    }, 'fill-courts').finally(() => {
+      filling.current = false;
+    });
+  };
 
   // 콕 확인 대기 — 확인 전엔 게임 배정이 막히므로 대기 인원과 분리해 구역 맨 위에 모은다
   // (운영진은 이 섹션이 비었는지만 확인하면 된다)
@@ -1348,7 +1377,7 @@ function BoardBody({
           headerExtra={
             fillableCount > 0 && (
               <button
-                onClick={fillCourts} // 연타는 'fill-courts' 잠금이 막는다 — 다른 동작이 진행 중이어도 누를 수 있게
+                onClick={fillCourts} // 연타는 fillCourts가 막는다 — 다른 동작이 진행 중이어도 누를 수 있게
                 title="빈 코트에 대기 조합을 순서대로 한 번에 배정해요"
                 className="ml-auto h-8 shrink-0 rounded-lg bg-amber px-3 text-caption font-bold text-bg disabled:opacity-50"
               >
