@@ -15,7 +15,7 @@ import { PushService } from '../push/push.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { SessionsService } from '../sessions/sessions.service';
 import { AssignGameDto } from './dto/game.dtos';
-import { GAME_INCLUDE, findGameOrThrow, nextQueueOrder, releaseFromGame } from './game-helpers';
+import { GAME_INCLUDE, findGameOrThrow, lockSession, nextQueueOrder, releaseFromGame } from './game-helpers';
 
 // 게임 진행 — 코트 배정·옮기기·빈 코트 채우기·종료·되돌리기·대기로·취소·다시 알림
 // 조합을 만들고 고치는 쪽은 GameRosterService
@@ -263,16 +263,17 @@ export class GamesService {
         data: { status: 'PLAYING', endedAt: null, courtId: targetCourtId },
       });
       if (flipped.count === 0) throw new ConflictException('끝난 게임만 되돌릴 수 있어요.');
-      const court = await tx.court.findUniqueOrThrow({ where: { id: targetCourtId } });
-      const occupied = await tx.game.count({ where: { courtId: targetCourtId, status: 'PLAYING', id: { not: id } } });
-      if (court.deletedAt || occupied > 0) {
-        throw new ConflictException(`${court.courtNo}번 코트에 이미 다른 게임이 들어가 되돌릴 수 없어요.`);
+      // 코트는 비어 있을 때만 차지한다 — 확인과 차지를 한 번에 해야 그 사이 다른 기기가 배정해 한 코트에 게임 둘이 생기지 않는다
+      const claimed = await tx.court.updateMany({
+        where: { id: targetCourtId, status: 'IDLE', deletedAt: null },
+        data: { status: 'IN_GAME' },
+      });
+      if (claimed.count === 0) {
+        const court = await tx.court.findUnique({ where: { id: targetCourtId }, select: { courtNo: true } });
+        throw new ConflictException(`${court?.courtNo ?? ''}번 코트에 이미 다른 게임이 들어가 되돌릴 수 없어요.`);
       }
       // 공유 코트는 종료 때 넘긴 차례도 다시 우리 것으로
-      await tx.court.update({
-        where: { id: targetCourtId },
-        data: { status: 'IN_GAME', ...(court.isShared ? { ourTurn: true } : {}) },
-      });
+      await tx.court.updateMany({ where: { id: targetCourtId, isShared: true }, data: { ourTurn: true } });
       for (const player of game.players) {
         await tx.attendance.update({
           where: { id: player.attendanceId },
@@ -302,6 +303,8 @@ export class GamesService {
 
     const attendanceIds = game.players.map((player) => player.attendanceId);
     const unassigned = await this.prisma.$transaction(async (tx) => {
+      // 대기 순서 번호를 매기므로 조합 만들기·순서 바꾸기와 같은 모임 잠금 — 동시에 오면 같은 번호가 둘 생겼다
+      await lockSession(tx, game.sessionId);
       await this.claimGame(tx, id, game.status, game.courtId);
       await tx.court.update({
         where: { id: game.courtId as string },
