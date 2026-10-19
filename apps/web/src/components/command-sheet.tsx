@@ -208,18 +208,32 @@ export function CommandSheet({
     });
   };
 
+  // 확인 버튼 실행 — 응답이 올 때까지 '처리하는 중'을 보여 주고 버튼을 숨긴다(진행 표시가 없어 두 번 누르면 두 번째가 오류였다)
+  const [executing, setExecuting] = useState(false);
+  const executingRef = useRef(false);
+  const exec = (action: () => Promise<unknown>) => {
+    if (executingRef.current) return;
+    executingRef.current = true;
+    setExecuting(true);
+    void run(action).finally(() => {
+      executingRef.current = false;
+      setExecuting(false);
+    });
+  };
+
   const execute = (preview: ActionPreview) =>
-    void run(async () => {
+    exec(async () => {
       if (preview.action === 'finish_game' && preview.gameId) {
         await api(`/games/${preview.gameId}/finish`, { method: 'PATCH', admin: true });
         done(preview.label);
         return;
       }
       if (preview.action === 'call') {
-        let devices = 0;
-        for (const t of preview.targets) {
-          devices += (await api<IPushCallResult>(`/attendances/${t.attendanceId}/call`, { method: 'POST', admin: true })).devices;
-        }
+        // 사람마다 푸시 발송을 기다리므로 동시에 보낸다(차례로 보내면 인원수만큼 느려졌다)
+        const results = await Promise.all(
+          preview.targets.map((t) => api<IPushCallResult>(`/attendances/${t.attendanceId}/call`, { method: 'POST', admin: true })),
+        );
+        const devices = results.reduce((sum, r) => sum + r.devices, 0);
         // 호출은 결과를 보여 주고 시트를 닫지 않는다(알림 미등록이면 직접 불러야 해서)
         setNotice(devices > 0 ? `${devices}대에 알림을 보냈어요` : '알림을 등록하지 않은 분이에요. 직접 불러주세요');
         next(true);
@@ -235,20 +249,20 @@ export function CommandSheet({
         return;
       }
       if (preview.action === 'unpartner') {
-        for (const t of preview.targets) await api(`/attendances/${t.attendanceId}/partner`, { method: 'DELETE', admin: true });
+        await Promise.all(
+          preview.targets.map((t) => api(`/attendances/${t.attendanceId}/partner`, { method: 'DELETE', admin: true })),
+        );
         done(preview.label);
         return;
       }
-      for (const t of preview.targets) {
-        await api(`/attendances/${t.attendanceId}/${preview.action}`, { method: 'PATCH' });
-      }
+      await Promise.all(preview.targets.map((t) => api(`/attendances/${t.attendanceId}/${preview.action}`, { method: 'PATCH' })));
       done(preview.label);
     });
 
   // 게스트 추가 — 새 게스트는 등록 후 체크인, 등록된 게스트는 체크인만(수동 체크인과 같은 API). 콕 확인은 명단에서 따로
   // 한 명이 실패해도 나머지는 계속하고 결과를 한 줄로 — 시트는 닫지 않는다(실패한 사람을 확인할 수 있게)
   const addGuests = (guests: GuestPick[]) =>
-    void run(async () => {
+    exec(async () => {
       const failed: string[] = [];
       for (const guest of guests) {
         try {
@@ -280,7 +294,7 @@ export function CommandSheet({
 
   // 코트 추가 — 기존 코트 추가 API로(공유면 공유 설정까지). 이미 있는 번호는 미리보기에서 빠져 온다
   const addCourts = (courtNos: number[], shared: boolean) =>
-    void run(async () => {
+    exec(async () => {
       const failed: string[] = [];
       for (const courtNo of courtNos) {
         try {
@@ -303,7 +317,7 @@ export function CommandSheet({
     });
 
   const addGame = (recommendation: IGameRecommendation) =>
-    void run(async () => {
+    exec(async () => {
       await api(`/sessions/${sessionId}/games`, {
         method: 'POST',
         admin: true,
@@ -442,7 +456,10 @@ export function CommandSheet({
           </button>
         </div>
       )}
-      {result && !sending && (
+      {result && !sending && executing && (
+        <p className="rounded-xl bg-panel2 p-3 text-center text-sm text-dim">처리하는 중…</p>
+      )}
+      {result && !sending && !executing && (
         <ResultView
           result={result}
           live={live}
