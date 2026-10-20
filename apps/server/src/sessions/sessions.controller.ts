@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@ne
 import {
   IApiResponse,
   ICheckInCodeResponse,
-  IClosedTodaySession,
+  IClosedTodayResponse,
   ISession,
   ISessionSnapshot,
 } from '@letscok/shared-types';
@@ -16,11 +16,14 @@ import { SessionsService } from './sessions.service';
 export class SessionsController {
   constructor(private readonly sessionsService: SessionsService) {}
 
-  // 모임 시작 (운영진 전용) — 본문 없으면 같은 날 종료한 모임을 다시 연다, fresh면 새 모임
+  // 모임 시작 (운영진 전용) — 본문 없으면 같은 날 종료한 모임을 다시 연다, fresh면 새 모임, resumeId면 고른 모임 재개
   @Post()
   @UseGuards(AdminGuard)
   async open(@Body() dto: OpenSessionDto): Promise<IApiResponse<ISession>> {
-    return { success: true, data: await this.sessionsService.open(dto.fresh === true, dto.label) };
+    return {
+      success: true,
+      data: await this.sessionsService.open(dto.fresh === true, dto.label, dto.resumeId),
+    };
   }
 
   // 모임 이름 바꾸기 (운영진 전용) — 동시에 연 모임을 구분하는 이름(여복·남복)
@@ -33,10 +36,10 @@ export class SessionsController {
     return { success: true, data: await this.sessionsService.updateLabel(id, dto.label) };
   }
 
-  // 오늘 종료한 모임 (운영진 전용) — 없으면 data null. [모임 시작] 전에 고르는 창을 띄울지 판단
+  // 오늘 종료한 모임 (운영진 전용) — 목록이 비어 있지 않으면 [모임 시작] 전에 고르는 창을 띄운다
   @Get('closed-today')
   @UseGuards(AdminGuard)
-  async getClosedToday(): Promise<IApiResponse<IClosedTodaySession | null>> {
+  async getClosedToday(): Promise<IApiResponse<IClosedTodayResponse>> {
     return { success: true, data: await this.sessionsService.getClosedToday() };
   }
 

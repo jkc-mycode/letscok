@@ -12,4 +12,9 @@ export class OpenSessionDto implements IOpenSessionDto {
   @IsString()
   @MaxLength(10, { message: '모임 이름은 10자까지예요.' })
   label?: string;
+
+  // 오늘 끝낸 모임 중 되살릴 것 — 여복·남복 중 하나만 실수로 끝낸 경우
+  @IsOptional()
+  @IsString()
+  resumeId?: string;
 }

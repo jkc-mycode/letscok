@@ -1,6 +1,6 @@
 'use client';
 
-import { IClosedTodaySession, IOpenSessionBrief, ISession } from '@letscok/shared-types';
+import { IClosedTodayResponse, IOpenSessionBrief, ISession } from '@letscok/shared-types';
 import Link from 'next/link';
 import { useState } from 'react';
 import { BirthdayCalendarModal } from '@/components/birthday-calendar';
@@ -12,7 +12,7 @@ import { InstallPrompt } from '@/components/install-prompt';
 import { Sheet } from '@/components/sheet';
 import { api } from '@/lib/api';
 import { ToastState } from '@/lib/use-toast';
-import { AnotherSessionSheet } from '@/components/admin/another-session';
+import { AnotherSessionSheet, closedRange } from '@/components/admin/another-session';
 import { MembersManagerModal } from '@/components/admin/members-manager';
 import { sessionName } from '@/components/session-switcher';
 
@@ -38,7 +38,7 @@ export function StartScreen({
   const [membersOpen, setMembersOpen] = useState(false);
   const [birthdayOpen, setBirthdayOpen] = useState(false);
   const [settlementOpen, setSettlementOpen] = useState(false); // 뒤풀이는 모임이 끝난(종료한) 뒤에 정산하는 경우가 많다
-  const [closedToday, setClosedToday] = useState<IClosedTodaySession | null>(null); // 오늘 이미 끝낸 모임 — 이어 할지 새로 할지 고른다
+  const [closedToday, setClosedToday] = useState<IClosedTodayResponse | null>(null); // 오늘 이미 끝낸 모임 — 어느 모임을 이어 할지, 새로 할지 고른다
   const [anotherOpen, setAnotherOpen] = useState(false); // 여복·남복처럼 모임 하나 더 열기
   const [entering, setEntering] = useState<string | null>(null); // 들어가는 중인 모임(보드를 읽는 동안)
   const enter = (id: string) => {
@@ -48,14 +48,19 @@ export function StartScreen({
   // 오늘 끝낸 모임이 없으면 바로 시작, 있으면 고르는 창을 띄운다
   const start = () =>
     void run(async () => {
-      const last = await api<IClosedTodaySession | null>('/sessions/closed-today', { admin: true });
-      if (last) setClosedToday(last);
+      const closed = await api<IClosedTodayResponse>('/sessions/closed-today', { admin: true });
+      if (closed?.sessions?.length) setClosedToday(closed); // 배포 사이 옛 서버는 목록 없이 답한다 — 그땐 지금처럼 바로 시작
       else await onEnter((await api<ISession>('/sessions', { method: 'POST', admin: true })).id);
     });
-  const open = (fresh: boolean) => {
+  // resumeId: 고른 모임 되살리기, 없으면 새 모임
+  const open = (resumeId?: string) => {
     setClosedToday(null);
     void run(async () => {
-      const session = await api<ISession>('/sessions', { method: 'POST', admin: true, ...(fresh && { body: { fresh: true } }) });
+      const session = await api<ISession>('/sessions', {
+        method: 'POST',
+        admin: true,
+        body: resumeId ? { resumeId } : { fresh: true },
+      });
       await onEnter(session.id);
     });
   };
@@ -136,7 +141,7 @@ export function StartScreen({
       {birthdayOpen && <BirthdayCalendarModal onClose={() => setBirthdayOpen(false)} />}
       {settlementOpen && <SettlementModal onClose={() => setSettlementOpen(false)} />}
       {closedToday && (
-        <SameDaySheet last={closedToday} busy={busy} onPick={open} onClose={() => setClosedToday(null)} />
+        <SameDaySheet closed={closedToday} busy={busy} onPick={open} onClose={() => setClosedToday(null)} />
       )}
       {anotherOpen && (
         <AnotherSessionSheet
@@ -152,49 +157,45 @@ export function StartScreen({
   );
 }
 
-// 같은 날 두 번째 모임 — 쉬었다 이어 하는지, 장소·모임원이 다른 새 모임인지 운영진이 고른다
+// 같은 날 두 번째 모임 — 쉬었다 이어 하는지(여복·남복이면 어느 쪽인지), 장소·모임원이 다른 새 모임인지 운영진이 고른다
 function SameDaySheet({
-  last,
+  closed,
   busy,
   onPick,
   onClose,
 }: {
-  last: IClosedTodaySession;
+  closed: IClosedTodayResponse;
   busy: boolean;
-  onPick: (fresh: boolean) => void;
+  onPick: (resumeId?: string) => void;
   onClose: () => void;
 }) {
-  const range = `${clock(last.session.openedAt)}~${last.session.closedAt ? clock(last.session.closedAt) : ''}`;
   return (
     <Sheet ariaLabel="오늘 모임 고르기" onClose={onClose} header={<h2 className="text-heading font-bold">오늘 끝낸 모임이 있어요</h2>}>
-      <p className="text-body-sm text-dim">
-        {range} 모임 · {last.attendeeCount}명 출석
-      </p>
+      {closed.sessions.map(({ session, attendeeCount }) => (
+        <button
+          key={session.id}
+          onClick={() => onPick(session.id)}
+          disabled={busy}
+          className="tap flex flex-col items-start gap-1 rounded-2xl bg-court px-4 py-3.5 text-left text-bg disabled:opacity-50"
+        >
+          <span className="text-body font-bold">{session.label ? `'${session.label}' 이어서 하기` : '이어서 하기'}</span>
+          <span className="text-body-sm">
+            {closedRange(session)} 모임 · {attendeeCount}명 출석. 출석과 게임 기록이 그대로 이어져요
+          </span>
+        </button>
+      ))}
       <button
-        onClick={() => onPick(false)}
-        disabled={busy}
-        className="tap flex flex-col items-start gap-1 rounded-2xl bg-court px-4 py-3.5 text-left text-bg disabled:opacity-50"
-      >
-        <span className="text-body font-bold">이어서 하기</span>
-        <span className="text-body-sm">방금 모임을 다시 열어요. 출석과 게임 기록이 그대로 이어져요</span>
-      </button>
-      <button
-        onClick={() => onPick(true)}
+        onClick={() => onPick()}
         disabled={busy}
         className="tap flex flex-col items-start gap-1 rounded-2xl bg-panel2 px-4 py-3.5 text-left disabled:opacity-50"
       >
         <span className="text-body font-bold">새 모임으로 시작</span>
         <span className="text-body-sm text-dim">
-          오늘 {last.sessionCountToday + 1}번째 모임으로 따로 기록해요. 출석은 처음부터 다시 받아요
+          오늘 {closed.sessionCountToday + 1}번째 모임으로 따로 기록해요. 출석은 처음부터 다시 받아요
         </span>
       </button>
     </Sheet>
   );
-}
-
-// "14:30" — 고르는 창의 모임 시간
-function clock(iso: string): string {
-  return new Date(iso).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 // "10월 7일 화요일" — 모임 시작 전 화면 머리

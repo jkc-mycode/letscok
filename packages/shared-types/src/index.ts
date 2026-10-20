@@ -116,9 +116,11 @@ export interface ISession {
 // 모임 시작 — 같은 날 종료한 모임이 있으면 기본은 그 모임을 다시 연다(실수 종료 복구).
 // fresh: true면 같은 날이어도 새 모임으로 시작(장소·모임원이 다른 두 번째 모임)
 // label: 다른 모임이 열려 있을 때 같이 열려면 필수(열린 모임끼리 겹치면 안 됨). 이때는 재개하지 않고 늘 새 모임
+// resumeId: 오늘 끝낸 모임 중 고른 것을 다시 연다 — 다른 모임이 열려 있어도 된다(이름은 label 또는 그 모임 이름)
 export interface IOpenSessionDto {
   fresh?: boolean;
   label?: string;
+  resumeId?: string;
 }
 
 // 모임 이름 바꾸기 (운영진 전용) — 빈 문자열이면 이름을 지운다
@@ -132,10 +134,15 @@ export interface IOpenSessionBrief {
   label: string | null;
 }
 
-// 오늘 종료한 모임 중 마지막 것 — 관제판이 [이어서 하기]/[새 모임] 고르는 창을 띄울지 판단 (운영진 전용)
+// 오늘 종료한 모임 하나 — 고르는 창에서 어느 모임을 되살릴지 보여 준다
 export interface IClosedTodaySession {
   session: ISession;
   attendeeCount: number; // 그 모임에 출석했던 인원 (고르는 창 안내용)
+}
+
+// 오늘 종료한 모임 목록 (운영진 전용) — 비어 있지 않으면 관제판이 [이어서 하기]/[새 모임] 고르는 창을 띄운다
+export interface IClosedTodayResponse {
+  sessions: IClosedTodaySession[]; // 늦게 끝난 순
   sessionCountToday: number; // 오늘 모임 수 — 새로 시작하면 이 다음 번째가 된다
 }
 

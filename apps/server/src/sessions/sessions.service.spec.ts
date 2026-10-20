@@ -104,23 +104,26 @@ describe('open — 같은 날 여러 모임', () => {
 });
 
 describe('getClosedToday', () => {
-  it('오늘 종료한 모임이 없으면 null', async () => {
-    expect(await service.getClosedToday()).toBeNull();
+  it('오늘 종료한 모임이 없으면 빈 목록', async () => {
+    expect((await service.getClosedToday()).sessions).toEqual([]);
     await service.open();
-    expect(await service.getClosedToday()).toBeNull(); // 진행 중은 해당 없음
+    expect((await service.getClosedToday()).sessions).toEqual([]); // 진행 중은 해당 없음
   });
 
-  it('마지막에 종료한 모임과 출석 인원, 오늘 모임 수를 준다', async () => {
+  it('오늘 종료한 모임을 늦게 끝난 순으로, 출석 인원·이름과 함께 준다', async () => {
     const first = await service.open();
     const member = await prisma.member.create({ data: { name: '김민수', grade: 'C' } });
     await prisma.attendance.create({ data: { sessionId: first.id, memberId: member.id } });
+    const men = await service.open(false, '남복');
     await service.close(first.id);
+    await service.close(men.id);
 
     const closed = await service.getClosedToday();
 
-    expect(closed?.session.id).toBe(first.id);
-    expect(closed?.attendeeCount).toBe(1);
-    expect(closed?.sessionCountToday).toBe(1);
+    expect(closed.sessions.map((c) => c.session.id)).toEqual([men.id, first.id]);
+    expect(closed.sessions.map((c) => c.attendeeCount)).toEqual([0, 1]);
+    expect(closed.sessions[0].session.label).toBe('남복');
+    expect(closed.sessionCountToday).toBe(2);
   });
 
   it('어제 종료한 모임은 해당 없음', async () => {
@@ -128,7 +131,56 @@ describe('getClosedToday', () => {
     await service.close(first.id);
     await prisma.session.update({ where: { id: first.id }, data: { date: new Date('2020-01-01') } });
 
-    expect(await service.getClosedToday()).toBeNull();
+    expect((await service.getClosedToday()).sessions).toEqual([]);
+  });
+});
+
+describe('open — 끝낸 모임 골라 다시 열기', () => {
+  it('두 모임이 끝났으면 먼저 끝난 쪽도 골라 되살린다', async () => {
+    const women = await service.open(false, '여복');
+    const men = await service.open(false, '남복');
+    await service.close(women.id); // 실수로 끝낸 쪽
+    await service.close(men.id);
+
+    const again = await service.open(false, undefined, women.id);
+
+    expect(again.id).toBe(women.id);
+    expect(again.status).toBe('OPEN');
+    expect(await prisma.session.count()).toBe(2);
+  });
+
+  it('다른 모임이 열려 있어도 끝낸 모임을 되살린다', async () => {
+    const women = await service.open(false, '여복');
+    await service.open(false, '남복');
+    await service.close(women.id);
+
+    const again = await service.open(false, undefined, women.id);
+
+    expect(again.id).toBe(women.id);
+    expect(again.label).toBe('여복');
+    expect(await prisma.session.count({ where: { status: 'OPEN' } })).toBe(2);
+  });
+
+  it('이름 없는 모임을 같이 되살리려면 이름을 정해야 하고, 정하면 그 이름으로', async () => {
+    const first = await service.open();
+    await service.close(first.id);
+    await service.open(true, '남복');
+
+    await expect(service.open(false, undefined, first.id)).rejects.toThrow(ConflictException);
+    await expect(service.open(false, '남복', first.id)).rejects.toThrow(ConflictException);
+    const again = await service.open(false, '여복', first.id);
+
+    expect(again.id).toBe(first.id);
+    expect(again.label).toBe('여복');
+  });
+
+  it('열린 모임·어제 모임은 되살리지 않는다', async () => {
+    const open = await service.open();
+    await expect(service.open(false, undefined, open.id)).rejects.toThrow(NotFoundException);
+
+    await service.close(open.id);
+    await prisma.session.update({ where: { id: open.id }, data: { date: new Date('2020-01-01') } });
+    await expect(service.open(false, undefined, open.id)).rejects.toThrow(NotFoundException);
   });
 });
 

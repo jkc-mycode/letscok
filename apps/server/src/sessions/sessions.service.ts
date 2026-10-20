@@ -3,12 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { IClosedTodaySession, ISession, ISessionSnapshot } from '@letscok/shared-types';
+import { IClosedTodayResponse, ISession, ISessionSnapshot } from '@letscok/shared-types';
 import { toSessionResponse } from '../common/mappers/entity.mappers';
 import { generateCheckInCode } from '../common/utils/code.util';
 import { todayKst } from '../common/utils/date.util';
 import { lockKey } from '../common/utils/lock.util';
-import { Prisma } from '../generated/prisma/client';
+import { Prisma, Session } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 
@@ -29,20 +29,44 @@ export class SessionsService {
     });
   }
 
-  // 관제판이 [모임 시작] 전에 묻는다 — 있으면 [이어서 하기]/[새 모임] 고르는 창
-  async getClosedToday(): Promise<IClosedTodaySession | null> {
-    const last = await this.findLastClosedToday();
-    if (!last) return null;
-    const [attendeeCount, sessionCountToday] = await Promise.all([
-      this.prisma.attendance.count({ where: { sessionId: last.id } }),
-      this.prisma.session.count({ where: { date: last.date } }),
+  // 관제판이 [모임 시작]·[모임 하나 더 열기] 전에 묻는다 — 있으면 어느 모임을 이어 할지 고르는 창
+  async getClosedToday(): Promise<IClosedTodayResponse> {
+    const [closed, sessionCountToday] = await Promise.all([
+      this.prisma.session.findMany({
+        where: { date: todayKst(), status: 'CLOSED' },
+        orderBy: { closedAt: 'desc' },
+        include: { _count: { select: { attendances: true } } },
+      }),
+      this.prisma.session.count({ where: { date: todayKst() } }),
     ]);
-    return { session: toSessionResponse(last), attendeeCount, sessionCountToday };
+    return {
+      sessions: closed.map(({ _count, ...session }) => ({
+        session: toSessionResponse(session),
+        attendeeCount: _count.attendances,
+      })),
+      sessionCountToday,
+    };
+  }
+
+  // 끝낸 모임 다시 열기 — 출석·게임 기록은 그대로 두고 상태만 되돌린다
+  // 코드는 재발급하지 않음 — 이미 공지한 코드·체크인한 인원과의 연속성 유지
+  private reopen(tx: Prisma.TransactionClient, closed: Session, label: string | null) {
+    return tx.session.update({
+      where: { id: closed.id },
+      data: {
+        status: 'OPEN',
+        closedAt: null,
+        ...(label && { label }),
+        // 과거(코드 도입 전) 세션을 재개하면 코드가 없으므로 이때 보충 발급
+        ...(closed.checkInCode ? {} : { checkInCode: generateCheckInCode() }),
+      },
+    });
   }
 
   // fresh: 같은 날 종료한 모임이 있어도 새 모임으로 시작 (장소·모임원이 다른 두 번째 모임)
   // label: 여복·남복처럼 같은 체육관에서 코트를 나눠 동시에 여는 모임 — 열린 모임이 있으면 이름이 있어야 같이 연다
-  async open(fresh = false, rawLabel?: string): Promise<ISession> {
+  // resumeId: 오늘 끝낸 모임 중 고른 것을 다시 연다 — 여복·남복 중 하나만 실수로 끝냈을 때
+  async open(fresh = false, rawLabel?: string, resumeId?: string): Promise<ISession> {
     const label = rawLabel?.trim() || null;
     const result = await this.prisma.$transaction(async (tx) => {
       // 모임 열기를 한 줄로 — [모임 시작]을 빠르게 두 번 누르면 둘 다 '열린 모임 없음'을 보고 이름 없는 모임을 둘 만들던 틈
@@ -51,6 +75,28 @@ export class SessionsService {
         where: { status: 'OPEN' },
         select: { label: true },
       });
+
+      if (resumeId) {
+        const target = await tx.session.findFirst({
+          where: { id: resumeId, date: todayKst(), status: 'CLOSED' },
+        });
+        if (!target) {
+          throw new NotFoundException('오늘 끝낸 모임이 아니에요. 화면을 새로고침해 주세요.');
+        }
+        // 다른 모임이 열려 있으면 칩으로 구분할 이름이 있어야 한다 — 새로 정한 이름이 없으면 원래 이름으로
+        const name = label ?? target.label;
+        if (openSessions.length > 0) {
+          if (!name) {
+            throw new ConflictException('같이 열려면 모임 이름을 정해주세요.');
+          }
+          if (openSessions.some((s) => s.label === name)) {
+            throw new ConflictException(`'${name}' 모임이 이미 열려 있어요. 다른 이름을 정해주세요.`);
+          }
+        }
+        const reopened = await this.reopen(tx, target, label);
+        return { session: reopened, reopened: true, alongside: openSessions.length > 0 };
+      }
+
       if (openSessions.length > 0) {
         // 이름 없이 누른 [모임 시작]은 실수로 두 번 누른 것일 수 있다 — 동시 진행은 이름을 정해야만
         if (!label) {
@@ -61,22 +107,12 @@ export class SessionsService {
         }
       }
 
-      // 같은 날 종료했던 세션이 있으면 새로 만들지 않고 재개
+      // 고르지 않고 누른 [모임 시작](옛 화면)은 같은 날 마지막에 끝낸 모임을 재개
       // (실수로 종료한 경우 출석·게임 횟수가 초기화되지 않도록)
-      // 코드는 재발급하지 않음 — 이미 공지한 코드·체크인한 인원과의 연속성 유지
-      // 다른 모임과 같이 여는 건 늘 새 모임 — 끝낸 모임을 잘못 되살리지 않게
+      // 다른 모임과 같이 여는 건 고르지 않았으면 늘 새 모임 — 끝낸 모임을 잘못 되살리지 않게
       const closedToday = fresh || openSessions.length > 0 ? null : await this.findLastClosedToday(tx);
       if (closedToday) {
-        const reopened = await tx.session.update({
-          where: { id: closedToday.id },
-          data: {
-            status: 'OPEN',
-            closedAt: null,
-            ...(label && { label }),
-            // 과거(코드 도입 전) 세션을 재개하면 코드가 없으므로 이때 보충 발급
-            ...(closedToday.checkInCode ? {} : { checkInCode: generateCheckInCode() }),
-          },
-        });
+        const reopened = await this.reopen(tx, closedToday, label);
         return { session: reopened, reopened: true, alongside: false };
       }
 
