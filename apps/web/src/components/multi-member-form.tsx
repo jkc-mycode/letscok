@@ -2,11 +2,12 @@
 
 import { Gender, Grade, IMember } from '@letscok/shared-types';
 import { useEffect, useRef, useState } from 'react';
-import { api, ApiError } from '@/lib/api';
+import { ApiError } from '@/lib/api';
 import { GenderMarker, GradeBadge } from '@/components/badges';
 import { ClearableInput } from '@/components/clearable-input';
 import { AlertIcon } from '@/components/icons';
 import { formatBirthInput, parseBirthDate } from '@/lib/birth-input';
+import { useMemberSearch } from '@/lib/use-member-search';
 
 // 여러 명 신규 등록 폼 — 한 사람씩 카드, [+ 한 명 더]로 카드를 늘려 한 번에 등록한다
 // 수동 체크인(등록+체크인, 기본 게스트)과 모임원 관리(등록만, 기본 모임원)가 같이 쓴다
@@ -206,7 +207,7 @@ function RowCard({
   pickLabel?: string;
   onPick?: (member: IMember) => void;
 }) {
-  const matches = useSimilarMembers(row.name);
+  const matches = useMemberSearch(row.name, { admin: true }); // 이미 등록된 비슷한 이름(같거나 포함, 삭제 제외) — 운영진 화면이라 전체 생년월일
   const trimmed = row.name.trim();
   const exact = matches.filter((m) => m.name === trimmed);
   const hasExact = exact.length > 0;
@@ -373,25 +374,3 @@ function RowCard({
   );
 }
 
-// 이름을 치는 동안 이미 등록된 비슷한 이름(같거나 포함, 삭제 제외)을 찾는다 — 300ms 멈추면 한 번
-function useSimilarMembers(name: string): IMember[] {
-  const [matches, setMatches] = useState<IMember[]>([]);
-  useEffect(() => {
-    const trimmed = name.trim();
-    if (!trimmed) {
-      setMatches([]);
-      return;
-    }
-    let alive = true;
-    const timer = setTimeout(() => {
-      api<IMember[]>(`/members/search?name=${encodeURIComponent(trimmed)}`, { admin: true }) // 운영진 화면 전용 폼 — 전체 생년월일
-        .then((list) => alive && setMatches(list))
-        .catch(() => alive && setMatches([]));
-    }, 300);
-    return () => {
-      alive = false;
-      clearTimeout(timer);
-    };
-  }, [name]);
-  return matches;
-}

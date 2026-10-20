@@ -14,6 +14,7 @@ import { SparkleIcon } from '@/components/icons';
 import { AiThinking } from '@/components/logo-loader';
 import { api, ApiError } from '@/lib/api';
 import { shrinkImage } from '@/lib/image';
+import { useMemberSearch } from '@/lib/use-member-search';
 
 // AI 체크인 — 참석 신청 목록 캡처나 자연어 명령으로 확실한 사람만 자동 체크인한다
 // 판단(누구를 체크인할지)은 서버의 결정적 규칙이 하고, 여기선 결과를 보여주고 남은 사람을 버튼으로 처리하게 돕는다
@@ -387,27 +388,9 @@ function NotFoundRow({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<IMember[]>([]);
+  const results = useMemberSearch(query, { admin: true, enabled: open });
   const [linked, setLinked] = useState<IMember | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const trimmed = query.trim();
-    if (!open || !trimmed) {
-      setResults([]);
-      return;
-    }
-    let alive = true;
-    const timer = setTimeout(() => {
-      api<IMember[]>(`/members/search?name=${encodeURIComponent(trimmed)}`, { admin: true })
-        .then((list) => alive && setResults(list))
-        .catch(() => alive && setResults([]));
-    }, 300);
-    return () => {
-      alive = false;
-      clearTimeout(timer);
-    };
-  }, [open, query]);
 
   if (linked) {
     return (

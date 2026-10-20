@@ -1,7 +1,7 @@
 'use client';
 
 import { IAttendance, IMember } from '@letscok/shared-types';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AiCheckInPanel } from '@/components/ai-check-in-panel';
 import { Sheet } from '@/components/sheet';
 import { ClearableInput } from '@/components/clearable-input';
@@ -9,6 +9,7 @@ import { GenderMarker, GradeBadge } from '@/components/badges';
 import { SearchIcon } from '@/components/icons';
 import { MultiMemberForm, NewMemberBody } from '@/components/multi-member-form';
 import { api, ApiError } from '@/lib/api';
+import { useMemberSearch } from '@/lib/use-member-search';
 
 // 출석 추가 시트 — 이름 검색으로 출석, 신규 등록, AI 출석(소모임 캡처)
 
@@ -26,28 +27,13 @@ export function ManualCheckInModal({
   onClose: () => void;
 }) {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<IMember[]>([]);
+  const results = useMemberSearch(query, { admin: true });
   // 선택 목록은 검색어가 바뀌어도 유지돼야 해서 결과 배열이 아닌 별도 Map으로 들고 간다
   const [selected, setSelected] = useState<Map<string, IMember>>(new Map());
   const [lastDone, setLastDone] = useState<string | null>(null); // 연속 입력용 직전 완료 표시
   const [failed, setFailed] = useState<{ name: string; message: string }[]>([]);
   // 신규 등록 폼 — 여러 명을 한 번에(공용 MultiMemberForm). 현장 대리 등록은 게스트가 흔해서 기본 게스트
   const [regOpen, setRegOpen] = useState(false);
-
-  // 입력 후 300ms 조용하면 검색 (타이핑마다 요청하지 않도록 — /checkin과 동일 패턴)
-  useEffect(() => {
-    const trimmed = query.trim();
-    if (!trimmed) {
-      setResults([]);
-      return;
-    }
-    const timer = setTimeout(() => {
-      void api<IMember[]>(`/members/search?name=${encodeURIComponent(trimmed)}`, { admin: true })
-        .then(setResults)
-        .catch(() => setResults([]));
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [query]);
 
   // 현재 세션 출석과 대조 — 이미 출석 중이면 탭 자체를 막아 쓸모없는 409를 없앤다
   const statusByMemberId = useMemo(

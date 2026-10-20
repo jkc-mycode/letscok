@@ -9,7 +9,7 @@
 
 import { IAttendance, IMember } from '@letscok/shared-types';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { GenderMarker, GradeBadge, Toast } from '@/components/badges';
 import { ClearableInput } from '@/components/clearable-input';
 import { ConnectionError } from '@/components/connection-error';
@@ -19,6 +19,7 @@ import { LogoLoader } from '@/components/logo-loader';
 import { sessionName } from '@/components/session-switcher';
 import { api, ApiError } from '@/lib/api';
 import { saveMemberId } from '@/lib/member';
+import { useMemberSearch } from '@/lib/use-member-search';
 import { useSnapshot } from '@/lib/use-snapshot';
 import { useToast } from '@/lib/use-toast';
 
@@ -194,24 +195,9 @@ function SearchPanel({
   onSelect: (member: IMember, consent: boolean) => Promise<void>;
 }) {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<IMember[]>([]);
+  const results = useMemberSearch(query);
   const [selected, setSelected] = useState<IMember | null>(null);
   const [consent, setConsent] = useState(false);
-
-  // 입력 후 300ms 조용하면 검색 (타이핑마다 요청하지 않도록)
-  useEffect(() => {
-    const trimmed = query.trim();
-    if (!trimmed) {
-      setResults([]);
-      return;
-    }
-    const timer = setTimeout(() => {
-      void api<IMember[]>(`/members/search?name=${encodeURIComponent(trimmed)}`)
-        .then(setResults)
-        .catch(() => setResults([]));
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [query]);
 
   // 운영진 대리 등록분만 동의를 받는다 — 한 번 동의하면 다음 모임부턴 안 뜬다
   const needsConsent = selected !== null && !selected.consented;
