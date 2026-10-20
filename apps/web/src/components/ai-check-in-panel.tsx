@@ -279,6 +279,14 @@ function ResultCard({
       {result.alreadyIn.length > 0 && (
         <p className="mt-2 text-xs text-dim">이미 출석: {result.alreadyIn.map((m) => m.name).join(', ')}</p>
       )}
+      {/* 같이 연 다른 모임(여복·남복)에 출석 중 — 체크인하지 않았다. 옮기려면 그 모임에서 퇴장부터 */}
+      {(result.inOtherSession ?? []).length > 0 && (
+        <p className="mt-2 text-xs whitespace-normal text-coral">
+          다른 모임에 출석 중이라 출석 처리하지 않았어요:{' '}
+          {result.inOtherSession.map((m) => (m.sessionLabel ? `${m.name}('${m.sessionLabel}')` : m.name)).join(', ')}
+          {' '}— 옮기려면 그 모임에서 퇴장한 뒤 다시 출석해 주세요
+        </p>
+      )}
       {/* 못 찾은 표기(별명 등) — 모임원을 찾아 연결하면 출석 + 다음부터 바로 */}
       {result.notFound.map((item) => (
         <NotFoundRow key={item.name} item={item} present={present} onLink={onLink} />

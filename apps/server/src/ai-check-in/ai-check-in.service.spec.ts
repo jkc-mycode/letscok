@@ -1,4 +1,4 @@
-import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { AttendancesService } from '../attendances/attendances.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from '../push/push.service';
@@ -82,6 +82,23 @@ describe('성+이름 (full)', () => {
     expect(result.checkedIn).toEqual([{ memberId: a.id, name: '김하나' }]);
     expect(result.alreadyIn).toEqual([{ memberId: b.id, name: '이두울' }]);
     expect(await attendedIds(session.id)).toEqual([a.id, b.id].sort());
+  });
+
+  it('같이 연 다른 모임에 출석 중이면 이미 출석이 아니라 다른 모임 칸으로, 안내도 따로', async () => {
+    const women = await prisma.session.create({ data: { date: new Date('2026-01-01'), label: '여복' } });
+    const men = await prisma.session.create({ data: { date: new Date('2026-01-01'), label: '남복' } });
+    const here = await seedMember('김하나');
+    const there = await seedMember('이두울');
+    await attendancesService.manualCheckIn(women.id, here.id);
+    await attendancesService.manualCheckIn(men.id, there.id);
+
+    const result = await service.applyNames(women.id, [full('김하나'), full('이두울')]);
+
+    expect(result.alreadyIn).toEqual([{ memberId: here.id, name: '김하나' }]);
+    expect(result.inOtherSession).toEqual([{ memberId: there.id, name: '이두울', sessionLabel: '남복' }]);
+    expect(result.checkedIn).toEqual([]);
+    expect(result.message).toContain("이두울('남복')은(는) 다른 모임에 출석 중");
+    expect(await attendedIds(women.id)).toEqual([here.id]);
   });
 
   it('동명이인이면 체크인하지 않고 후보로 돌려준다', async () => {
@@ -313,6 +330,7 @@ describe('checkInFromCommand (자연어 명령)', () => {
     expect(result).toEqual({
       checkedIn: [],
       alreadyIn: [],
+      inOtherSession: [],
       notFound: [],
       ambiguous: [],
       message: UNSUPPORTED_COMMAND_MESSAGE,
@@ -359,6 +377,17 @@ describe('소모임 이름 기억', () => {
     expect(result.alreadyIn).toEqual([]);
     expect(result.ambiguous).toEqual([]);
     expect(result.notFound).toEqual([]);
+  });
+
+  it('다른 모임에 출석 중인 사람과 연결하면 연결만 저장하고 그 모임 안내로 막는다', async () => {
+    const women = await prisma.session.create({ data: { date: new Date('2026-01-01'), label: '여복' } });
+    const men = await prisma.session.create({ data: { date: new Date('2026-01-01'), label: '남복' } });
+    const kim = await seedMember('김강민');
+    await attendancesService.manualCheckIn(men.id, kim.id);
+
+    await expect(service.link(women.id, { memberId: kim.id, alias: '강민' })).rejects.toThrow(ConflictException);
+    expect(await prisma.memberAlias.findUnique({ where: { alias: '강민' } })).toMatchObject({ memberId: kim.id });
+    expect(await attendedIds(women.id)).toEqual([]);
   });
 
   it('같은 표기를 다른 사람과 다시 연결하면 새 사람으로 바뀌고, 삭제된 회원을 가리키면 무시', async () => {

@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  IAiCheckInElsewhere,
   IAiCheckInLinkDto,
   IAiCheckInLinkResult,
   IAiCheckInMember,
@@ -133,7 +134,7 @@ export class AiCheckInService {
       FALLBACK,
     );
     if (command.action !== 'check_in') {
-      return { checkedIn: [], alreadyIn: [], notFound: [], ambiguous: [], message: UNSUPPORTED_COMMAND_MESSAGE };
+      return { checkedIn: [], alreadyIn: [], inOtherSession: [], notFound: [], ambiguous: [], message: UNSUPPORTED_COMMAND_MESSAGE };
     }
     return this.applyNames(sessionId, command.targets.slice(0, MAX_NAMES));
   }
@@ -150,6 +151,7 @@ export class AiCheckInService {
 
     const checkedIn: IAiCheckInMember[] = [];
     const alreadyIn: IAiCheckInMember[] = [];
+    const inOtherSession: IAiCheckInElsewhere[] = [];
     const notFound: IAiCheckInResult['notFound'] = [];
     const ambiguous: IAiCheckInResult['ambiguous'] = [];
     const seen = new Set<string>(); // 여러 장에 같은 사람이 찍혀도 한 번만
@@ -166,7 +168,7 @@ export class AiCheckInService {
       if (linked) {
         if (handledMemberIds.has(linked.id)) continue;
         handledMemberIds.add(linked.id);
-        await this.checkIn(sessionId, linked, checkedIn, alreadyIn);
+        await this.checkIn(sessionId, linked, checkedIn, alreadyIn, inOtherSession);
         continue;
       }
 
@@ -195,7 +197,7 @@ export class AiCheckInService {
           const member = sameName[0];
           if (handledMemberIds.has(member.id)) continue;
           handledMemberIds.add(member.id);
-          await this.checkIn(sessionId, member, checkedIn, alreadyIn);
+          await this.checkIn(sessionId, member, checkedIn, alreadyIn, inOtherSession);
           continue;
         }
         const candidates = [...sameName, ...bySurname];
@@ -213,7 +215,7 @@ export class AiCheckInService {
         const member = narrowed[0];
         if (handledMemberIds.has(member.id)) continue;
         handledMemberIds.add(member.id);
-        await this.checkIn(sessionId, member, checkedIn, alreadyIn);
+        await this.checkIn(sessionId, member, checkedIn, alreadyIn, inOtherSession);
       } else {
         // 여러 명이 남았거나, 표기(생년·게스트)가 회원 정보와 어긋나 0명이 됐다 — 확실하지 않으니 후보로
         const candidates = narrowed.length > 0 ? narrowed : exact;
@@ -222,7 +224,7 @@ export class AiCheckInService {
       }
     }
 
-    const result = { checkedIn, alreadyIn, notFound, ambiguous };
+    const result = { checkedIn, alreadyIn, inOtherSession, notFound, ambiguous };
     return { ...result, message: this.buildMessage(result) };
   }
 
@@ -237,7 +239,6 @@ export class AiCheckInService {
     return out;
   }
 
-  // 기존 수동 체크인을 그대로 재사용 — 409(이미 출석)는 실패가 아니라 정보로 분류
   // 소모임 표기를 회원과 연결하고 출석 — 질문 카드에서 고르거나 못 찾은 별명을 직접 연결할 때
   // 같은 표기가 다른 사람을 가리키고 있었으면 새로 고른 사람으로 바꾼다(운영진이 방금 확인한 쪽이 맞다)
   async link(sessionId: string, dto: IAiCheckInLinkDto): Promise<IAiCheckInLinkResult> {
@@ -251,25 +252,44 @@ export class AiCheckInService {
       create: { alias, memberId: member.id },
       update: { memberId: member.id },
     });
-    const checkedIn: IAiCheckInMember[] = [];
-    const alreadyIn: IAiCheckInMember[] = [];
-    await this.checkIn(sessionId, member, checkedIn, alreadyIn);
-    return { member: { memberId: member.id, name: member.name }, alreadyIn: alreadyIn.length > 0 };
+    try {
+      await this.attendancesService.manualCheckIn(sessionId, member.id);
+      return { member: { memberId: member.id, name: member.name }, alreadyIn: false };
+    } catch (error) {
+      if (!(error instanceof ConflictException)) throw error;
+      // 다른 모임에 출석 중이면 연결만 저장하고 그 안내('남복' 모임에 출석 중)를 그대로 — 카드가 성공처럼 접히지 않게
+      if (await this.otherSessionOf(sessionId, member.id)) throw error;
+      return { member: { memberId: member.id, name: member.name }, alreadyIn: true };
+    }
   }
 
+  // 기존 수동 체크인을 그대로 재사용 — 409는 실패가 아니라 정보로 분류
+  // 409는 이 모임에 이미 있거나, 같이 연 다른 모임(여복·남복)에 있을 때 — 운영진이 할 일이 달라 나눠 담는다
   private async checkIn(
     sessionId: string,
     member: Member,
     checkedIn: IAiCheckInMember[],
     alreadyIn: IAiCheckInMember[],
+    inOtherSession: IAiCheckInElsewhere[],
   ) {
     try {
       await this.attendancesService.manualCheckIn(sessionId, member.id);
       checkedIn.push({ memberId: member.id, name: member.name });
     } catch (error) {
       if (!(error instanceof ConflictException)) throw error;
-      alreadyIn.push({ memberId: member.id, name: member.name });
+      const other = await this.otherSessionOf(sessionId, member.id);
+      if (other) inOtherSession.push({ memberId: member.id, name: member.name, sessionLabel: other.label });
+      else alreadyIn.push({ memberId: member.id, name: member.name });
     }
+  }
+
+  // 이 사람이 지금 출석 중인 다른 열린 모임 — 체크인과 같은 조건(퇴장 전, 열린 모임)
+  private async otherSessionOf(sessionId: string, memberId: string) {
+    const elsewhere = await this.prisma.attendance.findFirst({
+      where: { memberId, sessionId: { not: sessionId }, status: { not: 'LEFT' }, session: { status: 'OPEN' } },
+      select: { session: { select: { label: true } } },
+    });
+    return elsewhere?.session ?? null;
   }
 
   // 안내 문장은 서버가 정해진 틀로 만든다 — AI가 문장을 쓰지 않으므로 체크인 외 응답이 나올 수 없다
@@ -277,6 +297,12 @@ export class AiCheckInService {
     const parts: string[] = [];
     if (result.checkedIn.length > 0) parts.push(`${result.checkedIn.length}명 출석 처리했어요.`);
     if (result.alreadyIn.length > 0) parts.push(`${result.alreadyIn.length}명은 이미 출석 중이에요.`);
+    if (result.inOtherSession.length > 0) {
+      const names = result.inOtherSession
+        .map((m) => (m.sessionLabel ? `${m.name}('${m.sessionLabel}')` : m.name))
+        .join(', ');
+      parts.push(`${names}은(는) 다른 모임에 출석 중이라 출석 처리하지 않았어요. 옮기려면 그 모임에서 퇴장한 뒤 다시 출석해주세요.`);
+    }
     if (result.notFound.length > 0) parts.push(`${result.notFound.map((n) => n.name).join(', ')}은(는) 못 찾았어요.`);
     if (result.ambiguous.length > 0) {
       parts.push(`${result.ambiguous.map((a) => a.name).join(', ')}은(는) 누구인지 확실하지 않아요.`);

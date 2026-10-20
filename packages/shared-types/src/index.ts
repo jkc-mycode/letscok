@@ -502,6 +502,11 @@ export interface IAiCheckInMember {
   name: string;
 }
 
+// 여복·남복처럼 같이 연 다른 모임에 출석 중이라 체크인하지 못한 사람 — 그 모임에서 퇴장해야 옮길 수 있다
+export interface IAiCheckInElsewhere extends IAiCheckInMember {
+  sessionLabel: string | null; // 출석 중인 모임 이름(여복·남복). 이름 없이 연 모임이면 null
+}
+
 // 소모임 표기를 회원과 연결하고 출석 — 다음부터 같은 표기는 묻지 않고 바로 출석
 export interface IAiCheckInLinkDto {
   memberId: string;
@@ -532,7 +537,8 @@ export type AiCheckInAmbiguousReason = 'GIVEN_ONLY' | 'SAME_NAME' | 'HINT_MISMAT
 
 export interface IAiCheckInResult {
   checkedIn: IAiCheckInMember[]; // 이번에 체크인됨
-  alreadyIn: IAiCheckInMember[]; // 이미 출석 중 — 실패가 아니라 정보
+  alreadyIn: IAiCheckInMember[]; // 이미 이 모임에 출석 중 — 실패가 아니라 정보
+  inOtherSession: IAiCheckInElsewhere[]; // 같이 연 다른 모임에 출석 중 — 체크인하지 않았다
   notFound: { name: string; alias: string }[]; // 명단에서 못 찾은 표기 — name=캡처 원문, alias=기억할 때 쓰는 정규화 표기
   ambiguous: { name: string; alias: string; reason: AiCheckInAmbiguousReason; candidates: IMember[] }[]; // 동명이인·이름만 표기 — 운영진이 고른다
   message: string; // 서버가 정해진 틀로 조립한 안내 문장 (AI가 쓴 문장이 아님)
