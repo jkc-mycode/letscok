@@ -18,6 +18,9 @@ const realtimeStub = {
 } as unknown as RealtimeService;
 
 const prisma = new PrismaService();
+
+// 동시 요청 시험 전에 DB 연결을 여러 개 미리 열어 둔다 — 안 그러면 두 번째 요청이 새 연결을 맺는 사이 첫 요청이 끝나 경쟁이 재현되지 않는다
+const warmPool = () => Promise.all(Array.from({ length: 4 }, () => prisma.$executeRaw`SELECT pg_sleep(0.05)`));
 const sessionsService = new SessionsService(prisma, realtimeStub);
 // 알림은 호출 여부만 본다 — 문구·발송은 push.service.spec이 검증
 const pushStub = { notifyShuttleConfirmed: jest.fn(), callMember: jest.fn() };
@@ -488,5 +491,35 @@ describe('동시에 연 모임 (여복·남복) — 한 번에 한 모임만', (
     const attendance = await service.manualCheckIn(open.id, member.id);
 
     expect(attendance.sessionId).toBe(open.id);
+  });
+
+  it('두 모임에 동시에 넣어도 한 모임에만 출석된다 (본인 체크인과 운영진 수동 체크인이 겹친 경우)', async () => {
+    const women = await seedSession();
+    const men = await seedSession();
+    const member = await seedMember();
+
+    await warmPool();
+    const results = await Promise.allSettled([
+      service.manualCheckIn(women.id, member.id),
+      service.manualCheckIn(men.id, member.id),
+    ]);
+
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.find((r) => r.status === 'rejected')?.reason).toBeInstanceOf(ConflictException);
+    expect(await prisma.attendance.count({ where: { memberId: member.id } })).toBe(1);
+  });
+
+  it('같은 모임에 동시에 두 번 넣으면 하나는 409 (DB 오류 500이 아니라)', async () => {
+    const session = await seedSession();
+    const member = await seedMember();
+
+    await warmPool();
+    const results = await Promise.allSettled([
+      service.manualCheckIn(session.id, member.id),
+      service.manualCheckIn(session.id, member.id),
+    ]);
+
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.find((r) => r.status === 'rejected')?.reason).toBeInstanceOf(ConflictException);
   });
 });

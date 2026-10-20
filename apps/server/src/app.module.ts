@@ -2,11 +2,12 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
+import { SentryModule } from '@sentry/nestjs/setup';
 import { AiCheckInModule } from './ai-check-in/ai-check-in.module';
 import { AiCommandModule } from './ai-command/ai-command.module';
 import { AttendancesModule } from './attendances/attendances.module';
 import { AuthController } from './auth/auth.controller';
+import { AppExceptionFilter } from './common/filters/app-exception.filter';
 import { CourtsModule } from './courts/courts.module';
 import { GamesModule } from './games/games.module';
 import { HealthController } from './health/health.controller';
@@ -46,8 +47,8 @@ import { EntryFeesModule } from './entry-fees/entry-fees.module';
   ],
   controllers: [HealthController, AuthController],
   providers: [
-    // 예상 밖 예외(500대)만 Sentry로 보고 — HttpException(우리의 4xx 정상 흐름)은 미전송
-    { provide: APP_FILTER, useClass: SentryGlobalFilter },
+    // 예상 밖 예외(500대)만 Sentry로 보고 — HttpException(우리의 4xx 정상 흐름)은 미전송. 고유 제약 위반은 409로
+    { provide: APP_FILTER, useClass: AppExceptionFilter },
     { provide: APP_GUARD, useClass: ThrottlerGuard }, // 모든 HTTP 요청에 rate limit 적용
   ],
 })

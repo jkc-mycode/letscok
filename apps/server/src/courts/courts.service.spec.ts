@@ -7,6 +7,9 @@ import { CourtsService } from './courts.service';
 // 코트 번호 바꾸기 — 실제 Prisma+테스트 DB로 고유 번호 규칙을 본다
 const realtimeStub = { broadcastSnapshot: () => undefined } as unknown as RealtimeService;
 const prisma = new PrismaService();
+
+// 동시 요청 시험 전에 DB 연결을 여러 개 미리 열어 둔다 — 안 그러면 두 번째 요청이 새 연결을 맺는 사이 첫 요청이 끝나 경쟁이 재현되지 않는다
+const warmPool = () => Promise.all(Array.from({ length: 4 }, () => prisma.$executeRaw`SELECT pg_sleep(0.05)`));
 const service = new CourtsService(prisma, new SessionsService(prisma, realtimeStub), realtimeStub);
 
 const seedSession = () => prisma.session.create({ data: { date: new Date('2026-01-01'), checkInCode: '0101' } });
@@ -89,5 +92,20 @@ describe('동시에 연 모임 (여복·남복) — 코트 번호 겹침', () =>
 
     expect((await service.register(men.id, { courtNo: 3 })).courtNo).toBe(3);
     expect((await service.register(men.id, { courtNo: 4 })).courtNo).toBe(4);
+  });
+
+  it('두 모임이 같은 번호를 동시에 추가해도 한 모임만 갖는다', async () => {
+    const women = await seedSession();
+    const men = await seedSession();
+
+    await warmPool();
+    const results = await Promise.allSettled([
+      service.register(women.id, { courtNo: 3 }),
+      service.register(men.id, { courtNo: 3 }),
+    ]);
+
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.find((r) => r.status === 'rejected')?.reason).toBeInstanceOf(ConflictException);
+    expect(await prisma.court.count({ where: { courtNo: 3, deletedAt: null } })).toBe(1);
   });
 });

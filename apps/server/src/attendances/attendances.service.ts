@@ -9,6 +9,7 @@ import {
 import { IAttendance, IPushCallResult } from '@letscok/shared-types';
 import { toAttendanceResponse } from '../common/mappers/entity.mappers';
 import { createCooldown } from '../common/utils/cooldown.util';
+import { lockKey } from '../common/utils/lock.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from '../push/push.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -127,44 +128,46 @@ export class AttendancesService {
       throw new NotFoundException('등록되지 않은 모임원입니다.');
     }
 
-    // 여복·남복처럼 동시에 연 모임 — 한 사람이 두 보드에 동시에 잡히지 않게 한 번에 한 모임만
-    const elsewhere = await this.prisma.attendance.findFirst({
-      where: { memberId, sessionId: { not: sessionId }, status: { not: 'LEFT' }, session: { status: 'OPEN' } },
-      select: { session: { select: { label: true } } },
-    });
-    if (elsewhere) {
-      const where = elsewhere.session.label ? `'${elsewhere.session.label}'` : '다른';
-      throw new ConflictException(`${member.name} 님은 ${where} 모임에 출석 중이에요. 그 모임에서 퇴장한 뒤 들어와 주세요.`);
-    }
+    const attendance = await this.prisma.$transaction(async (tx) => {
+      // 같은 사람의 체크인을 한 줄로 — 본인 체크인과 운영진 수동 체크인이 겹치면 둘 다 아래 검사를 통과하던 틈
+      await lockKey(tx, `member:${memberId}`);
 
-    const existing = await this.prisma.attendance.findUnique({
-      where: { sessionId_memberId: { sessionId, memberId } },
-      include: { member: true },
-    });
-
-    // 첫 체크인
-    if (!existing) {
-      const attendance = await this.prisma.attendance.create({
-        data: { sessionId, memberId },
-        include: { member: true },
+      // 여복·남복처럼 동시에 연 모임 — 한 사람이 두 보드에 동시에 잡히지 않게 한 번에 한 모임만
+      const elsewhere = await tx.attendance.findFirst({
+        where: { memberId, sessionId: { not: sessionId }, status: { not: 'LEFT' }, session: { status: 'OPEN' } },
+        select: { session: { select: { label: true } } },
       });
-      this.realtime.broadcastSnapshot(sessionId);
-      return toAttendanceResponse(attendance);
-    }
+      if (elsewhere) {
+        const where = elsewhere.session.label ? `'${elsewhere.session.label}'` : '다른';
+        throw new ConflictException(`${member.name} 님은 ${where} 모임에 출석 중이에요. 그 모임에서 퇴장한 뒤 들어와 주세요.`);
+      }
 
-    // 재입장 (확정 정책): 새 행을 만들지 않고 기존 출석을 대기로 복귀
-    // gamesPlayed는 하루 누적이므로 그대로 유지, 대기 시간만 새로 시작
-    if (existing.status === 'LEFT') {
-      const reentered = await this.prisma.attendance.update({
-        where: { id: existing.id },
-        data: { status: 'CHECKED_IN', waitingSince: new Date(), leftAt: null },
-        include: { member: true },
+      const existing = await tx.attendance.findUnique({
+        where: { sessionId_memberId: { sessionId, memberId } },
       });
-      this.realtime.broadcastSnapshot(sessionId);
-      return toAttendanceResponse(reentered);
-    }
 
-    throw new ConflictException('이미 출석 처리된 모임원입니다.');
+      // 첫 체크인
+      if (!existing) {
+        return tx.attendance.create({
+          data: { sessionId, memberId },
+          include: { member: true },
+        });
+      }
+
+      // 재입장 (확정 정책): 새 행을 만들지 않고 기존 출석을 대기로 복귀
+      // gamesPlayed는 하루 누적이므로 그대로 유지, 대기 시간만 새로 시작
+      if (existing.status === 'LEFT') {
+        return tx.attendance.update({
+          where: { id: existing.id },
+          data: { status: 'CHECKED_IN', waitingSince: new Date(), leftAt: null },
+          include: { member: true },
+        });
+      }
+
+      throw new ConflictException('이미 출석 처리된 모임원입니다.');
+    });
+    this.realtime.broadcastSnapshot(sessionId);
+    return toAttendanceResponse(attendance);
   }
 
   // 출석 취소 — 사전 수동 체크인 후 개인 사정·노쇼 등으로 못 오게 된 사람용.

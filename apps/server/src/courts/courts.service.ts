@@ -5,6 +5,8 @@ import {
 } from '@nestjs/common';
 import { ICourt } from '@letscok/shared-types';
 import { toCourtResponse } from '../common/mappers/entity.mappers';
+import { lockKey } from '../common/utils/lock.util';
+import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { SessionsService } from '../sessions/sessions.service';
@@ -20,28 +22,31 @@ export class CourtsService {
 
   async register(sessionId: string, dto: CreateCourtDto): Promise<ICourt> {
     await this.sessionsService.findOpenSessionOrThrow(sessionId);
-    await this.assertNotUsedByOtherSession(sessionId, dto.courtNo);
 
-    // 같은 번호가 이미 있으면: 해제됐던 코트는 복구, 사용 중이면 중복 에러
-    // (@@unique([sessionId, courtNo]) 제약 때문에 soft-delete 행도 새로 만들 수 없음)
-    const existing = await this.prisma.court.findUnique({
-      where: { sessionId_courtNo: { sessionId, courtNo: dto.courtNo } },
-    });
-    if (existing) {
-      if (!existing.deletedAt) {
-        throw new ConflictException('이미 등록된 코트 번호입니다.');
-      }
-      // 공유 상태는 그날 상황이라 승계하지 않는다 — 재등록은 새 코트처럼 초기화
-      const restored = await this.prisma.court.update({
-        where: { id: existing.id },
-        data: { deletedAt: null, status: 'IDLE', isShared: false, ourTurn: true },
+    const court = await this.prisma.$transaction(async (tx) => {
+      // 같은 번호 추가를 한 줄로 — 두 관제판(여복·남복)이 동시에 같은 번호를 넣으면 둘 다 검사를 통과하던 틈
+      await lockKey(tx, `court:${dto.courtNo}`);
+      await this.assertNotUsedByOtherSession(tx, sessionId, dto.courtNo);
+
+      // 같은 번호가 이미 있으면: 해제됐던 코트는 복구, 사용 중이면 중복 에러
+      // (@@unique([sessionId, courtNo]) 제약 때문에 soft-delete 행도 새로 만들 수 없음)
+      const existing = await tx.court.findUnique({
+        where: { sessionId_courtNo: { sessionId, courtNo: dto.courtNo } },
       });
-      this.realtime.broadcastSnapshot(sessionId);
-      return toCourtResponse(restored);
-    }
+      if (existing) {
+        if (!existing.deletedAt) {
+          throw new ConflictException('이미 등록된 코트 번호입니다.');
+        }
+        // 공유 상태는 그날 상황이라 승계하지 않는다 — 재등록은 새 코트처럼 초기화
+        return tx.court.update({
+          where: { id: existing.id },
+          data: { deletedAt: null, status: 'IDLE', isShared: false, ourTurn: true },
+        });
+      }
 
-    const court = await this.prisma.court.create({
-      data: { sessionId, courtNo: dto.courtNo },
+      return tx.court.create({
+        data: { sessionId, courtNo: dto.courtNo },
+      });
     });
     this.realtime.broadcastSnapshot(sessionId);
     return toCourtResponse(court);
@@ -81,9 +86,10 @@ export class CourtsService {
     const court = await this.findCourtOrThrow(id);
     await this.sessionsService.findOpenSessionOrThrow(court.sessionId);
     if (court.courtNo === dto.courtNo) return toCourtResponse(court);
-    await this.assertNotUsedByOtherSession(court.sessionId, dto.courtNo);
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      await lockKey(tx, `court:${dto.courtNo}`); // 코트 추가와 같은 줄 — 다른 모임이 같은 번호를 동시에 잡지 않게
+      await this.assertNotUsedByOtherSession(tx, court.sessionId, dto.courtNo);
       // 해제된 코트도 고유 제약상 번호를 쥐고 있다 — 기록이 없으면 지우고, 있으면 그 기록의 번호가 바뀌면 안 되니 막는다
       const holder = await tx.court.findUnique({
         where: { sessionId_courtNo: { sessionId: court.sessionId, courtNo: dto.courtNo } },
@@ -106,8 +112,8 @@ export class CourtsService {
   }
 
   // 여복·남복처럼 같은 체육관에서 동시에 연 모임 — 한 코트를 두 보드가 같이 배정하지 않게
-  private async assertNotUsedByOtherSession(sessionId: string, courtNo: number) {
-    const other = await this.prisma.court.findFirst({
+  private async assertNotUsedByOtherSession(tx: Prisma.TransactionClient, sessionId: string, courtNo: number) {
+    const other = await tx.court.findFirst({
       where: { courtNo, deletedAt: null, sessionId: { not: sessionId }, session: { status: 'OPEN' } },
       select: { session: { select: { label: true } } },
     });

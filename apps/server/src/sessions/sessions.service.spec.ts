@@ -13,6 +13,9 @@ const realtimeStub = {
 } as unknown as RealtimeService;
 
 const prisma = new PrismaService();
+
+// 동시 요청 시험 전에 DB 연결을 여러 개 미리 열어 둔다 — 안 그러면 두 번째 요청이 새 연결을 맺는 사이 첫 요청이 끝나 경쟁이 재현되지 않는다
+const warmPool = () => Promise.all(Array.from({ length: 4 }, () => prisma.$executeRaw`SELECT pg_sleep(0.05)`));
 const service = new SessionsService(prisma, realtimeStub);
 
 beforeEach(async () => {
@@ -134,6 +137,15 @@ describe('동시에 여는 모임 (여복·남복)', () => {
     await service.open();
 
     await expect(service.open()).rejects.toThrow(ConflictException);
+  });
+
+  it('[모임 시작]을 동시에 두 번 눌러도 모임은 하나만 열린다', async () => {
+    await warmPool();
+    const results = await Promise.allSettled([service.open(), service.open()]);
+
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.find((r) => r.status === 'rejected')?.reason).toBeInstanceOf(ConflictException);
+    expect(await prisma.session.count({ where: { status: 'OPEN' } })).toBe(1);
   });
 
   it('이름을 정하면 같이 열고, 체크인 코드는 같다', async () => {

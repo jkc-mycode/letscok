@@ -7,8 +7,12 @@ import { IClosedTodaySession, ISession, ISessionSnapshot } from '@letscok/shared
 import { toSessionResponse } from '../common/mappers/entity.mappers';
 import { generateCheckInCode } from '../common/utils/code.util';
 import { todayKst } from '../common/utils/date.util';
+import { lockKey } from '../common/utils/lock.util';
+import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
+
+const OPEN_LOCK = 'session-open'; // 모임 열기·체크인 코드 변경이 함께 쓰는 잠금 키
 
 @Injectable()
 export class SessionsService {
@@ -18,8 +22,8 @@ export class SessionsService {
   ) {}
 
   // 오늘 마지막으로 종료한 모임 — 같은 날 두 번째 모임이 있으면 그중 늦게 끝난 것
-  private findLastClosedToday() {
-    return this.prisma.session.findFirst({
+  private findLastClosedToday(db: Prisma.TransactionClient = this.prisma) {
+    return db.session.findFirst({
       where: { date: todayKst(), status: 'CLOSED' },
       orderBy: { closedAt: 'desc' },
     });
@@ -40,57 +44,62 @@ export class SessionsService {
   // label: 여복·남복처럼 같은 체육관에서 코트를 나눠 동시에 여는 모임 — 열린 모임이 있으면 이름이 있어야 같이 연다
   async open(fresh = false, rawLabel?: string): Promise<ISession> {
     const label = rawLabel?.trim() || null;
-    const openSessions = await this.prisma.session.findMany({
-      where: { status: 'OPEN' },
-      select: { label: true },
-    });
-    if (openSessions.length > 0) {
-      // 이름 없이 누른 [모임 시작]은 실수로 두 번 누른 것일 수 있다 — 동시 진행은 이름을 정해야만
-      if (!label) {
-        throw new ConflictException('이미 진행 중인 모임이 있습니다.');
+    const result = await this.prisma.$transaction(async (tx) => {
+      // 모임 열기를 한 줄로 — [모임 시작]을 빠르게 두 번 누르면 둘 다 '열린 모임 없음'을 보고 이름 없는 모임을 둘 만들던 틈
+      await lockKey(tx, OPEN_LOCK);
+      const openSessions = await tx.session.findMany({
+        where: { status: 'OPEN' },
+        select: { label: true },
+      });
+      if (openSessions.length > 0) {
+        // 이름 없이 누른 [모임 시작]은 실수로 두 번 누른 것일 수 있다 — 동시 진행은 이름을 정해야만
+        if (!label) {
+          throw new ConflictException('이미 진행 중인 모임이 있습니다.');
+        }
+        if (openSessions.some((s) => s.label === label)) {
+          throw new ConflictException(`'${label}' 모임이 이미 열려 있어요. 다른 이름을 정해주세요.`);
+        }
       }
-      if (openSessions.some((s) => s.label === label)) {
-        throw new ConflictException(`'${label}' 모임이 이미 열려 있어요. 다른 이름을 정해주세요.`);
-      }
-    }
 
-    // 같은 날 종료했던 세션이 있으면 새로 만들지 않고 재개
-    // (실수로 종료한 경우 출석·게임 횟수가 초기화되지 않도록)
-    // 코드는 재발급하지 않음 — 이미 공지한 코드·체크인한 인원과의 연속성 유지
-    // 다른 모임과 같이 여는 건 늘 새 모임 — 끝낸 모임을 잘못 되살리지 않게
-    const today = todayKst();
-    const closedToday = fresh || openSessions.length > 0 ? null : await this.findLastClosedToday();
-    if (closedToday) {
-      const reopened = await this.prisma.session.update({
-        where: { id: closedToday.id },
+      // 같은 날 종료했던 세션이 있으면 새로 만들지 않고 재개
+      // (실수로 종료한 경우 출석·게임 횟수가 초기화되지 않도록)
+      // 코드는 재발급하지 않음 — 이미 공지한 코드·체크인한 인원과의 연속성 유지
+      // 다른 모임과 같이 여는 건 늘 새 모임 — 끝낸 모임을 잘못 되살리지 않게
+      const closedToday = fresh || openSessions.length > 0 ? null : await this.findLastClosedToday(tx);
+      if (closedToday) {
+        const reopened = await tx.session.update({
+          where: { id: closedToday.id },
+          data: {
+            status: 'OPEN',
+            closedAt: null,
+            ...(label && { label }),
+            // 과거(코드 도입 전) 세션을 재개하면 코드가 없으므로 이때 보충 발급
+            ...(closedToday.checkInCode ? {} : { checkInCode: generateCheckInCode() }),
+          },
+        });
+        return { session: reopened, reopened: true, alongside: false };
+      }
+
+      // 코드 승계 — 운영진이 정한 코드가 모임마다 초기화되면 매번 다시 설정해야 한다
+      // 공지사항 작성월일을 쓰는 운영이라 공지가 바뀔 때만 관제판에서 바꾼다. 동시에 여는 모임도 같은 코드
+      const previous = await tx.session.findFirst({
+        where: { checkInCode: { not: null } },
+        orderBy: [{ date: 'desc' }, { openedAt: 'desc' }],
+        select: { checkInCode: true },
+      });
+      const session = await tx.session.create({
         data: {
-          status: 'OPEN',
-          closedAt: null,
-          ...(label && { label }),
-          // 과거(코드 도입 전) 세션을 재개하면 코드가 없으므로 이때 보충 발급
-          ...(closedToday.checkInCode ? {} : { checkInCode: generateCheckInCode() }),
+          date: todayKst(),
+          label,
+          checkInCode: previous?.checkInCode ?? generateCheckInCode(),
         },
       });
-      this.realtime.broadcastSnapshot(reopened.id); // 종료 화면을 보던 클라이언트 복귀용
-      return toSessionResponse(reopened);
-    }
+      return { session, reopened: false, alongside: openSessions.length > 0 };
+    });
 
-    // 코드 승계 — 운영진이 정한 코드가 모임마다 초기화되면 매번 다시 설정해야 한다
-    // 공지사항 작성월일을 쓰는 운영이라 공지가 바뀔 때만 관제판에서 바꾼다. 동시에 여는 모임도 같은 코드
-    const previous = await this.prisma.session.findFirst({
-      where: { checkInCode: { not: null } },
-      orderBy: [{ date: 'desc' }, { openedAt: 'desc' }],
-      select: { checkInCode: true },
-    });
-    const session = await this.prisma.session.create({
-      data: {
-        date: today,
-        label,
-        checkInCode: previous?.checkInCode ?? generateCheckInCode(),
-      },
-    });
-    if (openSessions.length > 0) void this.realtime.broadcastOpenSessions(); // 먼저 연 모임 화면에 전환 칩이 생기게
-    return toSessionResponse(session);
+    if (result.reopened) this.realtime.broadcastSnapshot(result.session.id); // 종료 화면을 보던 클라이언트 복귀용
+    if (result.alongside) void this.realtime.broadcastOpenSessions(); // 먼저 연 모임 화면에 전환 칩이 생기게
+    return toSessionResponse(result.session);
   }
 
   // 모임 이름 바꾸기 (운영진 전용) — 먼저 연 모임은 보통 이름 없이 시작하니 두 번째를 열 때 같이 정한다
@@ -115,9 +124,13 @@ export class SessionsService {
   // 코드는 실질 방어선이 아니다(콕 확인이 게이트). 유출돼도 게임 배정은 운영진 손을 거친다
   // 공지는 하나라 동시에 연 모임(여복·남복)도 같은 코드 — 열린 모임 전부를 바꾼다
   async updateCheckInCode(code: string): Promise<string> {
-    const { count } = await this.prisma.session.updateMany({
-      where: { status: 'OPEN' },
-      data: { checkInCode: code },
+    // 모임 열기와 같은 줄 — 새 모임이 옛 코드를 승계하는 사이 코드가 바뀌어 두 모임 코드가 갈리지 않게
+    const { count } = await this.prisma.$transaction(async (tx) => {
+      await lockKey(tx, OPEN_LOCK);
+      return tx.session.updateMany({
+        where: { status: 'OPEN' },
+        data: { checkInCode: code },
+      });
     });
     if (count === 0) {
       throw new NotFoundException('아직 모임이 시작되지 않았습니다.');
