@@ -113,7 +113,9 @@ describe('getClosedToday', () => {
   it('오늘 종료한 모임을 늦게 끝난 순으로, 출석 인원·이름과 함께 준다', async () => {
     const first = await service.open();
     const member = await prisma.member.create({ data: { name: '김민수', grade: 'C' } });
-    await prisma.attendance.create({ data: { sessionId: first.id, memberId: member.id } });
+    await prisma.attendance.create({ data: { sessionId: first.id, memberId: member.id, shuttleConfirmedAt: new Date() } });
+    const visitor = await prisma.member.create({ data: { name: '구경꾼', grade: 'C' } });
+    await prisma.attendance.create({ data: { sessionId: first.id, memberId: visitor.id } }); // 콕 미확인 — 인원에서 빠진다
     const men = await service.open(false, '남복');
     await service.close(first.id);
     await service.close(men.id);

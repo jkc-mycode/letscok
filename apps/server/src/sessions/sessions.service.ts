@@ -8,6 +8,7 @@ import { toSessionResponse } from '../common/mappers/entity.mappers';
 import { generateCheckInCode } from '../common/utils/code.util';
 import { todayKst } from '../common/utils/date.util';
 import { lockKey } from '../common/utils/lock.util';
+import { COUNTED_ATTENDANCE } from '../common/utils/member-stats';
 import { Prisma, Session } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -35,7 +36,7 @@ export class SessionsService {
       this.prisma.session.findMany({
         where: { date: todayKst(), status: 'CLOSED' },
         orderBy: { closedAt: 'desc' },
-        include: { _count: { select: { attendances: true } } },
+        include: { _count: { select: { attendances: { where: COUNTED_ATTENDANCE } } } },
       }),
       this.prisma.session.count({ where: { date: todayKst() } }),
     ]);

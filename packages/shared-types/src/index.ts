@@ -402,7 +402,7 @@ export interface IHistoryMemberStats {
   grade: Grade;
   gender: Gender | null;
   isGuest: boolean;
-  totalSessions: number; // 총 출석 (체크인한 모임 수)
+  totalSessions: number; // 총 출석 (콕 확인한 날 수 — 같은 날 두 모임은 하루 1회)
   totalGames: number; // 총 게임 수 (세션별 gamesPlayed 합)
   lastAttendedDate: string | null; // 최근 출석일
   topPartners: IHistoryPartner[]; // 함께 뛴 top 5

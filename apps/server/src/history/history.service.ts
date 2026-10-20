@@ -8,7 +8,7 @@ import {
   IHistorySessionListResponse,
 } from '@letscok/shared-types';
 import { toDateString } from '../common/utils/date.util';
-import { memberAttendanceStats } from '../common/utils/member-stats';
+import { COUNTED_ATTENDANCE, memberAttendanceStats } from '../common/utils/member-stats';
 import { withSlots } from '../common/utils/game-slots';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -29,7 +29,7 @@ export class HistoryService {
         include: {
           _count: {
             select: {
-              attendances: true,
+              attendances: { where: COUNTED_ATTENDANCE }, // 콕 확인한 출석만
               games: { where: { status: 'FINISHED' } }, // CANCELED는 없던 게임 취급
             },
           },
@@ -60,7 +60,7 @@ export class HistoryService {
       where: { id },
       include: {
         _count: {
-          select: { attendances: true, games: { where: { status: 'FINISHED' } } },
+          select: { attendances: { where: COUNTED_ATTENDANCE }, games: { where: { status: 'FINISHED' } } },
         },
       },
     });
@@ -70,7 +70,7 @@ export class HistoryService {
 
     const [attendances, games] = await Promise.all([
       this.prisma.attendance.findMany({
-        where: { sessionId: id },
+        where: { sessionId: id, ...COUNTED_ATTENDANCE }, // 체크인만 하고 콕을 안 낸 사람은 출석자가 아니다
         include: { member: true },
         orderBy: { gamesPlayed: 'desc' },
       }),
@@ -163,9 +163,9 @@ export class HistoryService {
       throw new NotFoundException('모임원을 찾을 수 없습니다.');
     }
 
-    // 출석 이력 (세션 날짜 포함, 최신순) — 총 출석·총 게임·최근 출석일·최근 모임 목록의 원천
+    // 출석 이력 (세션 날짜 포함, 최신순) — 총 출석·총 게임·최근 출석일·최근 모임 목록의 원천. 콕 확인한 출석만
     const attendances = await this.prisma.attendance.findMany({
-      where: { memberId },
+      where: { memberId, ...COUNTED_ATTENDANCE },
       include: { session: true },
       orderBy: [{ session: { date: 'desc' } }, { session: { openedAt: 'desc' } }],
     });
@@ -204,7 +204,7 @@ export class HistoryService {
       grade: member.grade,
       gender: member.gender,
       isGuest: member.isGuest,
-      totalSessions: attendances.length,
+      totalSessions: new Set(attendances.map((a) => a.session.date.getTime())).size, // 같은 날 두 모임은 하루 1회
       totalGames: attendances.reduce((sum, a) => sum + a.gamesPlayed, 0),
       lastAttendedDate: attendances[0] ? toDateString(attendances[0].session.date) : null,
       topPartners: [...partnerCounts.entries()]
@@ -230,13 +230,13 @@ export class HistoryService {
 
     const [attendances, total] = await Promise.all([
       this.prisma.attendance.findMany({
-        where: { memberId },
+        where: { memberId, ...COUNTED_ATTENDANCE },
         orderBy: [{ session: { date: 'desc' } }, { session: { openedAt: 'desc' } }, { id: 'desc' }], // 같은 날짜 두 모임도 2부가 위로, 쪽 경계에서 겹치거나 빠지지 않게
         skip: (page - 1) * limit,
         take: limit,
         select: { sessionId: true, gamesPlayed: true, session: { select: { id: true, date: true, label: true } } },
       }),
-      this.prisma.attendance.count({ where: { memberId } }),
+      this.prisma.attendance.count({ where: { memberId, ...COUNTED_ATTENDANCE } }),
     ]);
 
     const parts = await this.dayParts(attendances.map((attendance) => attendance.session));

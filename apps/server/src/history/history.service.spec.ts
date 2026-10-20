@@ -31,9 +31,10 @@ async function seedAttendance(
   memberId: string,
   gamesPlayed = 0,
   status: 'CHECKED_IN' | 'LEFT' = 'CHECKED_IN',
+  confirmed = true, // 콕 확인 — 출석으로 세는 기준
 ) {
   return prisma.attendance.create({
-    data: { sessionId, memberId, gamesPlayed, status },
+    data: { sessionId, memberId, gamesPlayed, status, shuttleConfirmedAt: confirmed ? new Date() : null },
   });
 }
 
@@ -120,9 +121,11 @@ describe('같은 날 여러 모임', () => {
     ]);
     expect((await service.getSessionDetail(evening.id)).session.part).toBe(2);
 
-    // 출석은 모임마다 한 번 — 같은 날 두 모임에 다 오면 2회
+    // 출석은 하루 한 번 — 같은 날 두 모임에 다 와도 1회. 모임별 목록·게임 수는 따로 남는다
     const stats = await service.getMemberStats(member.id);
-    expect(stats.totalSessions).toBe(2);
+    expect(stats.totalSessions).toBe(1);
+    expect(stats.totalGames).toBe(5);
+    expect((await service.getRanking()).find((r) => r.memberId === member.id)?.totalSessions).toBe(1);
     expect(stats.recentSessions.map((r) => [r.sessionId, r.part])).toEqual([
       [evening.id, 2],
       [morning.id, 1],
@@ -384,5 +387,24 @@ describe('getMemberSessionGames', () => {
     const session = await seedClosedSession('2026-01-01');
     const me = await seedMember('본인');
     await expect(service.getMemberSessionGames(me.id, session.id)).rejects.toThrow(NotFoundException);
+  });
+});
+
+describe('출석 인정 — 콕 확인한 출석만', () => {
+  it('체크인만 하고 콕을 안 낸 사람은 목록 인원·상세 명단·랭킹·개인 전적에서 빠진다', async () => {
+    const session = await seedClosedSession('2026-05-01');
+    const [paid, onlyCheckedIn] = await Promise.all([seedMember('콕낸사람'), seedMember('체크인만')]);
+    await seedAttendance(session.id, paid.id, 1);
+    await seedAttendance(session.id, onlyCheckedIn.id, 0, 'LEFT', false);
+
+    expect((await service.listSessions(1, 10)).sessions[0].attendeeCount).toBe(1);
+    const detail = await service.getSessionDetail(session.id);
+    expect(detail.session.attendeeCount).toBe(1);
+    expect(detail.attendees.map((a) => a.name)).toEqual(['콕낸사람']);
+    const ranking = await service.getRanking();
+    expect(ranking.find((r) => r.memberId === onlyCheckedIn.id)).toMatchObject({ totalSessions: 0, lastAttendedDate: null });
+    const stats = await service.getMemberStats(onlyCheckedIn.id);
+    expect(stats).toMatchObject({ totalSessions: 0, lastAttendedDate: null, recentSessions: [] });
+    expect((await service.getMemberSessions(onlyCheckedIn.id, 1, 10)).total).toBe(0);
   });
 });

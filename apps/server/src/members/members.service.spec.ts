@@ -228,7 +228,7 @@ describe('list', () => {
     const session = await seedOpenSessionWith(active.id);
     await prisma.attendance.updateMany({
       where: { memberId: active.id },
-      data: { gamesPlayed: 3 },
+      data: { gamesPlayed: 3, shuttleConfirmedAt: new Date() },
     });
     await prisma.session.update({ where: { id: session.id }, data: { status: 'CLOSED' } });
 
@@ -293,7 +293,7 @@ describe('page (모임원 관리 목록)', () => {
     const session = await prisma.session.create({
       data: { date: new Date(), checkInCode: '0101', status: 'CLOSED' },
     });
-    await prisma.attendance.create({ data: { sessionId: session.id, memberId: recent.id } });
+    await prisma.attendance.create({ data: { sessionId: session.id, memberId: recent.id, shuttleConfirmedAt: new Date() } });
 
     const stale = await service.staleGuests();
 
@@ -330,7 +330,7 @@ describe('page 정렬', () => {
     const a = await service.create(memberDto({ name: '가영', grade: 'C', birthDate: '1990-01-02' }));
     const c = await service.create(memberDto({ name: '다영', grade: 'B', birthDate: '1990-01-03' }));
     const session = await prisma.session.create({ data: { date: new Date('2026-01-01'), checkInCode: '0101', status: 'CLOSED' } });
-    await prisma.attendance.create({ data: { sessionId: session.id, memberId: c.id } });
+    await prisma.attendance.create({ data: { sessionId: session.id, memberId: c.id, shuttleConfirmedAt: new Date() } });
     // 등록 시각을 직접 벌려 둔다 — 같은 밀리초에 만들어지면 순서가 흔들린다
     for (const [i, m] of [b, a, c].entries()) {
       await prisma.member.update({ where: { id: m.id }, data: { createdAt: new Date(Date.UTC(2026, 0, 1 + i)) } });
