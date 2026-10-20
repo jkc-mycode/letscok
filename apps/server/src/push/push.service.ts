@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
   GAME_SIZE,
   IPushPayload,
@@ -9,6 +9,7 @@ import * as webpush from 'web-push';
 import { PrismaService } from '../prisma/prisma.service';
 
 // 한 회원이 등록할 수 있는 기기 수 — 가드 없는 공개 API라 무한 등록을 막는다
+// 넘으면 새 기기를 거부한다(오래된 것부터 지우면 남이 기기를 잔뜩 등록해 본인 폰 구독을 밀어낼 수 있다)
 const MAX_SUBSCRIPTIONS_PER_MEMBER = 5;
 
 // 5분 지나 도착한 "코트로 오세요"는 오히려 혼란 — 푸시 서비스가 그 뒤엔 버린다
@@ -49,12 +50,30 @@ export class PushService {
   }
 
   // 같은 기기(endpoint)를 다른 사람이 쓰게 되면 memberId만 바뀐다
+  // 가드가 없어 남의 memberId로 내 기기를 등록하면 그 사람 알림을 받아 볼 수 있다 — 지금 열린 모임에 출석한 사람만 받는다
+  // (알림 토글은 /m 출석 화면에만 있다. 퇴장한 사람도 그날 출석자라 허용)
   async subscribe(dto: ISubscribePushDto, userAgent?: string): Promise<void> {
     const member = await this.prisma.member.findFirst({
       where: { id: dto.memberId, deletedAt: null },
     });
     if (!member) {
       throw new NotFoundException('등록되지 않은 모임원입니다.');
+    }
+    const attending = await this.prisma.attendance.findFirst({
+      where: { memberId: dto.memberId, session: { status: 'OPEN' } },
+      select: { id: true },
+    });
+    if (!attending) {
+      throw new ForbiddenException('모임에 출석한 뒤 알림을 켤 수 있어요.');
+    }
+    // 이미 이 사람 기기면 키만 갱신. 새 기기인데 상한이 찼으면 거부
+    const mine = await this.prisma.pushSubscription.count({
+      where: { memberId: dto.memberId, endpoint: { not: dto.endpoint } },
+    });
+    if (mine >= MAX_SUBSCRIPTIONS_PER_MEMBER) {
+      throw new ConflictException(
+        `알림은 기기 ${MAX_SUBSCRIPTIONS_PER_MEMBER}대까지 켤 수 있어요. 안 쓰는 기기에서 알림을 꺼 주세요.`,
+      );
     }
 
     const data = {
@@ -68,19 +87,6 @@ export class PushService {
       create: { endpoint: dto.endpoint, ...data },
       update: data,
     });
-
-    // 상한 초과분은 오래된 기기부터 정리 — 바꾼 폰의 옛 구독이 자연스럽게 밀려난다
-    const stale = await this.prisma.pushSubscription.findMany({
-      where: { memberId: dto.memberId },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], // 같은 밀리초 등록 시에도 순서 고정
-      skip: MAX_SUBSCRIPTIONS_PER_MEMBER,
-      select: { id: true },
-    });
-    if (stale.length > 0) {
-      await this.prisma.pushSubscription.deleteMany({
-        where: { id: { in: stale.map((s) => s.id) } },
-      });
-    }
   }
 
   async unsubscribe(endpoint: string): Promise<{ deleted: number }> {

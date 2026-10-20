@@ -9,6 +9,7 @@ import {
   PushState,
   syncPush,
 } from '@/lib/push';
+import { ApiError } from '@/lib/api';
 
 // 게임 알림 토글 — 토글은 "권한"이 아니라 "이 기기의 구독"을 켜고 끈다
 // (웹은 브라우저·OS의 알림 권한을 코드로 바꿀 수 없다. 권한이 막히면 설정 경로를 안내할 뿐)
@@ -41,8 +42,9 @@ export function PushToggle({ memberId }: { memberId: string }) {
     setError(null);
     try {
       setState(on ? await enablePush(memberId) : await disablePush());
-    } catch {
-      setError('알림 설정에 실패했어요. 잠시 후 다시 시도해주세요.');
+    } catch (e) {
+      // 서버가 막은 이유(기기 수 초과 등)는 그대로 보여 준다
+      setError(e instanceof ApiError ? e.message : '알림 설정에 실패했어요. 잠시 후 다시 시도해주세요.');
     } finally {
       setBusy(null);
     }

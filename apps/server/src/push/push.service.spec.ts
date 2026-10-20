@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import * as webpush from 'web-push';
 import { MembersService } from '../members/members.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -39,6 +39,14 @@ async function createMember(name = '홍길동') {
   return prisma.member.create({ data: { name, grade: 'C' } });
 }
 
+// 열린 모임에 출석한 회원 — 알림 구독은 출석자만 할 수 있다
+async function createAttendee(name = '홍길동') {
+  const member = await createMember(name);
+  const session = await prisma.session.create({ data: { date: new Date('2026-01-01') } });
+  await prisma.attendance.create({ data: { sessionId: session.id, memberId: member.id } });
+  return member;
+}
+
 beforeEach(async () => {
   sendNotification.mockReset();
   sendNotification.mockResolvedValue({ statusCode: 201 });
@@ -55,8 +63,8 @@ afterAll(async () => {
 describe('subscribe', () => {
   it('같은 기기(endpoint)로 다시 구독하면 행이 늘지 않고 memberId만 바뀐다', async () => {
     const service = createService();
-    const a = await createMember('김하나');
-    const b = await createMember('이두울');
+    const a = await createAttendee('김하나');
+    const b = await createAttendee('이두울');
     const endpoint = 'https://push.example/device-1';
 
     await service.subscribe({ memberId: a.id, endpoint, ...keys });
@@ -67,21 +75,41 @@ describe('subscribe', () => {
     expect(rows[0].memberId).toBe(b.id);
   });
 
-  it('한 회원의 6번째 기기를 등록하면 가장 오래된 구독이 정리된다', async () => {
+  it('한 회원의 6번째 새 기기는 거부한다 — 이미 있는 기기는 다시 등록돼도 된다', async () => {
     const service = createService();
-    const member = await createMember();
-    for (let i = 1; i <= 6; i++) {
+    const member = await createAttendee();
+    for (let i = 1; i <= 5; i++) {
       await service.subscribe({ memberId: member.id, endpoint: `https://push.example/${i}`, ...keys });
     }
 
-    const rows = await prisma.pushSubscription.findMany({ orderBy: { createdAt: 'asc' } });
-    expect(rows).toHaveLength(5);
-    expect(rows.map((r) => r.endpoint)).not.toContain('https://push.example/1');
+    await expect(
+      service.subscribe({ memberId: member.id, endpoint: 'https://push.example/6', ...keys }),
+    ).rejects.toThrow(ConflictException);
+    await service.subscribe({ memberId: member.id, endpoint: 'https://push.example/1', ...keys }); // 앱 복귀 때 재등록
+    const rows = await prisma.pushSubscription.findMany();
+    expect(rows.map((r) => r.endpoint).sort()).toEqual([1, 2, 3, 4, 5].map((i) => `https://push.example/${i}`));
+  });
+
+  it('열린 모임에 출석하지 않은 회원으로는 구독할 수 없다 (403) — 퇴장한 출석자는 된다', async () => {
+    const service = createService();
+    const outsider = await createMember('김바깥');
+    const closed = await prisma.session.create({ data: { date: new Date('2025-12-01'), status: 'CLOSED' } });
+    await prisma.attendance.create({ data: { sessionId: closed.id, memberId: outsider.id } }); // 지난 모임 출석은 해당 없음
+
+    await expect(
+      service.subscribe({ memberId: outsider.id, endpoint: 'https://push.example/x', ...keys }),
+    ).rejects.toThrow(ForbiddenException);
+
+    const left = await createMember('이퇴장');
+    const open = await prisma.session.create({ data: { date: new Date('2026-01-01') } });
+    await prisma.attendance.create({ data: { sessionId: open.id, memberId: left.id, status: 'LEFT' } });
+    await service.subscribe({ memberId: left.id, endpoint: 'https://push.example/y', ...keys });
+    expect(await prisma.pushSubscription.count()).toBe(1);
   });
 
   it('삭제된 회원이나 없는 회원으로는 구독할 수 없다 (404)', async () => {
     const service = createService();
-    const member = await createMember();
+    const member = await createAttendee();
     await prisma.member.update({ where: { id: member.id }, data: { deletedAt: new Date() } });
 
     await expect(
@@ -94,7 +122,7 @@ describe('subscribe', () => {
 
   it('구독 해지는 endpoint로 지운다', async () => {
     const service = createService();
-    const member = await createMember();
+    const member = await createAttendee();
     await service.subscribe({ memberId: member.id, endpoint: 'https://push.example/1', ...keys });
 
     expect(await service.unsubscribe('https://push.example/1')).toEqual({ deleted: 1 });
@@ -105,7 +133,7 @@ describe('subscribe', () => {
 describe('deliver', () => {
   it('회원의 모든 기기로 보내고 lastSentAt을 기록한다', async () => {
     const service = createService();
-    const member = await createMember();
+    const member = await createAttendee();
     await service.subscribe({ memberId: member.id, endpoint: 'https://push.example/phone', ...keys });
     await service.subscribe({ memberId: member.id, endpoint: 'https://push.example/tablet', ...keys });
 
@@ -122,7 +150,7 @@ describe('deliver', () => {
 
   it('응답이 410(구독 끊김)이면 그 구독을 지운다', async () => {
     const service = createService();
-    const member = await createMember();
+    const member = await createAttendee();
     await service.subscribe({ memberId: member.id, endpoint: 'https://push.example/gone', ...keys });
     sendNotification.mockRejectedValueOnce(Object.assign(new Error('Gone'), { statusCode: 410 }));
 
@@ -134,7 +162,7 @@ describe('deliver', () => {
 
   it('그 밖의 실패(500 등)는 구독을 남겨 둔다 — 일시 장애일 수 있다', async () => {
     const service = createService();
-    const member = await createMember();
+    const member = await createAttendee();
     await service.subscribe({ memberId: member.id, endpoint: 'https://push.example/1', ...keys });
     sendNotification.mockRejectedValueOnce(Object.assign(new Error('Server'), { statusCode: 500 }));
 
@@ -144,7 +172,7 @@ describe('deliver', () => {
 
   it('VAPID 키가 없으면 비활성 — 공개키 null, 발송 안 함', async () => {
     const service = createService(false);
-    const member = await createMember();
+    const member = await createAttendee();
     await prisma.pushSubscription.create({
       data: { memberId: member.id, endpoint: 'https://push.example/1', ...keys },
     });
@@ -159,8 +187,9 @@ describe('회원 삭제와 구독', () => {
   const members = () => new MembersService(prisma, realtimeStub);
 
   it('회원을 삭제하면 구독도 지워진다', async () => {
-    const member = await createMember();
+    const member = await createAttendee();
     await createService().subscribe({ memberId: member.id, endpoint: 'https://push.example/1', ...keys });
+    await prisma.attendance.updateMany({ where: { memberId: member.id }, data: { status: 'LEFT' } }); // 출석 중이면 삭제가 막힌다
 
     await members().remove(member.id);
 
@@ -168,8 +197,9 @@ describe('회원 삭제와 구독', () => {
   });
 
   it('익명화해도 구독이 지워진다', async () => {
-    const member = await createMember();
+    const member = await createAttendee();
     await createService().subscribe({ memberId: member.id, endpoint: 'https://push.example/1', ...keys });
+    await prisma.attendance.updateMany({ where: { memberId: member.id }, data: { status: 'LEFT' } }); // 출석 중이면 삭제가 막힌다
 
     await members().anonymize(member.id);
 
@@ -255,7 +285,7 @@ describe('게임 알림 문구', () => {
 describe('호출과 다시 알림', () => {
   it('운영진 호출은 게임 알림과 다른 tag로 보낸다 — 뒤이은 게임 알림에 덮이지 않게', async () => {
     const service = createService();
-    const member = await createMember();
+    const member = await createAttendee();
     await service.subscribe({ memberId: member.id, endpoint: 'https://push.example/1', ...keys });
 
     expect(await service.callMember(member.id)).toBe(1);
@@ -264,7 +294,7 @@ describe('호출과 다시 알림', () => {
   });
 
   it('구독이 없으면 0 — 운영진이 "직접 불러주세요"를 보게 된다', async () => {
-    const member = await createMember();
+    const member = await createAttendee();
 
     expect(await createService().callMember(member.id)).toBe(0);
   });
