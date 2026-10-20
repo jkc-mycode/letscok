@@ -1,7 +1,6 @@
 'use client';
 
 import { GAME_SIZE, IFillCourtsResult, IGame, IGameRecommendation, ISessionSnapshot } from '@letscok/shared-types';
-import { AnimatePresence } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LoginGate, useAdminAuth } from '@/components/admin-gate';
@@ -37,22 +36,17 @@ import { AnotherSessionSheet } from '@/components/admin/another-session';
 import { CheckInCodeModal } from '@/components/admin/check-in-code';
 import { sessionName } from '@/components/session-switcher';
 import { BoardHeader, MobileTabBar, MoreMenuSheet, useTabSwipe, type MoreAction } from '@/components/admin/board-chrome';
+import { CourtsZone, QueueZone, RosterZone } from '@/components/admin/board-zones';
 import { MemoPanel } from '@/components/admin/memo-panel';
 import { CheerEasterEgg } from '@/components/admin/cheer';
-import { Empty, Zone } from '@/components/admin/board-ui';
-import { ConfirmButton } from '@/components/confirm-button';
 import {
   ROSTER_SORT_KEY,
   RosterSort,
-  RosterSortSelect,
   readRosterSort,
   sortCandidates,
   sortRoster,
 } from '@/components/admin/roster-sort';
-import { NewGameSlot, RosterDrop, buildPlaceLabels, isFullGame } from '@/components/admin/board-slots';
-import { CourtCard } from '@/components/admin/court-card';
-import { QueueCard } from '@/components/admin/queue-card';
-import { ShuttleRow, WaitingRow } from '@/components/admin/waiting-rows';
+import { RosterDrop, buildPlaceLabels, isFullGame } from '@/components/admin/board-slots';
 import {
   GameActionSheet,
   ReplacePlayerModal,
@@ -1343,207 +1337,62 @@ function BoardBody({
         className="board-track flex min-h-0 flex-1 md:grid md:grid-cols-2 md:grid-rows-2 md:gap-3 lg:grid-cols-[1.15fr_1fr_1fr] lg:grid-rows-1"
       >
         <div className={`${pane} md:row-span-2 lg:row-span-1`}>
-        <Zone
-          title="게임 중"
-          accent="text-court"
-          count={playingByCourt.size}
-          className="flex-1"
-          // 코트는 이 구역에 보이니 여기서 바로 고친다 — 메뉴 깊이 있어 찾기 어렵다는 피드백(더보기·헤더 입구도 그대로 둠)
-          headerExtra={
-            <button
-              onClick={() => setCourtsOpen(true)}
-              className="tap ml-auto h-8 rounded-lg bg-panel2 px-3 text-caption font-medium text-dim"
-            >
-              코트 관리
-            </button>
-          }
-        >
-          {courts.length === 0 && (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-              <p className="text-sm text-faint">오늘 쓰는 코트를 먼저 등록해주세요</p>
-              <button
-                onClick={() => setCourtsOpen(true)}
-                className="h-11 rounded-xl bg-court px-5 text-sm font-bold text-bg"
-              >
-                + 코트 추가하기
-              </button>
-            </div>
-          )}
-          <AnimatePresence initial={false}>
-            {courts.map((court) => (
-              <CourtCard
-                key={court.id}
-                court={court}
-                game={playingByCourt.get(court.id)}
-                onTurn={setCourtTurn}
-                slotActions={slotActions}
-                onEnd={endGame}
-                onMore={(g) => setCardMenuId(g.id)}
-                dragEnabled={dragEnabled}
-              />
-            ))}
-          </AnimatePresence>
-        </Zone>
+        <CourtsZone
+          courts={courts}
+          playingByCourt={playingByCourt}
+          slotActions={slotActions}
+          dragEnabled={dragEnabled}
+          onManageCourts={() => setCourtsOpen(true)}
+          onTurn={setCourtTurn}
+          onEnd={endGame}
+          onMore={(g) => setCardMenuId(g.id)}
+        />
         </div>
 
         <div className={pane}>
-        <Zone
-          title="대기 조합"
-          accent="text-amber"
-          count={queuedGames.length}
-          className="flex-1"
-          headerExtra={
-            fillableCount > 0 && (
-              <button
-                onClick={fillCourts} // 연타는 fillCourts가 막는다 — 다른 동작이 진행 중이어도 누를 수 있게
-                title="빈 코트에 대기 조합을 순서대로 한 번에 배정해요"
-                className="ml-auto h-8 shrink-0 rounded-lg bg-amber px-3 text-caption font-bold text-bg disabled:opacity-50"
-              >
-                빈 코트 채우기 ({fillableCount})
-              </button>
-            )
-          }
-        >
-          {fillNotice && (
-            <p className="rounded-[10px] bg-amber/10 px-3 py-2 text-caption font-medium whitespace-normal text-amber">
-              {fillNotice}
-            </p>
-          )}
-          {queuedGames.length === 0 && <Empty>명단에서 사람을 골라 조합을 만들어주세요</Empty>}
-          <AnimatePresence initial={false}>
-            {queuedGames.map((game, index) => (
-              <QueueCard
-                key={game.id}
-                game={game}
-                order={index + 1}
-                neighborUp={queuedGames[index - 1]}
-                neighborDown={queuedGames[index + 1]}
-                idleCourts={idleCourts}
-                overlapIds={overlapIds}
-                onCancel={cancelGame}
-                slotActions={slotActions}
-                onMore={(g) => setCardMenuId(g.id)}
-                onPickCourt={(g) => setAssignGameId(g.id)}
-                onAssign={assignToCourt}
-                onMove={moveQueue}
-                onFillSlot={(g) => setSlotTarget({ gameId: g.id })}
-                onRecommend={(g) => setRecommendFillId(g.id)}
-                dragEnabled={dragEnabled}
-              />
-            ))}
-          </AnimatePresence>
-          <NewGameSlot dragEnabled={dragEnabled} onClick={() => setSlotTarget({ gameId: null })} />
-        </Zone>
+        <QueueZone
+          queuedGames={queuedGames}
+          idleCourts={idleCourts}
+          overlapIds={overlapIds}
+          fillableCount={fillableCount}
+          fillNotice={fillNotice}
+          slotActions={slotActions}
+          dragEnabled={dragEnabled}
+          onFillCourts={fillCourts}
+          onNewGame={() => setSlotTarget({ gameId: null })}
+          onCancel={cancelGame}
+          onMore={(g) => setCardMenuId(g.id)}
+          onPickCourt={(g) => setAssignGameId(g.id)}
+          onAssign={assignToCourt}
+          onMove={moveQueue}
+          onFillSlot={(g) => setSlotTarget({ gameId: g.id })}
+          onRecommend={(g) => setRecommendFillId(g.id)}
+        />
         </div>
 
         {/* 대기 인원 + 운영 메모 — md 이상은 한 컬럼 세로 분할, 폰은 각각 별도 탭(래퍼가 사라져 두 구역이 트랙에 바로 놓인다) */}
         <div className="flex min-h-0 flex-col gap-3 max-md:contents">
         <RosterDrop className={`${pane} flex-1`} dragEnabled={dragEnabled}>
-        <Zone
-          title="명단"
-          accent="text-ink"
-          count={roster.length}
-          className="flex-1"
-          headerExtra={
-            <div className="ml-auto flex items-center gap-2">
-              {/* 이스터에그 히든 존 — [수동 체크인]과 같은 크기의 보이지 않는 영역, 13연타로 발동 */}
-              <span
-                onClick={handleCheerTap}
-                aria-hidden
-                className="h-7 w-[74px] cursor-default"
-              />
-              <RosterSortSelect value={rosterSort} onChange={setRosterSort} />
-              <button
-                onClick={() => setManualOpen(true)}
-                className="tap h-8 rounded-lg bg-panel2 px-3 text-caption font-medium text-dim"
-              >
-                출석 추가
-              </button>
-            </div>
-          }
-          footer={
-            <>
-              <button
-                onClick={() => setCommandOpen(true)}
-                aria-label="AI 명령 — 말하듯 적어서 게임 짜기·종료·휴식·호출·출석"
-                title="AI 명령"
-                className="flex h-13 w-13 shrink-0 items-center justify-center rounded-xl bg-panel2 text-court"
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <rect x="9" y="2" width="6" height="12" rx="3" />
-                  <path d="M5 10a7 7 0 0 0 14 0" />
-                  <path d="M12 17v4" />
-                </svg>
-              </button>
-              <button
-                onClick={() => setRecommendOpen(true)}
-                className="h-13 rounded-xl bg-panel2 px-4 text-body-sm font-bold text-court"
-              >
-                게임 추천
-              </button>
-              <button
-                onClick={createGame} // 누르자마자 반영되는 동작이라 다른 요청이 진행 중이어도 막지 않는다
-                disabled={selected.size === 0}
-                className="h-13 flex-1 rounded-xl bg-amber text-body font-bold text-bg disabled:bg-panel2 disabled:text-faint"
-              >
-                {selected.size > 0 && selected.size < GAME_SIZE ? '빈칸 조합' : '조합 만들기'} ({selected.size}/4)
-              </button>
-            </>
-          }
-        >
-          {pendingShuttle.length > 0 && (
-            <>
-              <div className="flex items-center gap-2 pb-1">
-                <p className="min-w-0 flex-1 text-caption font-medium text-amber">
-                  콕 확인 대기 {pendingShuttle.length}명 — [콕 확인]을 누르면 명단으로 내려가요
-                </p>
-                {/* 한꺼번에 콕을 냈을 때 — 두 번 눌러야 실행(콕을 안 낸 사람까지 확인되는 실수 방지) */}
-                {pendingShuttle.length >= 2 && (
-                  <ConfirmButton
-                    label={`모두 콕 확인 (${pendingShuttle.length})`}
-                    confirmLabel={`${pendingShuttle.length}명 모두 확인`}
-                    title="콕 확인 대기 전원을 한 번에 확인"
-                    onConfirm={() => pendingShuttle.forEach((a) => confirmShuttle(a.id))}
-                    className="tap h-9 shrink-0 rounded-lg px-3 text-caption font-bold"
-                    idleCls="bg-amber text-bg"
-                  />
-                )}
-              </div>
-              <AnimatePresence initial={false}>
-                {pendingShuttle.map((attendance) => (
-                  <ShuttleRow key={attendance.id} attendance={attendance} run={run} onConfirm={confirmShuttle} />
-                ))}
-              </AnimatePresence>
-              <div className="mb-1 border-b border-line" />
-            </>
-          )}
-          {roster.length === 0 && pendingShuttle.length === 0 && (
-            <Empty>출석한 사람이 없어요</Empty>
-          )}
-          {/* 비어 있는 사람 → 조합에 든 사람 → 게임 중 → 휴식. 조합·게임에 든 사람도 겹쳐 넣을 수 있어 선택은 된다 */}
-          <AnimatePresence initial={false}>
-            {roster.map((attendance) => (
-              <WaitingRow
-                key={attendance.id}
-                onMore={(a) => setActionId(a.id)}
-                attendance={attendance}
-                selected={selected.has(attendance.id)}
-                onToggle={() => toggleSelect(attendance.id)}
-                run={run}
-                busyStatus={
-                  attendance.status === 'PLAYING' || attendance.status === 'MATCHED' ? attendance.status : undefined
-                }
-                placeLabel={placeLabels.get(attendance.id)}
-                resting={attendance.status === 'RESTING'}
-                dragEnabled={dragEnabled}
-                partnerName={partnerNames.get(attendance.id)}
-              />
-            ))}
-          </AnimatePresence>
-          {leftCount > 0 && (
-            <p className="pt-2 text-center text-xs text-faint">퇴장 {leftCount}명</p>
-          )}
-        </Zone>
+        <RosterZone
+          roster={roster}
+          pendingShuttle={pendingShuttle}
+          leftCount={leftCount}
+          selected={selected}
+          rosterSort={rosterSort}
+          placeLabels={placeLabels}
+          partnerNames={partnerNames}
+          dragEnabled={dragEnabled}
+          run={run}
+          onRosterSort={setRosterSort}
+          onCheerTap={handleCheerTap}
+          onManualCheckIn={() => setManualOpen(true)}
+          onCommand={() => setCommandOpen(true)}
+          onRecommend={() => setRecommendOpen(true)}
+          onCreateGame={createGame}
+          onConfirmShuttle={confirmShuttle}
+          onToggle={toggleSelect}
+          onMore={(a) => setActionId(a.id)}
+        />
         </RosterDrop>
         <div className={`${pane} flex-1 md:max-h-[35%] md:flex-none`}>
           <MemoPanel version={memosVersion} run={run} />
