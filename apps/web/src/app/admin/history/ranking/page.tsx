@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
 import { PersonName } from '@/components/badges';
-import { HistoryTabs } from '@/components/history-tabs';
+import { HistoryTabs, historyHref } from '@/components/history-tabs';
 import { InstallPrompt } from '@/components/install-prompt';
 import { api, ApiError } from '@/lib/api';
 
@@ -29,8 +29,21 @@ export default function RankingPage() {
 function Ranking() {
   const [entries, setEntries] = useState<IHistoryRankingEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [months, setMonths] = useState<number | null>(null);
-  const [sortKey, setSortKey] = useState<SortKey>('sessions');
+  // 기간·정렬은 주소(?months=&sort=)에 적는다 — 사람 전적에서 뒤로 왔을 때 보던 그대로 (게이트 통과 뒤에만 그려져 window를 바로 읽는다)
+  const [months, setMonths] = useState<number | null>(() => {
+    const value = Number(new URLSearchParams(window.location.search).get('months'));
+    return PERIODS.some((p) => p.months === value) ? value : null;
+  });
+  const [sortKey, setSortKey] = useState<SortKey>(() =>
+    new URLSearchParams(window.location.search).get('sort') === 'games' ? 'games' : 'sessions',
+  );
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (months) params.set('months', String(months));
+    if (sortKey === 'games') params.set('sort', 'games');
+    const query = params.toString();
+    window.history.replaceState(window.history.state, '', `/admin/history/ranking${query ? `?${query}` : ''}`);
+  }, [months, sortKey]);
 
   useEffect(() => {
     setEntries(null);
@@ -100,7 +113,7 @@ function Ranking() {
         {sorted?.map((entry, index) => (
           <Link
             key={entry.memberId}
-            href={`/admin/history/members/${entry.memberId}`}
+            href={historyHref(`/admin/history/members/${entry.memberId}`, 'ranking')}
             className={`flex items-center gap-2 rounded-xl border bg-panel p-3 transition-colors hover:bg-panel2 ${
               entry.totalSessions === 0 ? 'border-line opacity-60' : 'border-line'
             }`}

@@ -4,7 +4,7 @@ import { IHistorySessionListResponse } from '@letscok/shared-types';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
-import { HistoryTabs } from '@/components/history-tabs';
+import { HistoryTabs, historyHref } from '@/components/history-tabs';
 import { InstallPrompt } from '@/components/install-prompt';
 import { api, ApiError } from '@/lib/api';
 import { sessionTag } from '@/lib/session-report';
@@ -22,9 +22,12 @@ export default function HistoryPage() {
 function HistoryList() {
   const [data, setData] = useState<IHistorySessionListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+  // 쪽수는 주소(?page=)에 적는다 — 모임 상세에서 뒤로 왔을 때 보던 쪽 그대로 (게이트 통과 뒤에만 그려져 window를 바로 읽는다)
+  const [page, setPage] = useState(() => Math.max(1, Number(new URLSearchParams(window.location.search).get('page')) || 1));
 
   useEffect(() => {
+    window.history.replaceState(window.history.state, '', page > 1 ? `/admin/history?page=${page}` : '/admin/history');
+
     setData(null);
     setError(null);
     api<IHistorySessionListResponse>(`/history/sessions?page=${page}&limit=${PAGE_SIZE}`, {
@@ -61,7 +64,7 @@ function HistoryList() {
         {data?.sessions.map((session) => (
           <Link
             key={session.id}
-            href={`/admin/history/${session.id}`}
+            href={historyHref(`/admin/history/${session.id}`, 'list')}
             className="flex items-center gap-3 rounded-xl bg-panel p-4 transition-colors hover:bg-panel2"
           >
             <span className="font-bold">

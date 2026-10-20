@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
 import { GenderMarker, GradeBadge, GuestMark } from '@/components/badges';
+import { HistoryBackLink, historyHref } from '@/components/history-tabs';
 import { InstallPrompt } from '@/components/install-prompt';
 import { api, ApiError } from '@/lib/api';
 import { sessionTag } from '@/lib/session-report';
@@ -33,9 +34,7 @@ function MemberStats() {
     <main className="fade-in mx-auto flex min-h-dvh w-full max-w-lg flex-col gap-5 p-6">
       <InstallPrompt app="admin" />
       <header>
-        <Link href="/admin/history" className="text-sm text-dim transition-opacity hover:opacity-70">
-          ← 모임 목록
-        </Link>
+        <HistoryBackLink />
         {stats && (
           <div className="mt-1 flex items-center gap-2">
             <GradeBadge grade={stats.grade} />
@@ -81,7 +80,7 @@ function MemberStats() {
               {stats.topPartners.map((partner, index) => (
                 <Link
                   key={partner.memberId}
-                  href={`/admin/history/members/${partner.memberId}`}
+                  href={historyHref(`/admin/history/members/${partner.memberId}`, 'member')}
                   className="flex items-center gap-3 rounded-xl bg-panel p-3 transition-colors hover:bg-panel2"
                 >
                   <span className="w-4 text-center text-xs font-bold text-faint">{index + 1}</span>

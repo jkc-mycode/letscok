@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
 import { GradeBadge, PersonName } from '@/components/badges';
+import { HistoryBackLink, historyHref } from '@/components/history-tabs';
 import { EntryFeeSheet } from '@/components/entry-fee-sheet';
 import { SessionReportModal } from '@/components/session-report-modal';
 import { InstallPrompt } from '@/components/install-prompt';
@@ -38,9 +39,7 @@ function HistoryDetail() {
     <main className="fade-in mx-auto flex min-h-dvh w-full max-w-lg flex-col gap-5 p-6">
       <InstallPrompt app="admin" />
       <header>
-        <Link href="/admin/history" className="text-sm text-dim transition-opacity hover:opacity-70">
-          ← 모임 목록
-        </Link>
+        <HistoryBackLink />
         <h1 className="mt-1 text-2xl font-bold">{detail ? [detail.session.date, sessionTag(detail.session)].filter(Boolean).join(' ') : '모임 상세'}</h1>
         {detail && (
           <div className="mt-1 flex items-center gap-2">
@@ -78,7 +77,7 @@ function HistoryDetail() {
               {detail.attendees.map((attendee) => (
                 <Link
                   key={attendee.memberId}
-                  href={`/admin/history/members/${attendee.memberId}`}
+                  href={historyHref(`/admin/history/members/${attendee.memberId}`, 'session')}
                   className="flex items-center gap-2 rounded-xl bg-panel p-3 transition-colors hover:bg-panel2"
                 >
                   <PersonName person={attendee} guest="full" />
