@@ -4,7 +4,7 @@ import { IHistoryRankingEntry } from '@letscok/shared-types';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
-import { GenderMarker, GradeBadge } from '@/components/badges';
+import { PersonName } from '@/components/badges';
 import { HistoryTabs } from '@/components/history-tabs';
 import { InstallPrompt } from '@/components/install-prompt';
 import { api, ApiError } from '@/lib/api';
@@ -112,10 +112,7 @@ function Ranking() {
             >
               {index + 1}
             </span>
-            <GradeBadge grade={entry.grade} />
-            <span className="truncate font-medium">{entry.name}</span>
-            <GenderMarker gender={entry.gender} />
-            {entry.isGuest && <span className="shrink-0 text-caption text-sky">게스트</span>}
+            <PersonName person={entry} nameClassName="truncate font-medium" guest="full" />
             <span className="tabular ml-auto shrink-0 text-right font-mono text-xs text-dim">
               출석 {entry.totalSessions}회 · 게임 {entry.totalGames}판
               {entry.lastAttendedDate && (

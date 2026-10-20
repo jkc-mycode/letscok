@@ -9,7 +9,7 @@ import {
 } from '@letscok/shared-types';
 import { useCallback, useEffect, useState } from 'react';
 import { Sheet } from '@/components/sheet';
-import { GenderMarker, GradeBadge, PartnerNote } from '@/components/badges';
+import { PartnerNote, PersonName } from '@/components/badges';
 import { api, ApiError } from '@/lib/api';
 
 // 게임 추천 시트 — 공정성·새 조합·믹스 후보 3개, 종목 탭, 짜는 중 조합의 빈자리 추천
@@ -157,14 +157,11 @@ export function RecommendModal({
                 <div className="mt-3 flex flex-col gap-2">
                   {rec.players.map((player) => (
                     <div key={player.attendanceId} className="flex items-center gap-1.5 text-sm">
-                      <GradeBadge grade={player.grade} />
                       {/* 이름이 핵심 정보 — 뱃지·통계에 밀려도 최소 한글 4자는 보장 */}
-                      <span className="min-w-[4em] truncate font-medium">{player.name}</span>
-                      <GenderMarker gender={player.gender} />
+                      <PersonName person={player} nameClassName="min-w-[4em] truncate font-medium" guest="short" />
                       {fixedIds.includes(player.attendanceId) && (
                         <span className="shrink-0 rounded bg-panel px-1 py-0.5 text-caption text-faint">이미 넣음</span>
                       )}
-                      {player.isGuest && <span className="text-caption text-sky">G</span>}
                       {player.borrowedFrom && (
                         <span
                           className={`shrink-0 rounded px-1 py-0.5 text-caption font-medium ${

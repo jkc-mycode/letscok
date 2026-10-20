@@ -2,10 +2,10 @@
 
 import { IAttendance, IMember } from '@letscok/shared-types';
 import { usePersonDrag } from '@/components/board-dnd';
-import { GenderMarker, GradeBadge } from '@/components/badges';
+import { PersonName } from '@/components/badges';
 import { MotionCard } from '@/components/motion-card';
 import { api } from '@/lib/api';
-import { GuestMark, RoleCrown, WaitingMinutesText } from '@/components/admin/board-ui';
+import { WaitingMinutesText } from '@/components/admin/board-ui';
 import { ConfirmButton } from '@/components/confirm-button';
 
 // 대기 명단 줄 — 콕 확인 대기 줄과 명단 줄, 명단·교체·빈칸 채우기가 같이 쓰는 사람 줄 내용
@@ -23,11 +23,7 @@ export function RosterPerson({
 }) {
   return (
     <>
-      <GradeBadge grade={member.grade} />
-      <RoleCrown role={member.role} />
-      <span className={`shrink-0 whitespace-nowrap ${bold ? 'font-bold' : 'font-medium'}`}>{member.name}</span>
-      <GenderMarker gender={member.gender} />
-      {member.isGuest && <GuestMark />}
+      <PersonName person={member} nameClassName={`shrink-0 whitespace-nowrap ${bold ? 'font-bold' : 'font-medium'}`} crown guest="auto" />
       {chip && (
         <span
           className={`min-w-0 truncate rounded-md px-1.5 py-0.5 text-caption font-medium ${
@@ -72,11 +68,7 @@ export function ShuttleRow({
   if (!member) return null;
   return (
     <MotionCard className="flex min-h-11 items-center gap-2 rounded-[10px] bg-amber/10 py-1.5 pr-1.5 pl-2.5 text-body-sm transition-colors">
-      <GradeBadge grade={member.grade} />
-      <RoleCrown role={member.role} />
-      <span className="shrink-0 whitespace-nowrap font-medium">{member.name}</span>
-      <GenderMarker gender={member.gender} />
-      {member.isGuest && <GuestMark />}
+      <PersonName person={member} nameClassName="shrink-0 whitespace-nowrap font-medium" crown guest="auto" />
       {/* 사전 체크인 취소 — 개인 사정·노쇼 등으로 못 오게 된 사람을 출석 기록 없이 제거 (퇴장과 다름) */}
       {/* 출석 취소(노쇼) 2탭 확인 — 콕 확인 바로 옆이라 오탭 한 번에 지워지면 안 된다 */}
       <ConfirmButton

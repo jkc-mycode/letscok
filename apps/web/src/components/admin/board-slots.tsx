@@ -3,7 +3,7 @@
 import { GAME_SIZE, ICourt, IGame } from '@letscok/shared-types';
 import { useEffect, useState } from 'react';
 import { mergeRefs, TEMP_GAME_PREFIX, useDropTarget, usePersonDrag, type GameRef } from '@/components/board-dnd';
-import { gamePartnerPeople, GenderMarker, GradeBadge, PartnerNote } from '@/components/badges';
+import { gamePartnerPeople, PartnerNote, PersonName } from '@/components/badges';
 import { useLongPress } from '@/components/admin/board-ui';
 
 // 조합·코트 카드 안의 4자리(윗줄 팀 대 아랫줄 팀)와 끌어 놓기 자리
@@ -201,10 +201,7 @@ function SlotPerson({
       } ${drag.dragCls} ${drop.overCls}`}
       style={{ WebkitTouchCallout: 'none' }}
     >
-      <GradeBadge grade={member.grade} />
-      <span className="shrink-0 whitespace-nowrap font-medium">{member.name}</span>
-      <GenderMarker gender={member.gender} />
-      {member.isGuest && <span className="shrink-0 text-caption text-sky">G</span>}
+      <PersonName person={member} nameClassName="shrink-0 whitespace-nowrap font-medium" guest="short" />
       {busyElsewhere && (
         <span className="min-w-0 truncate rounded bg-coral/15 px-1 py-0.5 text-caption font-medium text-coral">게임 중</span>
       )}

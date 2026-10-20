@@ -12,7 +12,7 @@ import { MemberSessionHistorySheet } from '@/components/member-session-history-s
 import { ConfirmButton } from '@/components/confirm-button';
 import { Sheet } from '@/components/sheet';
 import { ClearableInput } from '@/components/clearable-input';
-import { GenderMarker, GradeBadge, Toast } from '@/components/badges';
+import { GenderMarker, GradeBadge, PersonName, Toast } from '@/components/badges';
 import { MultiMemberForm } from '@/components/multi-member-form';
 import { api, ApiError } from '@/lib/api';
 import { useToast } from '@/lib/use-toast';
@@ -463,9 +463,7 @@ function StaleGuestCleanupSheet({
               >
                 ✓
               </span>
-              <GradeBadge grade={guest.grade} />
-              <span className="truncate font-medium">{guest.name}</span>
-              <GenderMarker gender={guest.gender} />
+              <PersonName person={guest} nameClassName="truncate font-medium" />
               <span className="ml-auto shrink-0 text-caption text-dim">
                 {formatLastAttended(guest.lastAttendedAt)}
               </span>

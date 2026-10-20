@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
-import { GenderMarker, GradeBadge } from '@/components/badges';
+import { GradeBadge, PersonName } from '@/components/badges';
 import { EntryFeeSheet } from '@/components/entry-fee-sheet';
 import { SessionReportModal } from '@/components/session-report-modal';
 import { InstallPrompt } from '@/components/install-prompt';
@@ -81,10 +81,7 @@ function HistoryDetail() {
                   href={`/admin/history/members/${attendee.memberId}`}
                   className="flex items-center gap-2 rounded-xl bg-panel p-3 transition-colors hover:bg-panel2"
                 >
-                  <GradeBadge grade={attendee.grade} />
-                  <span className="font-medium">{attendee.name}</span>
-                  <GenderMarker gender={attendee.gender} />
-                  {attendee.isGuest && <span className="text-caption text-sky">게스트</span>}
+                  <PersonName person={attendee} guest="full" />
                   <span className="tabular ml-auto font-mono text-xs text-dim">
                     {attendee.gamesPlayed}게임
                   </span>

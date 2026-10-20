@@ -2,6 +2,7 @@
 
 import { IEntryFee, ISetEntryMembersDto, IUpdateEntryFeeDto } from '@letscok/shared-types';
 import { useEffect, useRef, useState } from 'react';
+import { GuestMark } from '@/components/badges';
 import { Sheet } from '@/components/sheet';
 import { api, ApiError } from '@/lib/api';
 
@@ -286,7 +287,7 @@ export function EntryFeeSheet({ sessionId, onClose }: { sessionId: string; onClo
                         {r.paid ? '✓' : ''}
                       </span>
                       <span className={`shrink-0 whitespace-nowrap ${r.paid ? 'font-medium' : ''}`}>{r.name}</span>
-                      {r.isGuest && <span className="shrink-0 text-caption text-sky">게스트</span>}
+                      {r.isGuest && <GuestMark size="full" />}
                       {r.isPayee && (
                         <span className="ml-auto min-w-0 truncate rounded bg-amber/15 px-1.5 py-0.5 text-caption font-medium text-amber">
                           받는 사람
@@ -403,7 +404,7 @@ function EntryMemberPicker({
                 {on ? '✓' : ''}
               </span>
               <span className="min-w-0 truncate">{c.name}</span>
-              {c.isGuest && <span className="shrink-0 text-caption text-sky">G</span>}
+              {c.isGuest && <GuestMark size="short" />}
             </button>
           );
         })}

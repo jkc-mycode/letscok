@@ -10,7 +10,7 @@
 import { IAttendance, IMember } from '@letscok/shared-types';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { GenderMarker, GradeBadge, Toast } from '@/components/badges';
+import { PersonName, Toast } from '@/components/badges';
 import { ClearableInput } from '@/components/clearable-input';
 import { ConnectionError } from '@/components/connection-error';
 import { HomeLink } from '@/components/home-link';
@@ -241,12 +241,11 @@ function SearchPanel({
                   }}
                   className={`flex h-14 items-center gap-2.5 rounded-xl px-3 text-left ${isSelected ? 'bg-court/12' : ''}`}
                 >
-                  <GradeBadge grade={member.grade} />
-                  <span className={`min-w-0 truncate text-body ${isSelected ? 'font-bold' : 'font-medium'}`}>
-                    {member.name}
-                  </span>
-                  <GenderMarker gender={member.gender} />
-                  {member.isGuest && <span className="shrink-0 text-caption text-sky">게스트</span>}
+                  <PersonName
+                    person={member}
+                    nameClassName={`min-w-0 truncate text-body ${isSelected ? 'font-bold' : 'font-medium'}`}
+                    guest="full"
+                  />
                   {/* 동명이인 구분용 출생 연도 — 공개 응답엔 생년월일 전체가 오지 않는다 */}
                   <span className="tabular ml-auto font-mono text-body-sm text-dim">
                     {member.birthYear ? `${String(member.birthYear).slice(2)}년생` : ''}

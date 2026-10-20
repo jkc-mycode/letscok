@@ -2,6 +2,7 @@
 
 import { Gender, Grade, IMemberAlias, IMemberSummary, MemberRole } from '@letscok/shared-types';
 import { useEffect, useState } from 'react';
+import { GuestMark } from '@/components/badges';
 import { ConfirmButton } from '@/components/confirm-button';
 import { Sheet } from '@/components/sheet';
 import { ClearableInput } from '@/components/clearable-input';
@@ -84,7 +85,7 @@ export function MemberEditSheet({
       header={
         <>
           <h3 className="min-w-0 truncate font-bold text-court">{member.name}</h3>
-          {member.isGuest && <span className="text-caption text-sky">게스트</span>}
+          {member.isGuest && <GuestMark size="full" />}
           {deleted && <span className="text-caption text-coral">삭제됨</span>}
         </>
       }

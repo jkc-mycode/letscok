@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react';
 import { AiCheckInPanel } from '@/components/ai-check-in-panel';
 import { Sheet } from '@/components/sheet';
 import { ClearableInput } from '@/components/clearable-input';
-import { GenderMarker, GradeBadge } from '@/components/badges';
+import { PersonName } from '@/components/badges';
 import { SearchIcon } from '@/components/icons';
 import { MultiMemberForm, NewMemberBody } from '@/components/multi-member-form';
 import { api, ApiError } from '@/lib/api';
@@ -245,9 +245,7 @@ export function ManualCheckInModal({
                     >
                       ✓
                     </span>
-                    <GradeBadge grade={member.grade} />
-                    <span className={`truncate text-body ${picked ? 'font-bold' : 'font-medium'}`}>{member.name}</span>
-                    <GenderMarker gender={member.gender} />
+                    <PersonName person={member} nameClassName={`truncate text-body ${picked ? 'font-bold' : 'font-medium'}`} />
                     {present && (
                       <span className="shrink-0 rounded bg-court/15 px-1.5 py-0.5 text-caption font-medium text-court">
                         출석 중

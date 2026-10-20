@@ -3,9 +3,9 @@
 import { GAME_SIZE, IAttendance, IGame } from '@letscok/shared-types';
 import { useState } from 'react';
 import { Sheet } from '@/components/sheet';
-import { GenderMarker, GradeBadge } from '@/components/badges';
+import { GradeBadge, PersonName } from '@/components/badges';
 import { MegaphoneIcon } from '@/components/icons';
-import { CallButton, RoleCrown } from '@/components/admin/board-ui';
+import { CallButton } from '@/components/admin/board-ui';
 import { ConfirmButton } from '@/components/confirm-button';
 import { GamesWaitText, placeChip, RosterPerson } from '@/components/admin/waiting-rows';
 import { RosterSort, RosterSortSelect, sortCandidates } from '@/components/admin/roster-sort';
@@ -80,10 +80,7 @@ export function ReplacePlayerModal({
                     : 'border-line bg-panel2'
                 }`}
               >
-                <GradeBadge grade={member.grade} />
-                <span className="truncate font-medium">{member.name}</span>
-                <RoleCrown role={member.role} />
-                <GenderMarker gender={member.gender} />
+                <PersonName person={member} nameClassName="truncate font-medium" crown />
               </button>
             );
           })}

@@ -8,7 +8,7 @@ import { GAME_SIZE, IAttendance, ICourt, IGame } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { gamePartnerPeople, GenderMarker, GradeBadge, MeChip, PartnerNote, Toast } from '@/components/badges';
+import { gamePartnerPeople, MeChip, PartnerNote, PersonName, Toast } from '@/components/badges';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ConnectionError } from '@/components/connection-error';
 import { HomeLink } from '@/components/home-link';
@@ -424,11 +424,10 @@ function MyGameCard({ game, playing, memberId }: { game: IGame; playing: boolean
               const isMe = member.id === memberId;
               return (
                 <div key={player.id} className="flex h-13 min-w-0 items-center gap-2 rounded-xl bg-panel2 px-3">
-                  <GradeBadge grade={member.grade} />
-                  <span className={`shrink-0 whitespace-nowrap text-body ${isMe ? 'font-bold text-court' : 'font-medium'}`}>
-                    {member.name}
-                  </span>
-                  <GenderMarker gender={member.gender} />
+                  <PersonName
+                    person={member}
+                    nameClassName={`shrink-0 whitespace-nowrap text-body ${isMe ? 'font-bold text-court' : 'font-medium'}`}
+                  />
                   {isMe && <span className="ml-auto"><MeChip /></span>}
                 </div>
               );
@@ -507,17 +506,13 @@ function PersonRow({
     <MotionCard
       className={`flex items-center gap-2 px-4 py-3 ${isMe ? 'bg-court/10' : ''} ${resting && !isMe ? 'opacity-60' : ''}`}
     >
-      <GradeBadge grade={member.grade} />
       {/* 이름은 줄이지 않는다 — 좁으면 휴식 칩이 줄어들고, 폰에선 게스트를 "G"로 */}
-      <span className={`shrink-0 whitespace-nowrap text-body ${isMe ? 'font-bold text-court' : 'font-medium'}`}>{member.name}</span>
-      <GenderMarker gender={member.gender} />
+      <PersonName
+        person={member}
+        nameClassName={`shrink-0 whitespace-nowrap text-body ${isMe ? 'font-bold text-court' : 'font-medium'}`}
+        guest="auto"
+      />
       {isMe && <MeChip />}
-      {member.isGuest && (
-        <span className="shrink-0 text-caption text-sky">
-          <span className="sm:hidden">G</span>
-          <span className="hidden sm:inline">게스트</span>
-        </span>
-      )}
       {resting && (
         <span className="min-w-0 truncate rounded-md bg-sky/15 px-1.5 py-0.5 text-caption font-medium text-sky">휴식</span>
       )}

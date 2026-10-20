@@ -7,7 +7,7 @@
 import { GAME_SIZE, IGame, IGamePlayer } from '@letscok/shared-types';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { GenderMarker, GradeBadge } from '@/components/badges';
+import { PersonName } from '@/components/badges';
 import { ConnectionError } from '@/components/connection-error';
 import { useStandalone } from '@/components/home-link';
 import { LogoLoader } from '@/components/logo-loader';
@@ -228,9 +228,7 @@ function Person({ player }: { player?: IGamePlayer }) {
   if (!member) return <span className="flex h-10 items-center px-1 text-body text-faint">—</span>;
   return (
     <span className="flex h-10 min-w-0 items-center gap-2 rounded-xl bg-panel2 px-3">
-      <GradeBadge grade={member.grade} />
-      <span className="truncate text-body font-bold">{member.name}</span>
-      <GenderMarker gender={member.gender} />
+      <PersonName person={member} nameClassName="truncate text-body font-bold" />
     </span>
   );
 }

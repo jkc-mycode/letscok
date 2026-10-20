@@ -3,7 +3,7 @@
 import { IMemberSummary } from '@letscok/shared-types';
 import { motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { GenderMarker, GradeBadge } from '@/components/badges';
+import { PersonName } from '@/components/badges';
 import { Sheet } from '@/components/sheet';
 import { api } from '@/lib/api';
 
@@ -45,9 +45,7 @@ function daysUntil(b: Birthday, today: Date): { days: number; date: Date } {
 function MemberLine({ member, note }: { member: IMemberSummary; note?: string }) {
   return (
     <div className="flex items-center gap-2 rounded-lg bg-panel2 px-3 py-2 text-sm">
-      <GradeBadge grade={member.grade} />
-      <span className="font-medium">{member.name}</span>
-      <GenderMarker gender={member.gender} />
+      <PersonName person={member} />
       {note && <span className="ml-auto shrink-0 text-xs text-dim">{note}</span>}
     </div>
   );

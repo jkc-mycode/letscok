@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
-import { GenderMarker, GradeBadge } from '@/components/badges';
+import { GenderMarker, GradeBadge, GuestMark } from '@/components/badges';
 import { InstallPrompt } from '@/components/install-prompt';
 import { api, ApiError } from '@/lib/api';
 import { sessionTag } from '@/lib/session-report';
@@ -41,7 +41,7 @@ function MemberStats() {
             <GradeBadge grade={stats.grade} />
             <h1 className="text-2xl font-bold">{stats.name}</h1>
             <GenderMarker gender={stats.gender} />
-            {stats.isGuest && <span className="text-xs text-sky">게스트</span>}
+            {stats.isGuest && <GuestMark size="full" />}
           </div>
         )}
       </header>

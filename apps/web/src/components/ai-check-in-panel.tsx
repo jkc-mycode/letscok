@@ -8,7 +8,7 @@ import {
   IMember,
 } from '@letscok/shared-types';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { GenderMarker, GradeBadge } from '@/components/badges';
+import { PersonName } from '@/components/badges';
 import { ClearableInput } from '@/components/clearable-input';
 import { SparkleIcon } from '@/components/icons';
 import { AiThinking } from '@/components/logo-loader';
@@ -358,10 +358,7 @@ function AmbiguousCard({
             disabled={isPresent || busyId !== null}
             className="flex min-h-11 items-center gap-2 rounded-lg bg-panel px-3 text-left text-body-sm disabled:opacity-60"
           >
-            <GradeBadge grade={candidate.grade} />
-            <span className="font-medium">{candidate.name}</span>
-            <GenderMarker gender={candidate.gender} />
-            {candidate.isGuest && <span className="text-caption text-sky">게스트</span>}
+            <PersonName person={candidate} guest="full" />
             <span className="tabular font-mono text-caption text-faint">{candidate.birthDate ?? ''}</span>
             <span className={`ml-auto shrink-0 text-caption font-bold ${isPresent ? 'text-dim' : 'text-court'}`}>
               {isPresent ? '출석 중' : busyId === candidate.id ? '처리 중…' : '출석'}
@@ -440,10 +437,7 @@ function NotFoundRow({
                 disabled={busyId !== null}
                 className="flex min-h-11 items-center gap-2 rounded-lg bg-panel2 px-3 text-left text-body-sm disabled:opacity-60"
               >
-                <GradeBadge grade={member.grade} />
-                <span className="font-medium">{member.name}</span>
-                <GenderMarker gender={member.gender} />
-                {member.isGuest && <span className="text-caption text-sky">게스트</span>}
+                <PersonName person={member} guest="full" />
                 <span className="tabular font-mono text-caption text-faint">{member.birthDate ?? ''}</span>
                 <span className="ml-auto shrink-0 text-caption font-bold text-court">
                   {busyId === member.id ? '처리 중…' : isPresent ? '연결만' : '연결 + 출석'}

@@ -24,7 +24,7 @@ import {
 import { Gender, Grade } from '@letscok/shared-types';
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { GenderMarker, GradeBadge } from '@/components/badges';
+import { PersonName } from '@/components/badges';
 
 // 끄는 것 — 사람 한 명. fromGameId = 대기 조합 카드에서 끌어낸 경우 그 조합(명단에서 끌면 null)
 export type DragPerson = {
@@ -180,9 +180,7 @@ export function BoardDnd({
           <DragOverlay dropAnimation={null} zIndex={60}>
             {active?.kind === 'person' && (
               <div className="flex h-10 items-center gap-1.5 rounded-xl border border-amber bg-panel px-3 text-sm shadow-xl">
-                <GradeBadge grade={active.grade} />
-                <span className="font-bold">{active.name}</span>
-                <GenderMarker gender={active.gender} />
+                <PersonName person={active} nameClassName="font-bold" />
               </div>
             )}
             {active?.kind === 'game' && (

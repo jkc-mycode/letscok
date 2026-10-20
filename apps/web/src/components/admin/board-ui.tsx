@@ -1,12 +1,11 @@
 'use client';
 
-import { IPushCallResult, MemberRole } from '@letscok/shared-types';
+import { IPushCallResult } from '@letscok/shared-types';
 import { useEffect, useRef, useState } from 'react';
-import { CrownIcon } from '@/components/icons';
 import { api, ApiError } from '@/lib/api';
 import { formatElapsed, formatWaitingMinutes, useNow } from '@/lib/use-snapshot';
 
-// 관제판 공용 작은 부품 — 구역 틀, 호출 버튼, [⋯] 버튼, 왕관·게스트 표시, 길게 누르기, 시간 글자
+// 관제판 공용 작은 부품 — 구역 틀, 호출 버튼, [⋯] 버튼, 길게 누르기, 시간 글자 (왕관·게스트 표시는 badges)
 
 // 1초마다 바뀌는 시간 글자 — 시계를 이 글자 안에만 둔다. 보드가 시계를 들면 매초 카드·명단 전체를 다시 그려 끌기가 끊긴다
 export function ElapsedText({ since }: { since: string }) {
@@ -161,28 +160,6 @@ export function useLongPress(onLongPress: () => void, enabled: boolean, ms = 450
     return was;
   };
   return { handlers, consumeFired };
-}
-
-// 모임장(주황)·운영진(초록) 왕관 — 글자 칩보다 자리를 덜 차지한다
-export function RoleCrown({ role }: { role: MemberRole }) {
-  if (role === 'MEMBER') return null;
-  const label = role === 'LEADER' ? '모임장' : '운영진';
-  return (
-    <span title={label} className={`flex shrink-0 ${role === 'LEADER' ? 'text-amber' : 'text-court'}`}>
-      <CrownIcon size={14} />
-      <span className="sr-only">{label}</span>
-    </span>
-  );
-}
-
-// 게스트 표시 — 폰에선 "G"로 짧게(이름 자리를 지키려고), 넓은 화면에선 "게스트"
-export function GuestMark() {
-  return (
-    <span className="shrink-0 text-caption text-sky">
-      <span className="sm:hidden">G</span>
-      <span className="hidden sm:inline">게스트</span>
-    </span>
-  );
 }
 
 // 카드의 [⋯] — 자주 안 쓰는 동작을 시트로 모은다

@@ -1,7 +1,8 @@
 'use client';
 
-import { Gender, Grade, IGame } from '@letscok/shared-types';
+import { Gender, Grade, IGame, MemberRole } from '@letscok/shared-types';
 import { motion } from 'motion/react';
+import { CrownIcon } from '@/components/icons';
 import type { ToastState } from '@/lib/use-toast';
 
 // 급수 배지 색 — 고수(A)일수록 따뜻한 색 (관제판·모임원 화면 공용)
@@ -38,6 +39,60 @@ export function GenderMarker({ gender }: { gender: Gender | null }) {
   );
 }
 
+// 모임장(주황)·운영진(초록) 왕관 — 글자 칩보다 자리를 덜 차지한다
+export function RoleCrown({ role }: { role: MemberRole }) {
+  if (role === 'MEMBER') return null;
+  const label = role === 'LEADER' ? '모임장' : '운영진';
+  return (
+    <span title={label} className={`flex shrink-0 ${role === 'LEADER' ? 'text-amber' : 'text-court'}`}>
+      <CrownIcon size={14} />
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
+// 게스트 표시 — short "G"(좁은 줄), full "게스트"(넓은 목록), auto 폰에선 "G"·넓은 화면에선 "게스트"(이름 자리를 지키려고)
+export type GuestMarkSize = 'short' | 'full' | 'auto';
+export function GuestMark({ size = 'auto' }: { size?: GuestMarkSize }) {
+  return (
+    <span className="shrink-0 text-caption text-sky">
+      {size === 'short' && 'G'}
+      {size === 'full' && '게스트'}
+      {size === 'auto' && (
+        <>
+          <span className="sm:hidden">G</span>
+          <span className="hidden sm:inline">게스트</span>
+        </>
+      )}
+    </span>
+  );
+}
+
+// 사람 이름 한 묶음 — 급수 · (왕관) · 이름 · 성별 · (게스트). 순서를 여기 한 곳에서 정한다
+// 감싸는 상자 없이 펼쳐서 부모 줄의 간격·줄임을 그대로 따른다. 그 뒤 칩(나·휴식·게임 중 등)은 부르는 쪽이 붙인다
+// nameClassName: 이름 줄임 방식이 자리마다 다르다(줄이지 않음·truncate·최소 4글자) — 굵기·색과 함께 넘긴다
+export function PersonName({
+  person,
+  nameClassName = 'font-medium',
+  crown = false,
+  guest,
+}: {
+  person: { name: string; grade: Grade; gender: Gender | null; isGuest?: boolean; role?: MemberRole };
+  nameClassName?: string;
+  crown?: boolean; // 관제판 명단처럼 모임장·운영진을 알아야 하는 자리
+  guest?: GuestMarkSize; // 생략하면 게스트 표시 없음
+}) {
+  return (
+    <>
+      <GradeBadge grade={person.grade} />
+      {crown && person.role && <RoleCrown role={person.role} />}
+      <span className={nameClassName}>{person.name}</span>
+      <GenderMarker gender={person.gender} />
+      {guest && person.isGuest && <GuestMark size={guest} />}
+    </>
+  );
+}
+
 // 본인 표시 칩 — 모임원 화면에서 어느 구역에 있든 내 이름을 한눈에 찾도록
 export function MeChip() {
   return (
@@ -69,14 +124,13 @@ export function PlayerGrid({
         const isBusy = game.status === 'QUEUED' && player.attendance?.status === 'PLAYING';
         return (
           <div key={player.id} className="flex min-w-0 items-center gap-1.5 overflow-hidden text-sm">
-            <GradeBadge grade={member.grade} />
             {/* 이름은 줄이지 않는다 — 좁으면 옆 칩이 줄어든다 */}
-            <span className={`shrink-0 whitespace-nowrap font-medium ${isMe ? 'font-bold text-court' : ''}`}>
-              {member.name}
-            </span>
-            <GenderMarker gender={member.gender} />
+            <PersonName
+              person={member}
+              nameClassName={`shrink-0 whitespace-nowrap font-medium ${isMe ? 'font-bold text-court' : ''}`}
+              guest="short"
+            />
             {isMe && <MeChip />}
-            {member.isGuest && <span className="shrink-0 text-caption text-sky">G</span>}
             {isBusy && (
               <span className="min-w-0 truncate rounded bg-coral/15 px-1 py-0.5 text-caption font-medium text-coral">
                 게임 중
