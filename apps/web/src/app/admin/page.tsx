@@ -3,7 +3,7 @@
 import { GAME_SIZE, IFillCourtsResult, IGame, IGameRecommendation, ISessionSnapshot } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LoginGate, useAdminAuth } from '@/components/admin-gate';
 import { BirthdayCalendarModal } from '@/components/birthday-calendar';
 import {
@@ -19,11 +19,8 @@ import { ConnectionError } from '@/components/connection-error';
 import { SessionReportModal } from '@/components/session-report-modal';
 import { EntryFeeSheet } from '@/components/entry-fee-sheet';
 import { SettlementModal } from '@/components/settlement-modal';
-import { Sheet } from '@/components/sheet';
-import { ThemeToggle } from '@/components/theme-toggle';
 import { ExitGuard } from '@/components/exit-guard';
 import { Toast } from '@/components/badges';
-import { HomeLink } from '@/components/home-link';
 import { InstallPrompt } from '@/components/install-prompt';
 import { LogoLoader } from '@/components/logo-loader';
 import { api, ApiError } from '@/lib/api';
@@ -38,7 +35,8 @@ import { TodayGamesModal } from '@/components/admin/today-games';
 import { HelpModal } from '@/components/admin/help-sheet';
 import { AnotherSessionSheet } from '@/components/admin/another-session';
 import { CheckInCodeModal } from '@/components/admin/check-in-code';
-import { sessionName, SessionSwitcher } from '@/components/session-switcher';
+import { sessionName } from '@/components/session-switcher';
+import { BoardHeader, MobileTabBar, MoreMenuSheet, useTabSwipe, type MoreAction } from '@/components/admin/board-chrome';
 import { MemoPanel } from '@/components/admin/memo-panel';
 import { CheerEasterEgg } from '@/components/admin/cheer';
 import { Empty, Zone } from '@/components/admin/board-ui';
@@ -248,18 +246,8 @@ function Board({ onLogout }: { onLogout: () => void }) {
   );
 }
 
-// 폰 더보기 시트의 묶음 — 자주 쓰는 것 위, 관리 기능 아래(잠금·모임 종료는 시트 맨 아래 따로)
-const MORE_GROUPS: { title: string; keys: string[] }[] = [
-  { title: '모임 중', keys: ['code', 'log', 'entryFee', 'courts', 'display', 'another'] },
-  { title: '관리', keys: ['members', 'history', 'birthday', 'settlement', 'help'] },
-];
-
 // 폰 전용 구역 탭 — md 이상에서는 전부 동시에 보이므로 무시된다
 type MobileTab = 'courts' | 'queue' | 'waiting' | 'memo';
-
-const SWIPE_LOCK_PX = 8; // 이만큼 움직인 뒤 가로·세로 중 큰 쪽으로 방향을 정한다
-const SWIPE_COMMIT_PX = 70; // 손을 뗐을 때 이 이상(또는 화면 폭 25% 이상) 밀었으면 옆 탭으로
-const SWIPE_EDGE_GUARD = 20; // 화면 가장자리 시작 스와이프는 시스템 제스처에 양보
 
 // 누르자마자 보여 주는 새 조합 — 서버 id가 오기 전 임시 id. realId = 빈칸 조합을 한 명씩 채우는 중인 서버 조합
 type GamePlayer = NonNullable<IGame['players']>[number];
@@ -456,9 +444,7 @@ function BoardBody({
   };
   const [gamesLogOpen, setGamesLogOpen] = useState(false); // 오늘 완료 게임 조회·이름 검색
   // 폰(<md)에서는 3구역을 한 번에 못 보여주므로 탭 전환(mobileTab) — 상태는 Board가 들고 있다
-  // 탭 스와이프 — 미는 동안은 React 렌더 없이 CSS 변수(--drag)만 바꿔 화면이 손가락을 따라오게 한다
-  const boardRef = useRef<HTMLElement>(null);
-  const swipe = useRef<{ x: number; y: number; dir: 'h' | 'v' | null; dx: number } | null>(null);
+  const boardRef = useRef<HTMLElement>(null); // 탭 스와이프가 --drag를 다는 바깥 틀
   const [menuOpen, setMenuOpen] = useState(false); // 폰 헤더 햄버거
   const [replaceGameId, setReplaceGameId] = useState<string | null>(null); // 선수 교체 대상 게임
   const [assignGameId, setAssignGameId] = useState<string | null>(null); // 코트 고르기 시트 대상 조합
@@ -1250,12 +1236,7 @@ function BoardBody({
   const pane = 'flex min-h-0 flex-col gap-3 max-md:w-full max-md:flex-none';
 
   // 더보기 시트의 항목 — 폰·태블릿 공용(태블릿 머리에는 체크인 코드·게임 기록만 따로 펼친다)
-  const headerActions: {
-    key: string;
-    label: string;
-    keepMenuOpen?: boolean; // 2탭 확인·토글이라 메뉴를 닫으면 안 되는 것
-    onClick: () => void;
-  }[] = [
+  const headerActions: MoreAction[] = [
     {
       key: 'code',
       label: '입장 코드',
@@ -1324,71 +1305,14 @@ function BoardBody({
     { value: 'waiting', label: '명단', count: waitingCount },
     { value: 'memo', label: '메모' },
   ];
-
-  // 폰에서 구역 간 가로 스와이프 이동 — 미는 동안 화면과 탭 표시가 손가락을 따라오고, 놓으면 옆 탭으로 넘어간다
-  // (md 이상은 구역이 동시에 보이므로 무시)
   const tabIndex = MOBILE_TABS.findIndex((tab) => tab.value === mobileTab);
-  const setDrag = (dx: number) => {
-    const el = boardRef.current;
-    if (!el) return;
-    el.style.setProperty('--drag', `${dx}px`);
-    el.style.setProperty('--drag-ratio', String(dx / el.clientWidth));
-  };
-
-  const onTouchStart = (e: ReactTouchEvent<HTMLDivElement>) => {
-    const touch = e.touches[0];
-    // 화면 가장자리에서 시작한 스와이프는 시스템 뒤로가기 몫이라 건드리지 않는다
-    if (
-      window.innerWidth >= 768 ||
-      touch.clientX < SWIPE_EDGE_GUARD ||
-      touch.clientX > window.innerWidth - SWIPE_EDGE_GUARD
-    ) {
-      swipe.current = null;
-      return;
-    }
-    swipe.current = { x: touch.clientX, y: touch.clientY, dir: null, dx: 0 };
-  };
-
-  const onTouchMove = (e: ReactTouchEvent<HTMLDivElement>) => {
-    const s = swipe.current;
-    if (!s) return;
-    // 조합 카드를 끄는 중이면 구역 넘기기는 포기(끌다가 옆 구역으로 넘어가지 않게)
-    if (dndDragging.current) {
-      swipe.current = null;
-      if (s.dir === 'h') {
-        boardRef.current?.removeAttribute('data-dragging');
-        setDrag(0);
-      }
-      return;
-    }
-    const touch = e.touches[0];
-    const dx = touch.clientX - s.x;
-    const dy = touch.clientY - s.y;
-    if (!s.dir) {
-      if (Math.abs(dx) < SWIPE_LOCK_PX && Math.abs(dy) < SWIPE_LOCK_PX) return;
-      s.dir = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'; // 세로로 시작했으면 끝까지 스크롤로 둔다
-      if (s.dir === 'h') boardRef.current?.setAttribute('data-dragging', '');
-    }
-    if (s.dir !== 'h') return;
-    // 첫 탭에서 오른쪽, 마지막 탭에서 왼쪽으로는 고무줄처럼 조금만 끌려온다
-    const atEnd = (dx > 0 && tabIndex === 0) || (dx < 0 && tabIndex === MOBILE_TABS.length - 1);
-    s.dx = atEnd ? dx * 0.3 : dx;
-    setDrag(s.dx);
-  };
-
-  const onTouchEnd = () => {
-    const s = swipe.current;
-    swipe.current = null;
-    if (!s || s.dir !== 'h') return;
-    boardRef.current?.removeAttribute('data-dragging'); // 전환 애니메이션 다시 켜기 → 놓은 자리에서 제자리/옆 탭으로 미끄러진다
-    const width = boardRef.current?.clientWidth ?? window.innerWidth;
-    const next =
-      Math.abs(s.dx) >= Math.min(SWIPE_COMMIT_PX, width * 0.25)
-        ? MOBILE_TABS[tabIndex + (s.dx < 0 ? 1 : -1)] // 양 끝에서는 undefined라 제자리로 돌아간다
-        : undefined;
-    setDrag(0);
-    if (next) setMobileTab(next.value);
-  };
+  const swipeHandlers = useTabSwipe({
+    boardRef,
+    tabIndex,
+    tabCount: MOBILE_TABS.length,
+    dragging: dndDragging,
+    onSwipe: (step) => setMobileTab(MOBILE_TABS[tabIndex + step].value),
+  });
 
   return (
     <main
@@ -1398,56 +1322,24 @@ function BoardBody({
     >
       {/* 설치 안내 — 카톡으로 연 운영진도 브라우저로 나가게. 설치된 앱에선 뜨지 않는다 */}
       <InstallPrompt app="admin" className="mb-2 shrink-0" />
-      {/* 헤더 */}
-      {/* 머리 — 태블릿은 자주 쓰는 두 개(체크인 코드·게임 기록)만 펼치고 나머지는 폰과 같은 더보기 시트로 */}
-      <header className="flex items-center gap-2 pb-2 md:gap-3 md:pb-3">
-        <HomeLink className="shrink-0 transition-opacity hover:opacity-70" title="홈으로">
-          <h1 className="text-body font-bold md:text-heading">
-            렛츠콕 <span className="text-court">운영</span>
-          </h1>
-        </HomeLink>
-        <p className="truncate text-caption text-dim md:text-body-sm">
-          {session.date} · 출석 {presentCount}명
-        </p>
-        <div className="ml-auto hidden items-center gap-2 md:flex">
-          <button
-            onClick={() => setCodeOpen(true)}
-            className="h-11 rounded-xl bg-court/15 px-4 text-body-sm font-bold text-court"
-          >
-            입장 코드
-          </button>
-          <button
-            onClick={() => setGamesLogOpen(true)}
-            className="h-11 rounded-xl bg-panel px-4 text-body-sm font-medium text-dim"
-          >
-            게임 기록
-          </button>
-        </div>
-        <button
-          onClick={() => setMenuOpen(true)}
-          aria-label="더보기"
-          className="tap ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-panel text-dim md:ml-0 md:h-11 md:w-11"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-            <path d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
-      </header>
-      {/* 여복·남복처럼 동시에 연 모임 — 둘 이상일 때만 보인다 */}
-      <SessionSwitcher
-        sessions={snapshot.openSessions}
-        currentId={session.id}
-        onSelect={onSelectSession}
-        className="pb-2 md:pb-3"
+      <BoardHeader
+        date={session.date}
+        presentCount={presentCount}
+        openSessions={snapshot.openSessions}
+        sessionId={session.id}
+        onSelectSession={onSelectSession}
+        onOpenCode={() => setCodeOpen(true)}
+        onOpenLog={() => setGamesLogOpen(true)}
+        onOpenMenu={() => setMenuOpen(true)}
       />
 
       {/* 3구역 — 폰: 탭 1구역 / 태블릿 세로: 2열(게임 중 | 조합+대기) / 데스크톱: 3열 */}
       <BoardDnd onDrop={onDrop} onDraggingChange={onDraggingChange}>
       <div
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-        onTouchCancel={onTouchEnd}
+        onTouchStart={swipeHandlers.onTouchStart}
+        onTouchMove={swipeHandlers.onTouchMove}
+        onTouchEnd={swipeHandlers.onTouchEnd}
+        onTouchCancel={swipeHandlers.onTouchEnd}
         className="board-track flex min-h-0 flex-1 md:grid md:grid-cols-2 md:grid-rows-2 md:gap-3 lg:grid-cols-[1.15fr_1fr_1fr] lg:grid-rows-1"
       >
         <div className={`${pane} md:row-span-2 lg:row-span-1`}>
@@ -1660,35 +1552,7 @@ function BoardBody({
       </div>
       </BoardDnd>
 
-      {/* 구역 탭 — 폰에서만, 화면 맨 아래(엄지 자리). md 이상은 3열로 동시 표시.
-          선택 표시(.board-tab-indicator)가 스와이프를 따라 미끄러진다 */}
-      <nav aria-label="구역" className="relative mt-2 flex shrink-0 rounded-2xl bg-panel p-1 md:hidden">
-        <span
-          aria-hidden
-          className="board-tab-indicator absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/4)] rounded-xl bg-court/15"
-        />
-        {MOBILE_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => setMobileTab(tab.value)}
-            aria-current={mobileTab === tab.value ? 'page' : undefined}
-            className={`relative flex h-12 flex-1 items-center justify-center gap-1 rounded-xl text-sm font-bold transition-colors ${
-              mobileTab === tab.value ? 'text-court' : 'text-dim'
-            }`}
-          >
-            {tab.label}
-            {tab.count !== undefined && tab.count > 0 && (
-              <span
-                className={`tabular min-w-5 rounded-full px-1.5 font-mono text-caption leading-5 ${
-                  mobileTab === tab.value ? 'bg-court text-bg' : 'bg-line text-ink'
-                }`}
-              >
-                {tab.count}
-              </span>
-            )}
-          </button>
-        ))}
-      </nav>
+      <MobileTabBar tabs={MOBILE_TABS} current={mobileTab} onChange={setMobileTab} />
 
       {recommendOpen && (
         <RecommendModal
@@ -1778,62 +1642,14 @@ function BoardBody({
           onClose={() => setMoveGameId(null)}
         />
       )}
-      {/* 폰 더보기 — 햄버거가 보드를 밀어내던 격자 대신 아래에서 올라오는 목록. 위험한 항목은 맨 아래 따로 */}
       {menuOpen && (
-        <Sheet
-          ariaLabel="더보기"
+        <MoreMenuSheet
+          actions={headerActions}
+          closeLabel={concurrent ? `${sessionName(snapshot.openSessions, session.id)} 모임 종료` : '모임 종료'}
+          onCloseSession={closeSession}
+          onLogout={onLogout}
           onClose={() => setMenuOpen(false)}
-          header={<h2 className="shrink-0 text-lg font-bold whitespace-nowrap">더보기</h2>}
-          bodyClassName="flex min-h-0 flex-1 flex-col gap-4 pb-1 scroll-area"
-        >
-          {MORE_GROUPS.map((group) => (
-            <div key={group.title} className="flex flex-col gap-1.5">
-              <p className="px-1 text-caption font-bold text-dim">{group.title}</p>
-              <div className="flex flex-col overflow-hidden rounded-2xl bg-panel2">
-                {group.keys.map((key) => {
-                  const action = headerActions.find((a) => a.key === key);
-                  if (!action) return null;
-                  return (
-                    <button
-                      key={key}
-                      onClick={() => {
-                        action.onClick();
-                        if (!action.keepMenuOpen) setMenuOpen(false);
-                      }}
-                      className="flex h-13 items-center border-b border-line/60 px-4 text-left text-body font-medium last:border-b-0"
-                    >
-                      {action.label}
-                      <span className="ml-auto text-faint">›</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-          <div className="flex flex-col gap-1.5">
-            <p className="px-1 text-caption font-bold text-dim">화면</p>
-            <ThemeToggle />
-          </div>
-          {/* shrink-0 — overflow-hidden 상자는 세로 목록에서 내용보다 작게 줄어든다. 낮은 폰에서 목록이 넘치면
-              스크롤 대신 이 상자가 눌려 [잠금]·[모임 종료]가 납작해지던 문제(위 묶음들은 바깥 div가 있어 안 줄어듦) */}
-          <div className="flex shrink-0 flex-col overflow-hidden rounded-2xl bg-panel2">
-            <button
-              onClick={onLogout}
-              className="flex h-13 items-center border-b border-line/60 px-4 text-left text-body text-dim"
-            >
-              잠금 — 저장된 패스코드 지우기
-            </button>
-            {/* 2탭 확인 — 첫 탭은 문구만 바뀌고 시트는 그대로 */}
-            <ConfirmButton
-              label={concurrent ? `${sessionName(snapshot.openSessions, session.id)} 모임 종료` : '모임 종료'}
-              confirmLabel="한 번 더 누르면 모임이 종료돼요"
-              onConfirm={closeSession}
-              className="flex h-13 items-center px-4 text-left text-body font-bold"
-              idleCls="text-coral"
-              armedCls="bg-coral/15 text-coral"
-            />
-          </div>
-        </Sheet>
+        />
       )}
       {anotherOpen && (
         <AnotherSessionSheet
