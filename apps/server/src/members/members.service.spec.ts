@@ -138,6 +138,14 @@ describe('update', () => {
     expect(updated.role).toBe('MANAGER');
   });
 
+  it('가입일을 넣고, null이면 지운다', async () => {
+    const member = await service.create(memberDto());
+
+    expect((await service.update(member.id, { joinedAt: '2024-03-15' })).joinedAt).toBe('2024-03-15');
+    expect((await service.update(member.id, { grade: 'B' })).joinedAt).toBe('2024-03-15'); // 안 보내면 그대로
+    expect((await service.update(member.id, { joinedAt: null })).joinedAt).toBeNull();
+  });
+
   it('이름 변경으로 기존 회원과 (이름, 생년월일)이 겹치면 409 — 등록과 같은 중복 재검사', async () => {
     await service.create(memberDto({ name: '김기존' }));
     const other = await service.create(memberDto({ name: '김변경' }));

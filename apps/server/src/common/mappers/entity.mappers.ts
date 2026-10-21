@@ -31,6 +31,7 @@ export function toMemberResponse(member: Member): IMember {
     gender: member.gender,
     isGuest: member.isGuest,
     role: member.role,
+    joinedAt: member.joinedAt ? toDateString(member.joinedAt) : null,
     consented: member.consentedAt !== null, // 시각 자체는 불필요 — 웹은 동의 화면 노출 여부만 판단
     createdAt: member.createdAt.toISOString(),
   };

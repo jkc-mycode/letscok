@@ -155,7 +155,7 @@ export class MembersService {
       });
   }
 
-  // 정보 수정 — 이름·생년월일·급수·성별·역할 + 게스트→모임원 승격(isGuest:false + birthDate)
+  // 정보 수정 — 이름·생년월일·급수·성별·역할·가입일 + 게스트→모임원 승격(isGuest:false + birthDate)
   async update(id: string, dto: UpdateMemberDto): Promise<IMember> {
     const member = await this.findActiveMemberOrThrow(id);
 
@@ -195,6 +195,7 @@ export class MembersService {
         ...(dto.grade !== undefined && { grade: dto.grade }),
         ...(dto.gender !== undefined && { gender: dto.gender }),
         ...(dto.role !== undefined && { role: dto.role }),
+        ...(dto.joinedAt !== undefined && { joinedAt: dto.joinedAt ? new Date(dto.joinedAt) : null }),
         ...(promoting && { isGuest: false }),
       },
     });

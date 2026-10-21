@@ -38,6 +38,12 @@ function RoleBadge({ role }: { role: MemberRole }) {
   );
 }
 
+// 가입일 압축 표기 "24.3.15" — 목록 아랫줄이 좁아서
+function formatJoined(date: string): string {
+  const [y, m, d] = date.split('-');
+  return `${y.slice(2)}.${Number(m)}.${Number(d)}`;
+}
+
 const SORT_OPTIONS: { value: MemberListSort; label: string }[] = [
   { value: 'RECENT', label: '최근 출석순' },
   { value: 'NAME', label: '이름순' },
@@ -291,6 +297,9 @@ export function MembersManagerModal({ onClose }: { onClose: () => void }) {
                   <span className={`min-w-0 truncate ${member.isGuest ? 'text-sky' : 'tabular font-mono text-faint'}`}>
                     {member.isGuest ? '게스트' : (member.birthDate ?? '생년월일 없음')}
                   </span>
+                  {!member.isGuest && member.joinedAt && (
+                    <span className="tabular shrink-0 font-mono text-faint">가입 {formatJoined(member.joinedAt)}</span>
+                  )}
                   <span className="tabular ml-auto shrink-0 font-mono text-faint">
                     출석 {member.totalSessions} · {member.totalGames}게임
                   </span>

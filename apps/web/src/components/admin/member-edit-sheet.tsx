@@ -10,7 +10,7 @@ import { GRADES } from '@/components/multi-member-form';
 import { api, ApiError } from '@/lib/api';
 import { formatBirthInput, parseBirthDate } from '@/lib/birth-input';
 
-// 모임원 정보 수정 시트 — 이름·생년월일·급수·성별·역할, 소모임 표기, 출석 이력·삭제·복구·개인정보 삭제
+// 모임원 정보 수정 시트 — 이름·생년월일·가입일·급수·성별·역할, 소모임 표기, 출석 이력·삭제·복구·개인정보 삭제
 
 export const ROLE_LABEL: Record<MemberRole, string> = {
   LEADER: '모임장',
@@ -45,9 +45,12 @@ export function MemberEditSheet({
   const [grade, setGrade] = useState<Grade>(member.grade);
   const [gender, setGender] = useState<Gender | null>(member.gender);
   const [role, setRole] = useState<MemberRole>(member.role);
+  const [joined, setJoined] = useState(formatBirthInput(member.joinedAt ?? ''));
   const [promote, setPromote] = useState(false); // 게스트→모임원 승격 의사
   const birthDate = parseBirthDate(birth);
   const birthDigits = birth.replace(/\D/g, '');
+  const joinedAt = parseBirthDate(joined); // 생년월일과 같은 8자리 입력·범위 검사
+  const joinedDigits = joined.replace(/\D/g, '');
   const deleted = member.deletedAt !== null;
 
   // 게스트는 승격을 켰을 때만 생년월일·역할을 다룬다 (게스트 정책: 생년월일 미수집, 역할 불가)
@@ -60,6 +63,8 @@ export function MemberEditSheet({
     if (grade !== member.grade) dto.grade = grade;
     if (gender && gender !== member.gender) dto.gender = gender;
     if (asRegular && role !== member.role) dto.role = role;
+    const nextJoined = joinedDigits.length === 0 ? null : joinedAt; // 다 지우면 null, 덜 쓴 날짜('')는 저장 버튼이 막는다
+    if (asRegular && nextJoined !== member.joinedAt) dto.joinedAt = nextJoined;
     if (promote) dto.isGuest = false;
     if (Object.keys(dto).length === 0) {
       onClose();
@@ -72,7 +77,11 @@ export function MemberEditSheet({
   };
 
   const blocked =
-    busy || !name.trim() || (promote && !birthDate) || (asRegular && birthDigits.length === 8 && !birthDate);
+    busy ||
+    !name.trim() ||
+    (promote && !birthDate) ||
+    (asRegular && birthDigits.length === 8 && !birthDate) ||
+    (asRegular && joinedDigits.length > 0 && !joinedAt);
 
   return (
     // 입력 중인 시트라 바깥 배경 탭으로는 닫지 않는다(끌어내리기·[닫기]·뒤로가기는 됨)
@@ -137,6 +146,25 @@ export function MemberEditSheet({
                 onClear={() => setBirth('')}
               />
               {birthDigits.length === 8 && !birthDate && (
+                <p className="mt-1 text-xs text-coral">날짜가 올바르지 않아요</p>
+              )}
+            </div>
+          )}
+
+          {asRegular && (
+            <div>
+              <ClearableInput
+                autoComplete="off"
+                type="text"
+                inputMode="numeric"
+                aria-label="소모임 가입일"
+                value={joined}
+                onChange={(e) => setJoined(formatBirthInput(e.target.value))}
+                placeholder="소모임 가입일 8자리 (예: 20240315)"
+                className="h-11 w-full rounded-xl border-2 border-transparent bg-panel2 px-4 text-sm outline-none focus:border-court"
+                onClear={() => setJoined('')}
+              />
+              {joinedDigits.length === 8 && !joinedAt && (
                 <p className="mt-1 text-xs text-coral">날짜가 올바르지 않아요</p>
               )}
             </div>

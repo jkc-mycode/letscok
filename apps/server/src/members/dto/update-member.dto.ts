@@ -36,4 +36,11 @@ export class UpdateMemberDto implements IUpdateMemberDto {
   @IsOptional()
   @IsIn([false], { message: '모임원을 게스트로 되돌릴 수 없습니다.' })
   isGuest?: boolean;
+
+  // null이면 지운다 — IsOptional이 null도 검사에서 빼 준다
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: '가입일은 YYYY-MM-DD 형식이어야 합니다.',
+  })
+  joinedAt?: string | null;
 }

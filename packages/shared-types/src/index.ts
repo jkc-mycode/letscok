@@ -67,6 +67,7 @@ export interface IMember {
   gender: Gender | null; // null = 미지정 (도입 전 기존 회원)
   isGuest: boolean;
   role: MemberRole; // 모임장/운영진/모임원 — 게스트는 항상 MEMBER
+  joinedAt: string | null; // YYYY-MM-DD — 소모임 가입일(표시용). 모르면 null
   consented: boolean; // 개인정보 동의 이력 — false면 첫 체크인 때 본인 동의를 받아야 한다
   createdAt: string;
 }
@@ -102,6 +103,7 @@ export interface IUpdateMemberDto {
   gender?: Gender;
   role?: MemberRole;
   isGuest?: boolean;
+  joinedAt?: string | null; // YYYY-MM-DD, null이면 지운다
 }
 
 export interface ISession {
