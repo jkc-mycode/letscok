@@ -2,6 +2,7 @@ import { Gender, Grade, ICreateMemberDto } from '@letscok/shared-types';
 import {
   IsBoolean,
   IsIn,
+  IsOptional,
   IsString,
   Length,
   Matches,
@@ -30,4 +31,9 @@ export class CreateMemberDto implements ICreateMemberDto {
 
   @IsBoolean({ message: '게스트 여부를 선택해주세요.' })
   isGuest: boolean;
+
+  // 생략하면 등록한 날 — 게스트는 보내와도 null 저장
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: '가입일은 YYYY-MM-DD 형식이어야 합니다.' })
+  joinedAt?: string;
 }

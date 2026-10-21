@@ -2,6 +2,7 @@ import { ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { CreateMemberDto } from './dto/create-member.dto';
+import { toDateString, todayKst } from '../common/utils/date.util';
 import { MembersService } from './members.service';
 
 // 회원 등록 통합 테스트 — 실제 Prisma+테스트 DB로 검증한다
@@ -136,6 +137,17 @@ describe('update', () => {
     expect(updated.grade).toBe('A');
     expect(updated.gender).toBe('FEMALE');
     expect(updated.role).toBe('MANAGER');
+  });
+
+  it('등록 때 가입일을 안 주면 등록한 날, 주면 그 날, 게스트는 비운다. 게스트가 모임원이 되면 그날', async () => {
+    const today = toDateString(todayKst());
+    expect((await service.create(memberDto({ name: '김오늘' }))).joinedAt).toBe(today);
+    expect((await service.create(memberDto({ name: '김지정', joinedAt: '2026-05-25' }))).joinedAt).toBe('2026-05-25');
+    const guest = await service.create(memberDto({ name: '박게스트', isGuest: true, joinedAt: '2026-05-25' }));
+    expect(guest.joinedAt).toBeNull();
+
+    const promoted = await service.update(guest.id, { isGuest: false, birthDate: '1999-01-01' });
+    expect(promoted.joinedAt).toBe(today);
   });
 
   it('가입일을 넣고, null이면 지운다', async () => {

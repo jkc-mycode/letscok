@@ -210,6 +210,7 @@ export interface ICreateMemberDto {
   grade: Grade;
   gender: Gender; // 신규 등록은 필수 (남/여)
   isGuest: boolean;
+  joinedAt?: string; // YYYY-MM-DD 소모임 가입일 — 모임원만, 생략하면 등록한 날(게스트는 늘 null)
 }
 
 export interface ICheckInDto {

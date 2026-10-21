@@ -20,6 +20,7 @@ export interface NewMemberBody {
   grade: Grade;
   gender: Gender;
   isGuest: boolean;
+  joinedAt?: string; // 소모임 가입일 — 비우면 서버가 등록한 날로
 }
 
 interface Row {
@@ -28,20 +29,24 @@ interface Row {
   name: string;
   birth: string;
   birthUnknown: boolean; // 생년월일 모름 — 비워 두고 나중에 모임원 관리에서 채운다
+  joined: string; // 소모임 가입일 8자리 — 비우면 등록한 날
   grade: Grade | null;
   gender: Gender | null;
   error: string | null; // 서버가 거절한 이유(중복 등) — 이 카드만 남겨 고쳐서 다시 보내게
 }
 
-// 게스트는 생년월일을 받지 않는다(정책). 모임원은 올바른 8자리 날짜이거나 [모름]
+// 게스트는 생년월일·가입일을 받지 않는다(정책). 모임원은 올바른 8자리 날짜이거나 [모름], 가입일은 비우거나 올바른 날짜
 function toBody(row: Row): NewMemberBody | null {
   const name = row.name.trim();
   if (!name || !row.grade || !row.gender) return null;
   if (row.isGuest) return { name, grade: row.grade, gender: row.gender, isGuest: true };
-  if (row.birthUnknown) return { name, grade: row.grade, gender: row.gender, isGuest: false };
+  const joinedAt = parseBirthDate(row.joined);
+  if (row.joined && !joinedAt) return null;
+  const base = { name, grade: row.grade, gender: row.gender, isGuest: false, ...(joinedAt && { joinedAt }) };
+  if (row.birthUnknown) return base;
   const birthDate = parseBirthDate(row.birth);
   if (!birthDate) return null;
-  return { name, birthDate, grade: row.grade, gender: row.gender, isGuest: false };
+  return { ...base, birthDate };
 }
 
 // 생년월일 없이 모임원을 만들 땐 같은 이름이 있으면 안 된다(서버도 409) — 미리 막고 이유를 보여 준다
@@ -70,6 +75,7 @@ export function MultiMemberForm({
     name,
     birth: '',
     birthUnknown: false,
+    joined: '',
     grade: null,
     gender: null,
     error: null,
@@ -219,6 +225,7 @@ function RowCard({
   useEffect(() => onSameNameRef.current(hasExact), [hasExact]);
 
   const birthDigits = row.birth.replace(/\D/g, '');
+  const joinedDigits = row.joined.replace(/\D/g, '');
 
   return (
     <div className={`flex flex-col gap-3.5 rounded-2xl p-3.5 ${row.error ? 'bg-coral/10' : 'bg-panel2'}`}>
@@ -365,6 +372,26 @@ function RowCard({
                 ? '같은 이름이 있으면 생년월일 없이는 구분할 수 없어요. 생년월일을 넣어 주세요.'
                 : '나중에 모임원 관리에서 채울 수 있어요. 같은 이름이 있으면 생년월일 없이는 등록할 수 없어요.'}
             </p>
+          )}
+        </div>
+      )}
+
+      {!row.isGuest && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-caption font-bold text-dim">소모임 가입일</span>
+          <ClearableInput
+            autoComplete="off"
+            aria-label="소모임 가입일"
+            type="text"
+            inputMode="numeric"
+            value={row.joined}
+            onChange={(e) => update({ joined: formatBirthInput(e.target.value) })}
+            placeholder="8자리, 비우면 오늘 (예: 20261021)"
+            className="tabular h-12 rounded-xl border-2 border-transparent bg-panel px-3.5 font-mono text-body outline-none placeholder:font-sans placeholder:text-faint focus:border-court"
+            onClear={() => update({ joined: '' })}
+          />
+          {joinedDigits.length > 0 && !parseBirthDate(row.joined) && (
+            <p className="text-caption text-coral">{joinedDigits.length === 8 ? '날짜가 올바르지 않아요' : '8자리를 다 넣거나 비워 주세요'}</p>
           )}
         </div>
       )}

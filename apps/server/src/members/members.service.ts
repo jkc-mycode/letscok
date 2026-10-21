@@ -16,7 +16,7 @@ import {
 } from '@letscok/shared-types';
 import { normalizeName } from '../common/utils/name.util';
 import { toMemberResponse, toPublicMemberResponse } from '../common/mappers/entity.mappers';
-import { toDateString } from '../common/utils/date.util';
+import { toDateString, todayKst } from '../common/utils/date.util';
 import { memberAttendanceStats } from '../common/utils/member-stats';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -48,6 +48,7 @@ export class MembersService {
         grade: dto.grade,
         gender: dto.gender,
         isGuest: dto.isGuest,
+        joinedAt: dto.isGuest ? null : dto.joinedAt ? new Date(dto.joinedAt) : todayKst(), // 모르면 등록한 날
         // 운영진 대리 등록이라 여기서 동의를 받을 수 없다 — 본인이 처음 체크인할 때 받아 기록한다
         consentedAt: null,
       },
@@ -196,6 +197,8 @@ export class MembersService {
         ...(dto.gender !== undefined && { gender: dto.gender }),
         ...(dto.role !== undefined && { role: dto.role }),
         ...(dto.joinedAt !== undefined && { joinedAt: dto.joinedAt ? new Date(dto.joinedAt) : null }),
+        // 게스트가 모임원이 되는 날을 가입일로 — 따로 넣었거나 이미 있으면 그대로
+        ...(promoting && dto.joinedAt === undefined && !member.joinedAt && { joinedAt: todayKst() }),
         ...(promoting && { isGuest: false }),
       },
     });
