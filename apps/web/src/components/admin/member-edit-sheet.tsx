@@ -153,6 +153,8 @@ export function MemberEditSheet({
 
           {asRegular && (
             <div>
+              {/* 값이 차면 안내 문구가 사라져 위 생년월일과 구분이 안 된다 — 이름표를 따로 둔다 */}
+              <span className="mb-1 block text-caption font-bold text-dim">소모임 가입일</span>
               <ClearableInput
                 autoComplete="off"
                 type="text"
