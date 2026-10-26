@@ -123,7 +123,7 @@ export function CourtCard({
         />
         <button
           onClick={() => onEnd(game.id, 'UNASSIGNED')}
-          title="조합 유지한 채 대기 조합 맨 뒤로 (게임 수 미집계)"
+          title="조합 유지한 채 다음 게임 1번으로 (게임 수 미집계)"
           className="h-10 rounded-[10px] bg-panel px-3 text-body-sm font-medium text-amber"
         >
           대기로

@@ -690,7 +690,7 @@ describe('동시에 같은 게임을 바꿀 때', () => {
 // ===== unassign (대기로) =====
 
 describe('unassign', () => {
-  it('조합 유지한 채 큐 맨 뒤로 — 전원 MATCHED, startedAt 초기화, 코트 IDLE, 게임 수 미집계', async () => {
+  it('조합 유지한 채 큐 맨 앞으로 — 전원 MATCHED, startedAt 초기화, 코트 IDLE, 게임 수 미집계', async () => {
     const session = await seedSession();
     const court = await seedCourt(session.id);
     const [a, b, c, d] = await seedFour(session.id);
@@ -698,15 +698,23 @@ describe('unassign', () => {
       attendanceIds: [a.id, b.id, c.id, d.id],
     });
     await service.assign(game.id, { courtId: court.id });
-    // 큐에 다른 조합이 하나 있는 상태에서 되돌리면 그 뒤(queueOrder 2)로 가야 한다
+    // 큐에 다른 조합이 둘 있는 상태에서 되돌리면 맨 앞(queueOrder 1)으로, 기다리던 조합은 순서대로 한 칸씩 뒤로
     const [e, f, g, h] = await seedFour(session.id);
-    await roster.create(session.id, { attendanceIds: [e.id, f.id, g.id, h.id] });
+    const second = await roster.create(session.id, { attendanceIds: [e.id, f.id, g.id, h.id] });
+    const [i, j, k, l] = await seedFour(session.id);
+    const third = await roster.create(session.id, { attendanceIds: [i.id, j.id, k.id, l.id] });
 
     const unassigned = await service.unassign(game.id);
 
     expect(unassigned.status).toBe('QUEUED');
     expect(unassigned.startedAt).toBeNull();
-    expect(unassigned.queueOrder).toBe(2);
+    expect(unassigned.queueOrder).toBe(1);
+    const order = await prisma.game.findMany({
+      where: { sessionId: session.id, status: 'QUEUED' },
+      orderBy: { queueOrder: 'asc' },
+      select: { id: true },
+    });
+    expect(order.map((o) => o.id)).toEqual([game.id, second.id, third.id]);
     for (const att of [a, b, c, d]) {
       const row = await prisma.attendance.findUniqueOrThrow({ where: { id: att.id } });
       expect(row.status).toBe('MATCHED');

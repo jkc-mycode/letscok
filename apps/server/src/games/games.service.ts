@@ -15,7 +15,7 @@ import { PushService } from '../push/push.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { SessionsService } from '../sessions/sessions.service';
 import { AssignGameDto } from './dto/game.dtos';
-import { GAME_INCLUDE, findGameOrThrow, lockSession, nextQueueOrder, releaseFromGame } from './game-helpers';
+import { GAME_INCLUDE, findGameOrThrow, lockSession, releaseFromGame } from './game-helpers';
 
 // 게임 진행 — 코트 배정·옮기기·빈 코트 채우기·종료·되돌리기·대기로·취소·다시 알림
 // 조합을 만들고 고치는 쪽은 GameRosterService
@@ -333,13 +333,18 @@ export class GamesService {
         where: { id: { in: attendanceIds } },
         data: { status: 'MATCHED' },
       });
+      // 대기 줄 맨 앞(다음 게임 1번)으로 — 잘못 배정했거나 일찍 시작해 되돌린 조합은 바로 다시 넣을 차례다
+      await tx.game.updateMany({
+        where: { sessionId: game.sessionId, status: 'QUEUED' },
+        data: { queueOrder: { increment: 1 } },
+      });
       return tx.game.update({
         where: { id },
         data: {
           status: 'QUEUED',
           courtId: null,
           startedAt: null, // 다시 배정되면 타이머는 새로 시작
-          queueOrder: await nextQueueOrder(tx, game.sessionId),
+          queueOrder: 1,
         },
         include: GAME_INCLUDE,
       });

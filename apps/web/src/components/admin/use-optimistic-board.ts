@@ -43,8 +43,8 @@ type OptimisticBoard = {
 function overlayGames(serverGames: IGame[], { optAssign, optCreated, optEnded, optPlayers }: OptimisticBoard): IGame[] {
   if (optAssign.size === 0 && optCreated.length === 0 && optEnded.size === 0 && optPlayers.size === 0) return serverGames;
   const pending = optCreated.filter((t) => !isSettled(t, serverGames));
-  // 대기로 돌린 조합은 서버처럼 대기 조합 맨 뒤
-  let lastOrder = Math.max(0, ...serverGames.map((g) => (g.status === 'QUEUED' ? (g.queueOrder ?? 0) : 0)));
+  // 대기로 돌린 조합은 서버처럼 대기 조합 맨 앞
+  let firstOrder = Math.min(1, ...serverGames.map((g) => (g.status === 'QUEUED' ? (g.queueOrder ?? 1) : 1)));
   const base = serverGames
     // 빈칸 조합을 한 명씩 채우는 중엔 서버 쪽 반쪽 조합 대신 고른 사람 전부를 보여 준다
     .filter((g) => !pending.some((t) => t.realId === g.id))
@@ -56,14 +56,14 @@ function overlayGames(serverGames: IGame[], { optAssign, optCreated, optEnded, o
       }
       const ended = g.status === 'PLAYING' ? optEnded.get(g.id) : undefined;
       if (ended?.kind === 'FINISHED') return { ...g, status: 'FINISHED' as const, endedAt: ended.at };
-      if (ended) return { ...g, status: 'QUEUED' as const, courtId: null, startedAt: null, queueOrder: ++lastOrder };
+      if (ended) return { ...g, status: 'QUEUED' as const, courtId: null, startedAt: null, queueOrder: --firstOrder };
       const assigned = g.status === 'QUEUED' ? optAssign.get(g.id) : undefined;
       return assigned ? { ...g, status: 'PLAYING' as const, courtId: assigned.courtId, startedAt: assigned.startedAt } : g;
     });
-  // 대기 조합 목록은 배열 순서대로 그려진다 — 대기로 돌린 조합을 배열에서도 맨 뒤로
-  const back = base.filter((g) => g.status === 'QUEUED' && optEnded.get(g.id)?.kind === 'UNASSIGNED');
-  const rest = back.length ? base.filter((g) => !back.includes(g)) : base;
-  return [...rest, ...back, ...pending.map((t) => t.game)];
+  // 대기 조합 목록은 배열 순서대로 그려진다 — 대기로 돌린 조합을 배열에서도 맨 앞으로
+  const front = base.filter((g) => g.status === 'QUEUED' && optEnded.get(g.id)?.kind === 'UNASSIGNED');
+  const rest = front.length ? base.filter((g) => !front.includes(g)) : base;
+  return [...front, ...rest, ...pending.map((t) => t.game)];
 }
 
 function overlayAttendances(
