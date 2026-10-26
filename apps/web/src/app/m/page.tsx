@@ -8,7 +8,15 @@ import { GAME_SIZE, IAttendance, ICourt, IGame } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { gamePartnerPeople, MeChip, PartnerNote, PersonName, Toast } from '@/components/badges';
+import {
+  buildSameNameTags,
+  gamePartnerPeople,
+  MeChip,
+  PartnerNote,
+  PersonName,
+  SameNameTagsProvider,
+  Toast,
+} from '@/components/badges';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ConnectionError } from '@/components/connection-error';
 import { HomeLink } from '@/components/home-link';
@@ -158,129 +166,131 @@ export default function MyStatusPage() {
     games.find((g) => g.status === 'PLAYING' && includesMe(g)) ?? queuedGames.find(includesMe) ?? null;
 
   return (
-    <Shell bottom={disconnect}>
-      {/* 로고 = 홈 링크. 동시에 연 모임이 있으면 내 모임 이름을 옆에 */}
-      <div className="flex items-center gap-2">
-        <HomeLink className="flex h-11 items-center self-start text-caption font-bold tracking-[0.3em] text-court transition-opacity hover:opacity-70">
-          LETSCOK
-        </HomeLink>
-        {snapshot.openSessions.length > 1 && (
-          <span className="ml-auto rounded-full bg-court/15 px-3 py-1 text-body-sm font-bold text-court">
-            {sessionName(snapshot.openSessions, snapshot.session.id)} 모임
-          </span>
+    <SameNameTagsProvider value={buildSameNameTags(attendances)}>
+      <Shell bottom={disconnect}>
+        {/* 로고 = 홈 링크. 동시에 연 모임이 있으면 내 모임 이름을 옆에 */}
+        <div className="flex items-center gap-2">
+          <HomeLink className="flex h-11 items-center self-start text-caption font-bold tracking-[0.3em] text-court transition-opacity hover:opacity-70">
+            LETSCOK
+          </HomeLink>
+          {snapshot.openSessions.length > 1 && (
+            <span className="ml-auto rounded-full bg-court/15 px-3 py-1 text-body-sm font-bold text-court">
+              {sessionName(snapshot.openSessions, snapshot.session.id)} 모임
+            </span>
+          )}
+        </div>
+        <MyStatus me={me} myGame={myGame} waiting={waiting} queuedGames={queuedGames} courts={courts} now={now} />
+
+        {myGame && <MyGameCard game={myGame} playing={myGame.status === 'PLAYING'} memberId={memberId} />}
+
+        {/* 타임 버튼 — 대기·조합 대기 중에만. 게임 중·퇴장엔 의미 없어 숨김
+            (MATCHED는 눌러도 서버가 409로 막고 "운영진에게 말씀해주세요" 안내) */}
+        {(me.status === 'CHECKED_IN' || me.status === 'MATCHED') && (
+          <button
+            onClick={() => void toggleRest()}
+            disabled={busy}
+            className="h-13 rounded-xl bg-panel text-body font-bold text-sky disabled:opacity-50"
+          >
+            잠깐 쉴래요
+          </button>
         )}
-      </div>
-      <MyStatus me={me} myGame={myGame} waiting={waiting} queuedGames={queuedGames} courts={courts} now={now} />
+        {me.status === 'RESTING' && (
+          <button
+            onClick={() => void toggleRest()}
+            disabled={busy}
+            className="h-14 rounded-xl bg-court text-body font-bold text-bg disabled:opacity-50"
+          >
+            다시 뛸래요
+          </button>
+        )}
+        <PushToggle memberId={me.memberId} />
 
-      {myGame && <MyGameCard game={myGame} playing={myGame.status === 'PLAYING'} memberId={memberId} />}
+        {/* 지금 코트 — 한 덩어리 카드에 줄로(테두리 대신 면) */}
+        <Section title="지금 코트" count={`${playingByCourt.size}/${courts.length}`}>
+          {courts.length === 0 ? (
+            <Empty>등록된 코트가 없어요</Empty>
+          ) : (
+            <ListCard>
+              {courts.map((court) => {
+                const game = playingByCourt.get(court.id);
+                const otherTurn = !game && court.isShared && !court.ourTurn;
+                return (
+                  <Row
+                    key={court.id}
+                    badge={court.courtNo}
+                    badgeCls={game ? 'bg-court/15 text-court' : otherTurn ? 'bg-sky/15 text-sky' : 'bg-panel2 text-dim'}
+                    title={game ? playerNames(game) : otherTurn ? '다른 모임 차례' : '비어 있음'}
+                    titleCls={game ? '' : 'text-dim'}
+                    sub={game ? (includesMe(game) ? '내 게임' : '게임 중') : otherTurn ? '공유 코트' : '곧 다음 게임이 들어가요'}
+                    right={
+                      game?.startedAt ? (
+                        <span className="tabular font-mono text-body font-semibold text-court">
+                          {formatElapsed(game.startedAt, now)}
+                        </span>
+                      ) : null
+                    }
+                  />
+                );
+              })}
+            </ListCard>
+          )}
+        </Section>
 
-      {/* 타임 버튼 — 대기·조합 대기 중에만. 게임 중·퇴장엔 의미 없어 숨김
-          (MATCHED는 눌러도 서버가 409로 막고 "운영진에게 말씀해주세요" 안내) */}
-      {(me.status === 'CHECKED_IN' || me.status === 'MATCHED') && (
-        <button
-          onClick={() => void toggleRest()}
-          disabled={busy}
-          className="h-13 rounded-xl bg-panel text-body font-bold text-sky disabled:opacity-50"
-        >
-          잠깐 쉴래요
-        </button>
-      )}
-      {me.status === 'RESTING' && (
-        <button
-          onClick={() => void toggleRest()}
-          disabled={busy}
-          className="h-14 rounded-xl bg-court text-body font-bold text-bg disabled:opacity-50"
-        >
-          다시 뛸래요
-        </button>
-      )}
-      <PushToggle memberId={me.memberId} />
-
-      {/* 지금 코트 — 한 덩어리 카드에 줄로(테두리 대신 면) */}
-      <Section title="지금 코트" count={`${playingByCourt.size}/${courts.length}`}>
-        {courts.length === 0 ? (
-          <Empty>등록된 코트가 없어요</Empty>
-        ) : (
-          <ListCard>
-            {courts.map((court) => {
-              const game = playingByCourt.get(court.id);
-              const otherTurn = !game && court.isShared && !court.ourTurn;
-              return (
+        <Section title="다음 게임" count={String(queuedGames.length)}>
+          {queuedGames.length === 0 ? (
+            <Empty>아직 짜인 게임이 없어요</Empty>
+          ) : (
+            <ListCard>
+              {queuedGames.map((game, index) => (
                 <Row
-                  key={court.id}
-                  badge={court.courtNo}
-                  badgeCls={game ? 'bg-court/15 text-court' : otherTurn ? 'bg-sky/15 text-sky' : 'bg-panel2 text-dim'}
-                  title={game ? playerNames(game) : otherTurn ? '다른 모임 차례' : '비어 있음'}
-                  titleCls={game ? '' : 'text-dim'}
-                  sub={game ? (includesMe(game) ? '내 게임' : '게임 중') : otherTurn ? '공유 코트' : '곧 다음 게임이 들어가요'}
-                  right={
-                    game?.startedAt ? (
-                      <span className="tabular font-mono text-body font-semibold text-court">
-                        {formatElapsed(game.startedAt, now)}
-                      </span>
-                    ) : null
+                  key={game.id}
+                  badge={index + 1}
+                  badgeCls="bg-amber/20 text-amber"
+                  title={playerNames(game)}
+                  sub={
+                    includesMe(game)
+                      ? '내 게임'
+                      : (game.players ?? []).some((p) => overlapIds.has(p.attendanceId))
+                        ? '다른 조합과 겹친 사람 있음'
+                        : null
                   }
-                />
-              );
-            })}
-          </ListCard>
-        )}
-      </Section>
-
-      <Section title="다음 게임" count={String(queuedGames.length)}>
-        {queuedGames.length === 0 ? (
-          <Empty>아직 짜인 게임이 없어요</Empty>
-        ) : (
-          <ListCard>
-            {queuedGames.map((game, index) => (
-              <Row
-                key={game.id}
-                badge={index + 1}
-                badgeCls="bg-amber/20 text-amber"
-                title={playerNames(game)}
-                sub={
-                  includesMe(game)
-                    ? '내 게임'
-                    : (game.players ?? []).some((p) => overlapIds.has(p.attendanceId))
-                      ? '다른 조합과 겹친 사람 있음'
-                      : null
-                }
-                subCls={includesMe(game) ? 'text-amber font-bold' : undefined}
-              />
-            ))}
-          </ListCard>
-        )}
-      </Section>
-
-      <Section title="대기 인원" count={String(waiting.length)}>
-        {waiting.length === 0 && resting.length === 0 ? (
-          <Empty>대기 인원이 없어요</Empty>
-        ) : (
-          <ListCard>
-            <AnimatePresence initial={false}>
-              {waiting.map((attendance) => (
-                <PersonRow
-                  key={attendance.id}
-                  attendance={attendance}
-                  isMe={attendance.memberId === memberId}
-                  right={`${attendance.gamesPlayed}게임 · ${formatWaitingMinutes(attendance.waitingSince, now)}`}
+                  subCls={includesMe(game) ? 'text-amber font-bold' : undefined}
                 />
               ))}
-              {resting.map((attendance) => (
-                <PersonRow
-                  key={attendance.id}
-                  attendance={attendance}
-                  isMe={attendance.memberId === memberId}
-                  resting
-                  right={`${attendance.gamesPlayed}게임 · ${formatWaitingMinutes(attendance.waitingSince, now)}`}
-                />
-              ))}
-            </AnimatePresence>
-          </ListCard>
-        )}
-      </Section>
-      {toast && <Toast toast={toast} />}
-    </Shell>
+            </ListCard>
+          )}
+        </Section>
+
+        <Section title="대기 인원" count={String(waiting.length)}>
+          {waiting.length === 0 && resting.length === 0 ? (
+            <Empty>대기 인원이 없어요</Empty>
+          ) : (
+            <ListCard>
+              <AnimatePresence initial={false}>
+                {waiting.map((attendance) => (
+                  <PersonRow
+                    key={attendance.id}
+                    attendance={attendance}
+                    isMe={attendance.memberId === memberId}
+                    right={`${attendance.gamesPlayed}게임 · ${formatWaitingMinutes(attendance.waitingSince, now)}`}
+                  />
+                ))}
+                {resting.map((attendance) => (
+                  <PersonRow
+                    key={attendance.id}
+                    attendance={attendance}
+                    isMe={attendance.memberId === memberId}
+                    resting
+                    right={`${attendance.gamesPlayed}게임 · ${formatWaitingMinutes(attendance.waitingSince, now)}`}
+                  />
+                ))}
+              </AnimatePresence>
+            </ListCard>
+          )}
+        </Section>
+        {toast && <Toast toast={toast} />}
+      </Shell>
+    </SameNameTagsProvider>
   );
 }
 

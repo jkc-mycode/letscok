@@ -46,3 +46,39 @@ describe('broadcastSnapshot', () => {
     expect(gateway.emitSessionClosed).toHaveBeenCalledWith('s1');
   });
 });
+
+// 현황 만들기 — 실제 DB로 공개 응답의 출생 연도 규칙만 본다
+describe('buildSnapshot 출생 연도', () => {
+  const prisma = new PrismaService();
+  const real = new RealtimeService(prisma, gateway as unknown as RealtimeGateway);
+
+  beforeEach(async () => {
+    await prisma.$executeRawUnsafe(
+      'TRUNCATE TABLE game_players, games, attendances, courts, sessions, members CASCADE',
+    );
+  });
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  it('같은 모임에 이름이 같은 사람만 출생 연도가 실리고, 나머지는 비운다', async () => {
+    jest.useRealTimers();
+    const session = await prisma.session.create({ data: { date: new Date('2026-01-01'), checkInCode: '0101' } });
+    const people = [
+      { name: '스냅동명', birthDate: new Date('1990-01-01') },
+      { name: '스냅동명', birthDate: new Date('1999-01-01') },
+      { name: '스냅혼자', birthDate: new Date('1995-01-01') },
+    ];
+    for (const person of people) {
+      const member = await prisma.member.create({ data: { ...person, grade: 'C', gender: 'MALE' } });
+      await prisma.attendance.create({ data: { sessionId: session.id, memberId: member.id } });
+    }
+
+    const snapshot = await real.buildSnapshot(session.id);
+    const year = (name: string) =>
+      snapshot.attendances.filter((a) => a.member?.name === name).map((a) => a.member?.birthYear);
+
+    expect(year('스냅동명').sort()).toEqual([1990, 1999]);
+    expect(year('스냅혼자')).toEqual([null]);
+  });
+});

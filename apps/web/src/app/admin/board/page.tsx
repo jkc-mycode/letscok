@@ -7,7 +7,7 @@
 import { GAME_SIZE, IGame, IGamePlayer } from '@letscok/shared-types';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { PersonName } from '@/components/badges';
+import { buildSameNameTags, PersonName, SameNameTagsProvider } from '@/components/badges';
 import { ConnectionError } from '@/components/connection-error';
 import { useStandalone } from '@/components/home-link';
 import { LogoLoader } from '@/components/logo-loader';
@@ -80,96 +80,98 @@ export default function BoardDisplayPage() {
   const waitingCount = attendances.filter((a) => a.shuttleConfirmedAt && a.status === 'CHECKED_IN').length;
 
   return (
-    <Shell>
-      <header className="flex items-center gap-4">
-        {/* 앱·태블릿엔 브라우저 뒤로 버튼이 없어(아이패드 설치본) 화면에 둔다 — 멀리서도 보이게 글자와 테두리를 붙인다 */}
-        <button
-          onClick={goBack}
-          className="flex h-11 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-line bg-panel2 pr-5 pl-4 text-body font-bold text-ink transition-opacity hover:opacity-70"
-        >
-          <span className="text-heading leading-none">‹</span>
-          뒤로
-        </button>
-        {/* 여복·남복처럼 동시에 연 모임 — 전광판마다 한 모임을 띄운다(기기가 기억) */}
-        <SessionSwitcher
-          sessions={snapshot.openSessions}
-          currentId={snapshot.session.id}
-          onSelect={selectSession}
-          className="min-w-0"
-        />
-        <span className="ml-auto shrink-0 rounded-full bg-panel px-4 py-1.5 text-body font-bold text-dim">
-          대기 <span className="tabular text-ink">{waitingCount}</span>명
-        </span>
-      </header>
+    <SameNameTagsProvider value={buildSameNameTags(attendances)}>
+      <Shell>
+        <header className="flex items-center gap-4">
+          {/* 앱·태블릿엔 브라우저 뒤로 버튼이 없어(아이패드 설치본) 화면에 둔다 — 멀리서도 보이게 글자와 테두리를 붙인다 */}
+          <button
+            onClick={goBack}
+            className="flex h-11 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-line bg-panel2 pr-5 pl-4 text-body font-bold text-ink transition-opacity hover:opacity-70"
+          >
+            <span className="text-heading leading-none">‹</span>
+            뒤로
+          </button>
+          {/* 여복·남복처럼 동시에 연 모임 — 전광판마다 한 모임을 띄운다(기기가 기억) */}
+          <SessionSwitcher
+            sessions={snapshot.openSessions}
+            currentId={snapshot.session.id}
+            onSelect={selectSession}
+            className="min-w-0"
+          />
+          <span className="ml-auto shrink-0 rounded-full bg-panel px-4 py-1.5 text-body font-bold text-dim">
+            대기 <span className="tabular text-ink">{waitingCount}</span>명
+          </span>
+        </header>
 
-      {/* 세로 화면은 위아래 두 줄을 같은 높이로(내용 길이와 상관없이 5:5), 가로 화면은 좌우 5:5 한 줄 */}
-      <div className="grid min-h-0 flex-1 grid-rows-2 gap-6 lg:grid-cols-2 lg:grid-rows-1">
-        {/* 구역마다 옅은 색 틀 — 멀리서도 게임 중(초록)과 다음 게임(주황)이 갈리게 */}
-        <section className="flex min-w-0 flex-col gap-3 rounded-3xl border border-court/25 bg-court/5 p-3 sm:p-4">
-          <h2 className="text-heading font-bold text-court">게임 중</h2>
-          {courts.length === 0 ? (
-            <Empty>등록된 코트가 없어요</Empty>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {courts.map((court) => {
-                const game = playingByCourt.get(court.id);
-                const otherTurn = !game && court.isShared && !court.ourTurn;
-                return (
-                  <BoardCard
-                    key={court.id}
-                    dim={!game}
-                    no={court.courtNo}
-                    noCls={game ? 'text-court' : 'text-faint'}
-                    unit="번 코트"
-                    side={
-                      game?.startedAt && (
-                        <span className="tabular font-mono text-heading font-semibold text-court">
-                          {formatElapsed(game.startedAt, now)}
-                        </span>
-                      )
-                    }
-                  >
-                    {game ? (
+        {/* 세로 화면은 위아래 두 줄을 같은 높이로(내용 길이와 상관없이 5:5), 가로 화면은 좌우 5:5 한 줄 */}
+        <div className="grid min-h-0 flex-1 grid-rows-2 gap-6 lg:grid-cols-2 lg:grid-rows-1">
+          {/* 구역마다 옅은 색 틀 — 멀리서도 게임 중(초록)과 다음 게임(주황)이 갈리게 */}
+          <section className="flex min-w-0 flex-col gap-3 rounded-3xl border border-court/25 bg-court/5 p-3 sm:p-4">
+            <h2 className="text-heading font-bold text-court">게임 중</h2>
+            {courts.length === 0 ? (
+              <Empty>등록된 코트가 없어요</Empty>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {courts.map((court) => {
+                  const game = playingByCourt.get(court.id);
+                  const otherTurn = !game && court.isShared && !court.ourTurn;
+                  return (
+                    <BoardCard
+                      key={court.id}
+                      dim={!game}
+                      no={court.courtNo}
+                      noCls={game ? 'text-court' : 'text-faint'}
+                      unit="번 코트"
+                      side={
+                        game?.startedAt && (
+                          <span className="tabular font-mono text-heading font-semibold text-court">
+                            {formatElapsed(game.startedAt, now)}
+                          </span>
+                        )
+                      }
+                    >
+                      {game ? (
+                        <Teams game={game} />
+                      ) : (
+                        <p className="py-3 text-body text-faint">{otherTurn ? '다른 모임 차례' : '비어 있음'}</p>
+                      )}
+                    </BoardCard>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <section className="flex min-w-0 flex-col gap-3 rounded-3xl border border-amber/25 bg-amber/5 p-3 sm:p-4">
+            <h2 className="text-heading font-bold text-amber">
+              다음 게임 <span className="tabular text-body text-faint">{queuedGames.length}</span>
+            </h2>
+            {queuedGames.length === 0 ? (
+              <Empty>아직 짜인 게임이 없어요</Empty>
+            ) : (
+              // 코트 카드와 같은 틀·그리드 — 양쪽 카드 크기가 맞게
+              <div className="grid gap-3 sm:grid-cols-2">
+                {queuedGames.map((game, index) => {
+                  const draft = (game.players?.length ?? 0) < GAME_SIZE;
+                  return (
+                    <BoardCard
+                      key={game.id}
+                      dim={draft}
+                      no={index + 1}
+                      noCls="text-amber"
+                      unit="번째"
+                      side={draft && <span className="text-body font-medium text-faint">짜는 중</span>}
+                    >
                       <Teams game={game} />
-                    ) : (
-                      <p className="py-3 text-body text-faint">{otherTurn ? '다른 모임 차례' : '비어 있음'}</p>
-                    )}
-                  </BoardCard>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        <section className="flex min-w-0 flex-col gap-3 rounded-3xl border border-amber/25 bg-amber/5 p-3 sm:p-4">
-          <h2 className="text-heading font-bold text-amber">
-            다음 게임 <span className="tabular text-body text-faint">{queuedGames.length}</span>
-          </h2>
-          {queuedGames.length === 0 ? (
-            <Empty>아직 짜인 게임이 없어요</Empty>
-          ) : (
-            // 코트 카드와 같은 틀·그리드 — 양쪽 카드 크기가 맞게
-            <div className="grid gap-3 sm:grid-cols-2">
-              {queuedGames.map((game, index) => {
-                const draft = (game.players?.length ?? 0) < GAME_SIZE;
-                return (
-                  <BoardCard
-                    key={game.id}
-                    dim={draft}
-                    no={index + 1}
-                    noCls="text-amber"
-                    unit="번째"
-                    side={draft && <span className="text-body font-medium text-faint">짜는 중</span>}
-                  >
-                    <Teams game={game} />
-                  </BoardCard>
-                );
-              })}
-            </div>
-          )}
-        </section>
-      </div>
-    </Shell>
+                    </BoardCard>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </div>
+      </Shell>
+    </SameNameTagsProvider>
   );
 }
 

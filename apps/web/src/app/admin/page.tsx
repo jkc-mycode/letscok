@@ -12,7 +12,7 @@ import { SessionReportModal } from '@/components/session-report-modal';
 import { EntryFeeSheet } from '@/components/entry-fee-sheet';
 import { SettlementModal } from '@/components/settlement-modal';
 import { ExitGuard } from '@/components/exit-guard';
-import { Toast } from '@/components/badges';
+import { buildSameNameTags, SameNameTagsProvider, Toast } from '@/components/badges';
 import { InstallPrompt } from '@/components/install-prompt';
 import { LogoLoader } from '@/components/logo-loader';
 import { api, ApiError } from '@/lib/api';
@@ -402,6 +402,8 @@ function BoardBody({
     () => games.find((g) => g.id === assignGameId && g.status === 'QUEUED') ?? null,
     [games, assignGameId],
   );
+  // 동명이인 꼬리표 — 명단·카드·시트의 이름 뒤에 "97"·"①"
+  const sameNameTags = useMemo(() => buildSameNameTags(attendances), [attendances]);
   // 코트 옮기기 대상 — 게임이 끝나면 시트가 저절로 닫힌다
   const moveTarget = useMemo(
     () => games.find((g) => g.id === moveGameId && g.status === 'PLAYING') ?? null,
@@ -580,268 +582,270 @@ function BoardBody({
   });
 
   return (
-    <main
-      ref={boardRef}
-      style={{ '--tab-index': tabIndex } as React.CSSProperties}
-      className={`${animateIn ? 'fade-in ' : ''}flex h-dvh flex-col overflow-x-hidden overscroll-none p-2 md:p-4`}
-    >
-      {/* 설치 안내 — 카톡으로 연 운영진도 브라우저로 나가게. 설치된 앱에선 뜨지 않는다 */}
-      <InstallPrompt app="admin" className="mb-2 shrink-0" />
-      <BoardHeader
-        date={session.date}
-        presentCount={presentCount}
-        openSessions={snapshot.openSessions}
-        sessionId={session.id}
-        onSelectSession={onSelectSession}
-        onOpenCode={() => setCodeOpen(true)}
-        onOpenLog={() => setGamesLogOpen(true)}
-        onOpenMenu={() => setMenuOpen(true)}
-      />
-
-      {/* 3구역 — 폰: 탭 1구역 / 태블릿 세로: 2열(게임 중 | 조합+대기) / 데스크톱: 3열 */}
-      <BoardDnd onDrop={onDrop} onDraggingChange={onDraggingChange}>
-      <div
-        onTouchStart={swipeHandlers.onTouchStart}
-        onTouchMove={swipeHandlers.onTouchMove}
-        onTouchEnd={swipeHandlers.onTouchEnd}
-        onTouchCancel={swipeHandlers.onTouchEnd}
-        className="board-track flex min-h-0 flex-1 md:grid md:grid-cols-2 md:grid-rows-2 md:gap-3 lg:grid-cols-[1.15fr_1fr_1fr] lg:grid-rows-1"
+    <SameNameTagsProvider value={sameNameTags}>
+      <main
+        ref={boardRef}
+        style={{ '--tab-index': tabIndex } as React.CSSProperties}
+        className={`${animateIn ? 'fade-in ' : ''}flex h-dvh flex-col overflow-x-hidden overscroll-none p-2 md:p-4`}
       >
-        <div className={`${pane} md:row-span-2 lg:row-span-1`}>
-        <CourtsZone
-          courts={courts}
-          playingByCourt={playingByCourt}
-          slotActions={slotActions}
-          dragEnabled={dragEnabled}
-          onManageCourts={() => setCourtsOpen(true)}
-          onTurn={setCourtTurn}
-          onEnd={endGame}
-          onMore={(g) => setCardMenuId(g.id)}
-        />
-        </div>
-
-        <div className={pane}>
-        <QueueZone
-          queuedGames={queuedGames}
-          idleCourts={idleCourts}
-          overlapIds={overlapIds}
-          fillableCount={fillableCount}
-          fillNotice={fillNotice}
-          slotActions={slotActions}
-          dragEnabled={dragEnabled}
-          onFillCourts={fillCourts}
-          onNewGame={() => setSlotTarget({ gameId: null })}
-          onCancel={cancelGame}
-          onMore={(g) => setCardMenuId(g.id)}
-          onPickCourt={(g) => setAssignGameId(g.id)}
-          onAssign={assignToCourt}
-          onMove={moveQueue}
-          onFillSlot={(g) => setSlotTarget({ gameId: g.id })}
-          onRecommend={(g) => setRecommendFillId(g.id)}
-        />
-        </div>
-
-        {/* 대기 인원 + 운영 메모 — md 이상은 한 컬럼 세로 분할, 폰은 각각 별도 탭(래퍼가 사라져 두 구역이 트랙에 바로 놓인다) */}
-        <div className="flex min-h-0 flex-col gap-3 max-md:contents">
-        <RosterDrop className={`${pane} flex-1`} dragEnabled={dragEnabled}>
-        <RosterZone
-          roster={roster}
-          pendingShuttle={pendingShuttle}
-          leftCount={leftCount}
-          selected={selected}
-          rosterSort={rosterSort}
-          placeLabels={placeLabels}
-          partnerNames={partnerNames}
-          dragEnabled={dragEnabled}
-          run={run}
-          onRosterSort={setRosterSort}
-          onCheerTap={handleCheerTap}
-          onManualCheckIn={() => setManualOpen(true)}
-          onCommand={() => setCommandOpen(true)}
-          onRecommend={() => setRecommendOpen(true)}
-          onCreateGame={createGame}
-          onConfirmShuttle={confirmShuttle}
-          onToggle={toggleSelect}
-          onMore={(a) => setActionId(a.id)}
-        />
-        </RosterDrop>
-        <div className={`${pane} flex-1 md:max-h-[35%] md:flex-none`}>
-          <MemoPanel version={memosVersion} run={run} />
-        </div>
-        </div>
-      </div>
-      </BoardDnd>
-
-      <MobileTabBar tabs={MOBILE_TABS} current={mobileTab} onChange={setMobileTab} />
-
-      {recommendOpen && (
-        <RecommendModal
-          sessionId={session.id}
-          attendances={attendances}
-          onAdd={(rec) => addRecommended(rec)}
-          onClose={() => setRecommendOpen(false)}
-        />
-      )}
-      {/* 빈자리 추천 — 실시간 화면 기준으로 찾아서, 조합이 다 차거나 없어지면 저절로 닫힌다 */}
-      {(() => {
-        const fillGame = recommendFillId ? queuedGames.find((g) => g.id === recommendFillId) : undefined;
-        return (
-          fillGame &&
-          !isFullGame(fillGame) && (
-            <RecommendModal
-              sessionId={session.id}
-              attendances={attendances}
-              fillGame={fillGame}
-              onAdd={(rec) => addRecommended(rec, fillGame)}
-              onClose={() => setRecommendFillId(null)}
-            />
-          )
-        );
-      })()}
-      {codeOpen && <CheckInCodeModal onClose={() => setCodeOpen(false)} />}
-      {membersOpen && <MembersManagerModal onClose={() => setMembersOpen(false)} />}
-      {birthdayOpen && <BirthdayCalendarModal onClose={() => setBirthdayOpen(false)} />}
-      {settlementOpen && <SettlementModal onClose={() => setSettlementOpen(false)} />}
-      {entryFeeOpen && <EntryFeeSheet sessionId={session.id} onClose={() => setEntryFeeOpen(false)} />}
-      {cheer && <CheerEasterEgg onDone={closeCheer} />}
-      {manualOpen && (
-        <ManualCheckInModal
-          sessionId={session.id}
-          attendances={attendances}
-          run={run}
-          busy={busy}
-          onClose={() => setManualOpen(false)}
-        />
-      )}
-      {gamesLogOpen && (
-        <TodayGamesModal
-          sessionId={session.id}
-          snapshot={snapshot}
-          onClose={() => setGamesLogOpen(false)}
-          // 확인 창에서 고른 코트로 게임 중 — 기록을 닫고 코트에서 바로 보이게. 안 되면 서버가 이유를 알려 준다
-          onReopen={(game, court) => {
-            setGamesLogOpen(false);
-            void run(async () => {
-              await api(`/games/${game.id}/reopen`, { method: 'PATCH', admin: true, body: { courtId: court.id } });
-              showToast(`#${game.no} 게임을 ${court.courtNo}번 코트 게임 중으로 되돌렸어요`, 'success');
-            }, `game:${game.id}`);
-          }}
-        />
-      )}
-      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
-      {courtsOpen && (
-        <CourtsManager
-          sessionId={session.id}
-          courts={courts}
-          playingByCourt={playingByCourt}
-          runParallel={runParallel}
-          onClose={() => setCourtsOpen(false)}
-        />
-      )}
-      {/* 코트 고르기 — 대기 조합 카드는 보드 트랙(transform) 안이라 시트를 여기(바깥)에서 띄운다 */}
-      {assignTarget && (
-        <CourtPickSheet
-          game={assignTarget}
-          idleCourts={idleCourts}
-          onAssign={assignToCourt}
-          onClose={() => setAssignGameId(null)}
-        />
-      )}
-      {/* 게임 중 조합 코트 옮기기 — 게임 시간은 이어진다 */}
-      {moveTarget && (
-        <CourtPickSheet
-          game={moveTarget}
-          idleCourts={idleCourts}
-          swapCourts={courts
-            .filter((c) => c.id !== moveTarget.courtId && playingByCourt.has(c.id))
-            .sort((a, b) => a.courtNo - b.courtNo)}
-          title={`${courts.find((c) => c.id === moveTarget.courtId)?.courtNo ?? ''}번 코트에서 어디로 옮길까요?`}
-          onAssign={(gameId, courtId) =>
-            void run(
-              () => api(`/games/${gameId}/court`, { method: 'PATCH', admin: true, body: { courtId } }),
-              `game:${gameId}`,
-            )
-          }
-          onClose={() => setMoveGameId(null)}
-        />
-      )}
-      {menuOpen && (
-        <MoreMenuSheet
-          actions={headerActions}
-          closeLabel={concurrent ? `${sessionName(snapshot.openSessions, session.id)} 모임 종료` : '모임 종료'}
-          onCloseSession={closeSession}
-          onLogout={onLogout}
-          onClose={() => setMenuOpen(false)}
-        />
-      )}
-      {anotherOpen && (
-        <AnotherSessionSheet
-          unnamed={session.label ? undefined : session}
+        {/* 설치 안내 — 카톡으로 연 운영진도 브라우저로 나가게. 설치된 앱에선 뜨지 않는다 */}
+        <InstallPrompt app="admin" className="mb-2 shrink-0" />
+        <BoardHeader
+          date={session.date}
+          presentCount={presentCount}
           openSessions={snapshot.openSessions}
-          run={run}
-          onOpened={onSelectSession}
-          onClose={() => setAnotherOpen(false)}
-        />
-      )}
-      {commandOpen && (
-        <CommandSheet
           sessionId={session.id}
-          live={{ attendances, games }}
-          run={run}
-          board={{
-            endGame: (gameId) => endGame(gameId, 'FINISHED'),
-            changeAttendance,
-            startGame: (ids) => new Promise((resolve) => startGame(ids, undefined, resolve)),
-          }}
-          onClose={() => setCommandOpen(false)}
+          onSelectSession={onSelectSession}
+          onOpenCode={() => setCodeOpen(true)}
+          onOpenLog={() => setGamesLogOpen(true)}
+          onOpenMenu={() => setMenuOpen(true)}
         />
-      )}
-      {/* 카드 [⋯] — 카드는 보드 트랙(transform) 안이라 시트를 여기(바깥)에서 띄운다 */}
-      {cardMenuTarget && (
-        <GameActionSheet
-          game={cardMenuTarget}
-          title={
-            cardMenuTarget.status === 'PLAYING'
-              ? `${courts.find((c) => c.id === cardMenuTarget.courtId)?.courtNo ?? ''}번 코트`
-              : `다음 게임 ${queuedGames.findIndex((g) => g.id === cardMenuTarget.id) + 1}`
-          }
-          onCancel={cancelGame}
-          onReplace={(g) => setReplaceGameId(g.id)}
-          onMoveCourt={(g) => setMoveGameId(g.id)}
-          onClose={() => setCardMenuId(null)}
-        />
-      )}
-      {actionTarget && (
-        <WaitingActionSheet
-          attendance={actionTarget}
-          onChange={(change) => changeAttendance(actionTarget.id, change)}
-          onClose={() => setActionId(null)}
-        />
-      )}
-      {slotOpen && (
-        <SlotFillSheet
-          game={slotGame}
-          roster={roster}
-          placeLabels={placeLabels}
-          sort={rosterSort}
-          onSort={setRosterSort}
-          onPick={(attendanceId) => fillSlot(slotGame?.id ?? null, attendanceId)}
-          onClose={() => setSlotTarget(null)}
-        />
-      )}
-      {replaceTarget && (
-        <ReplacePlayerModal
-          game={replaceTarget}
-          attendances={attendances}
-          sort={rosterSort}
-          onSort={setRosterSort}
-          placeLabels={placeLabels}
-          onReplace={(outId, inId) => replacePlayer(replaceTarget.id, outId, inId)}
-          onClose={() => setReplaceGameId(null)}
-        />
-      )}
-      {toast && <Toast toast={toast} />}
-    </main>
+
+        {/* 3구역 — 폰: 탭 1구역 / 태블릿 세로: 2열(게임 중 | 조합+대기) / 데스크톱: 3열 */}
+        <BoardDnd onDrop={onDrop} onDraggingChange={onDraggingChange}>
+        <div
+          onTouchStart={swipeHandlers.onTouchStart}
+          onTouchMove={swipeHandlers.onTouchMove}
+          onTouchEnd={swipeHandlers.onTouchEnd}
+          onTouchCancel={swipeHandlers.onTouchEnd}
+          className="board-track flex min-h-0 flex-1 md:grid md:grid-cols-2 md:grid-rows-2 md:gap-3 lg:grid-cols-[1.15fr_1fr_1fr] lg:grid-rows-1"
+        >
+          <div className={`${pane} md:row-span-2 lg:row-span-1`}>
+          <CourtsZone
+            courts={courts}
+            playingByCourt={playingByCourt}
+            slotActions={slotActions}
+            dragEnabled={dragEnabled}
+            onManageCourts={() => setCourtsOpen(true)}
+            onTurn={setCourtTurn}
+            onEnd={endGame}
+            onMore={(g) => setCardMenuId(g.id)}
+          />
+          </div>
+
+          <div className={pane}>
+          <QueueZone
+            queuedGames={queuedGames}
+            idleCourts={idleCourts}
+            overlapIds={overlapIds}
+            fillableCount={fillableCount}
+            fillNotice={fillNotice}
+            slotActions={slotActions}
+            dragEnabled={dragEnabled}
+            onFillCourts={fillCourts}
+            onNewGame={() => setSlotTarget({ gameId: null })}
+            onCancel={cancelGame}
+            onMore={(g) => setCardMenuId(g.id)}
+            onPickCourt={(g) => setAssignGameId(g.id)}
+            onAssign={assignToCourt}
+            onMove={moveQueue}
+            onFillSlot={(g) => setSlotTarget({ gameId: g.id })}
+            onRecommend={(g) => setRecommendFillId(g.id)}
+          />
+          </div>
+
+          {/* 대기 인원 + 운영 메모 — md 이상은 한 컬럼 세로 분할, 폰은 각각 별도 탭(래퍼가 사라져 두 구역이 트랙에 바로 놓인다) */}
+          <div className="flex min-h-0 flex-col gap-3 max-md:contents">
+          <RosterDrop className={`${pane} flex-1`} dragEnabled={dragEnabled}>
+          <RosterZone
+            roster={roster}
+            pendingShuttle={pendingShuttle}
+            leftCount={leftCount}
+            selected={selected}
+            rosterSort={rosterSort}
+            placeLabels={placeLabels}
+            partnerNames={partnerNames}
+            dragEnabled={dragEnabled}
+            run={run}
+            onRosterSort={setRosterSort}
+            onCheerTap={handleCheerTap}
+            onManualCheckIn={() => setManualOpen(true)}
+            onCommand={() => setCommandOpen(true)}
+            onRecommend={() => setRecommendOpen(true)}
+            onCreateGame={createGame}
+            onConfirmShuttle={confirmShuttle}
+            onToggle={toggleSelect}
+            onMore={(a) => setActionId(a.id)}
+          />
+          </RosterDrop>
+          <div className={`${pane} flex-1 md:max-h-[35%] md:flex-none`}>
+            <MemoPanel version={memosVersion} run={run} />
+          </div>
+          </div>
+        </div>
+        </BoardDnd>
+
+        <MobileTabBar tabs={MOBILE_TABS} current={mobileTab} onChange={setMobileTab} />
+
+        {recommendOpen && (
+          <RecommendModal
+            sessionId={session.id}
+            attendances={attendances}
+            onAdd={(rec) => addRecommended(rec)}
+            onClose={() => setRecommendOpen(false)}
+          />
+        )}
+        {/* 빈자리 추천 — 실시간 화면 기준으로 찾아서, 조합이 다 차거나 없어지면 저절로 닫힌다 */}
+        {(() => {
+          const fillGame = recommendFillId ? queuedGames.find((g) => g.id === recommendFillId) : undefined;
+          return (
+            fillGame &&
+            !isFullGame(fillGame) && (
+              <RecommendModal
+                sessionId={session.id}
+                attendances={attendances}
+                fillGame={fillGame}
+                onAdd={(rec) => addRecommended(rec, fillGame)}
+                onClose={() => setRecommendFillId(null)}
+              />
+            )
+          );
+        })()}
+        {codeOpen && <CheckInCodeModal onClose={() => setCodeOpen(false)} />}
+        {membersOpen && <MembersManagerModal onClose={() => setMembersOpen(false)} />}
+        {birthdayOpen && <BirthdayCalendarModal onClose={() => setBirthdayOpen(false)} />}
+        {settlementOpen && <SettlementModal onClose={() => setSettlementOpen(false)} />}
+        {entryFeeOpen && <EntryFeeSheet sessionId={session.id} onClose={() => setEntryFeeOpen(false)} />}
+        {cheer && <CheerEasterEgg onDone={closeCheer} />}
+        {manualOpen && (
+          <ManualCheckInModal
+            sessionId={session.id}
+            attendances={attendances}
+            run={run}
+            busy={busy}
+            onClose={() => setManualOpen(false)}
+          />
+        )}
+        {gamesLogOpen && (
+          <TodayGamesModal
+            sessionId={session.id}
+            snapshot={snapshot}
+            onClose={() => setGamesLogOpen(false)}
+            // 확인 창에서 고른 코트로 게임 중 — 기록을 닫고 코트에서 바로 보이게. 안 되면 서버가 이유를 알려 준다
+            onReopen={(game, court) => {
+              setGamesLogOpen(false);
+              void run(async () => {
+                await api(`/games/${game.id}/reopen`, { method: 'PATCH', admin: true, body: { courtId: court.id } });
+                showToast(`#${game.no} 게임을 ${court.courtNo}번 코트 게임 중으로 되돌렸어요`, 'success');
+              }, `game:${game.id}`);
+            }}
+          />
+        )}
+        {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
+        {courtsOpen && (
+          <CourtsManager
+            sessionId={session.id}
+            courts={courts}
+            playingByCourt={playingByCourt}
+            runParallel={runParallel}
+            onClose={() => setCourtsOpen(false)}
+          />
+        )}
+        {/* 코트 고르기 — 대기 조합 카드는 보드 트랙(transform) 안이라 시트를 여기(바깥)에서 띄운다 */}
+        {assignTarget && (
+          <CourtPickSheet
+            game={assignTarget}
+            idleCourts={idleCourts}
+            onAssign={assignToCourt}
+            onClose={() => setAssignGameId(null)}
+          />
+        )}
+        {/* 게임 중 조합 코트 옮기기 — 게임 시간은 이어진다 */}
+        {moveTarget && (
+          <CourtPickSheet
+            game={moveTarget}
+            idleCourts={idleCourts}
+            swapCourts={courts
+              .filter((c) => c.id !== moveTarget.courtId && playingByCourt.has(c.id))
+              .sort((a, b) => a.courtNo - b.courtNo)}
+            title={`${courts.find((c) => c.id === moveTarget.courtId)?.courtNo ?? ''}번 코트에서 어디로 옮길까요?`}
+            onAssign={(gameId, courtId) =>
+              void run(
+                () => api(`/games/${gameId}/court`, { method: 'PATCH', admin: true, body: { courtId } }),
+                `game:${gameId}`,
+              )
+            }
+            onClose={() => setMoveGameId(null)}
+          />
+        )}
+        {menuOpen && (
+          <MoreMenuSheet
+            actions={headerActions}
+            closeLabel={concurrent ? `${sessionName(snapshot.openSessions, session.id)} 모임 종료` : '모임 종료'}
+            onCloseSession={closeSession}
+            onLogout={onLogout}
+            onClose={() => setMenuOpen(false)}
+          />
+        )}
+        {anotherOpen && (
+          <AnotherSessionSheet
+            unnamed={session.label ? undefined : session}
+            openSessions={snapshot.openSessions}
+            run={run}
+            onOpened={onSelectSession}
+            onClose={() => setAnotherOpen(false)}
+          />
+        )}
+        {commandOpen && (
+          <CommandSheet
+            sessionId={session.id}
+            live={{ attendances, games }}
+            run={run}
+            board={{
+              endGame: (gameId) => endGame(gameId, 'FINISHED'),
+              changeAttendance,
+              startGame: (ids) => new Promise((resolve) => startGame(ids, undefined, resolve)),
+            }}
+            onClose={() => setCommandOpen(false)}
+          />
+        )}
+        {/* 카드 [⋯] — 카드는 보드 트랙(transform) 안이라 시트를 여기(바깥)에서 띄운다 */}
+        {cardMenuTarget && (
+          <GameActionSheet
+            game={cardMenuTarget}
+            title={
+              cardMenuTarget.status === 'PLAYING'
+                ? `${courts.find((c) => c.id === cardMenuTarget.courtId)?.courtNo ?? ''}번 코트`
+                : `다음 게임 ${queuedGames.findIndex((g) => g.id === cardMenuTarget.id) + 1}`
+            }
+            onCancel={cancelGame}
+            onReplace={(g) => setReplaceGameId(g.id)}
+            onMoveCourt={(g) => setMoveGameId(g.id)}
+            onClose={() => setCardMenuId(null)}
+          />
+        )}
+        {actionTarget && (
+          <WaitingActionSheet
+            attendance={actionTarget}
+            onChange={(change) => changeAttendance(actionTarget.id, change)}
+            onClose={() => setActionId(null)}
+          />
+        )}
+        {slotOpen && (
+          <SlotFillSheet
+            game={slotGame}
+            roster={roster}
+            placeLabels={placeLabels}
+            sort={rosterSort}
+            onSort={setRosterSort}
+            onPick={(attendanceId) => fillSlot(slotGame?.id ?? null, attendanceId)}
+            onClose={() => setSlotTarget(null)}
+          />
+        )}
+        {replaceTarget && (
+          <ReplacePlayerModal
+            game={replaceTarget}
+            attendances={attendances}
+            sort={rosterSort}
+            onSort={setRosterSort}
+            placeLabels={placeLabels}
+            onReplace={(outId, inId) => replacePlayer(replaceTarget.id, outId, inId)}
+            onClose={() => setReplaceGameId(null)}
+          />
+        )}
+        {toast && <Toast toast={toast} />}
+      </main>
+    </SameNameTagsProvider>
   );
 }
 

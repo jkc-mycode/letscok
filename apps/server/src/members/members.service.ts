@@ -69,14 +69,20 @@ export class MembersService {
         });
     // 최근 출석순 정렬 — 자주 오는 사람이 위로, 한 번 오고 만 게스트는 아래로 (게스트 일괄 숨김 대신 택한 해법)
     const stats = await memberAttendanceStats(this.prisma, { memberIds: members.map((m) => m.id) });
-    return members
-      .sort((a, b) => {
-        const dateA = stats.get(a.id)?.lastDate.getTime() ?? 0;
-        const dateB = stats.get(b.id)?.lastDate.getTime() ?? 0;
-        if (dateA !== dateB) return dateB - dateA;
-        return a.name.localeCompare(b.name, 'ko');
-      })
-      .map(full ? toMemberResponse : toPublicMemberResponse);
+    const sorted = members.sort((a, b) => {
+      const dateA = stats.get(a.id)?.lastDate.getTime() ?? 0;
+      const dateB = stats.get(b.id)?.lastDate.getTime() ?? 0;
+      if (dateA !== dateB) return dateB - dateA;
+      return a.name.localeCompare(b.name, 'ko');
+    });
+    if (full) return sorted.map(toMemberResponse);
+    // 누구나 부르는 검색 — 출생 연도는 결과에 같은 이름이 있을 때만(동명이인 구분), 아니면 이름·급수·성별만
+    const nameCount = new Map<string, number>();
+    for (const m of sorted) nameCount.set(m.name, (nameCount.get(m.name) ?? 0) + 1);
+    return sorted.map((m) => {
+      const pub = toPublicMemberResponse(m);
+      return nameCount.get(m.name)! > 1 ? pub : { ...pub, birthYear: null };
+    });
   }
 
   // 명단 목록 (운영진 전용) — 삭제된 회원 포함(복구 지원), 출석 집계 동봉. 생일 캘린더가 전체를 쓴다

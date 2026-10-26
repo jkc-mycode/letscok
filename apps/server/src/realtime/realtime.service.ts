@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException, OnModuleDestroy } from '@nestjs/common';
-import { ISessionSnapshot } from '@letscok/shared-types';
+import { IAttendance, ISessionSnapshot } from '@letscok/shared-types';
 import {
   toAttendanceResponse,
   toCourtResponse,
@@ -57,12 +57,25 @@ export class RealtimeService implements OnModuleDestroy {
       }),
     ]);
 
+    // 현황은 누구나 받는다 — 출생 연도는 이 모임에 같은 이름이 있는 사람만(동명이인 꼬리표용)
+    const seen = new Set<string>();
+    const sameNames = new Set<string>();
+    for (const a of attendances) (seen.has(a.member.name) ? sameNames : seen).add(a.member.name);
+    const hideYear = (a: IAttendance): IAttendance =>
+      a.member && !sameNames.has(a.member.name) ? { ...a, member: { ...a.member, birthYear: null } } : a;
+
     return {
       session: toSessionResponse(session),
       openSessions,
       courts: courts.map(toCourtResponse),
-      attendances: attendances.map(toAttendanceResponse),
-      games: games.map(toGameResponse),
+      attendances: attendances.map((a) => hideYear(toAttendanceResponse(a))),
+      games: games.map((g) => {
+        const game = toGameResponse(g);
+        return {
+          ...game,
+          players: game.players?.map((p) => (p.attendance ? { ...p, attendance: hideYear(p.attendance) } : p)),
+        };
+      }),
     };
   }
 

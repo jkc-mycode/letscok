@@ -1,7 +1,8 @@
 'use client';
 
-import { Gender, Grade, IGame, MemberRole } from '@letscok/shared-types';
+import { Gender, Grade, IAttendance, IGame, MemberRole } from '@letscok/shared-types';
 import { motion } from 'motion/react';
+import { createContext, useContext } from 'react';
 import { CrownIcon } from '@/components/icons';
 import type { ToastState } from '@/lib/use-toast';
 
@@ -68,7 +69,40 @@ export function GuestMark({ size = 'auto' }: { size?: GuestMarkSize }) {
   );
 }
 
-// 사람 이름 한 묶음 — 급수 · (왕관) · 이름 · 성별 · (게스트). 순서를 여기 한 곳에서 정한다
+// 동명이인 꼬리표(회원 id → "97"·"①") — 같은 모임에 이름이 똑같은 사람이 있을 때만 생긴다
+// 보드를 그리는 화면(관제판·전광판·모임원 앱)이 그날 출석으로 채워 넣고, 그 밖의 화면은 빈 표라 꼬리표가 없다
+const SameNameTagsContext = createContext<ReadonlyMap<string, string>>(new Map());
+export const SameNameTagsProvider = SameNameTagsContext.Provider;
+
+const ORDINALS = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨'];
+
+// 같은 이름끼리 출생 연도가 겹치지 않으면 연도 두 자리, 겹치거나 없으면 체크인 순 번호
+export function buildSameNameTags(attendances: IAttendance[]): Map<string, string> {
+  const groups = new Map<string, IAttendance[]>();
+  for (const attendance of attendances) {
+    if (!attendance.member) continue;
+    const group = groups.get(attendance.member.name) ?? [];
+    group.push(attendance);
+    groups.set(attendance.member.name, group);
+  }
+  const tags = new Map<string, string>();
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const years = group.map((a) => a.member!.birthYear);
+    const rest = group
+      .filter((a) => {
+        const year = a.member!.birthYear;
+        if (year === null || years.filter((y) => y === year).length > 1) return true;
+        tags.set(a.memberId, String(year).slice(2));
+        return false;
+      })
+      .sort((a, b) => a.checkedInAt.localeCompare(b.checkedInAt));
+    rest.forEach((a, i) => tags.set(a.memberId, ORDINALS[i] ?? `${i + 1}`));
+  }
+  return tags;
+}
+
+// 사람 이름 한 묶음 — 급수 · (왕관) · 이름 · (동명이인 꼬리표) · 성별 · (게스트). 순서를 여기 한 곳에서 정한다
 // 감싸는 상자 없이 펼쳐서 부모 줄의 간격·줄임을 그대로 따른다. 그 뒤 칩(나·휴식·게임 중 등)은 부르는 쪽이 붙인다
 // nameClassName: 이름 줄임 방식이 자리마다 다르다(줄이지 않음·truncate·최소 4글자) — 굵기·색과 함께 넘긴다
 export function PersonName({
@@ -77,16 +111,18 @@ export function PersonName({
   crown = false,
   guest,
 }: {
-  person: { name: string; grade: Grade; gender: Gender | null; isGuest?: boolean; role?: MemberRole };
+  person: { id?: string; name: string; grade: Grade; gender: Gender | null; isGuest?: boolean; role?: MemberRole };
   nameClassName?: string;
   crown?: boolean; // 관제판 명단처럼 모임장·운영진을 알아야 하는 자리
   guest?: GuestMarkSize; // 생략하면 게스트 표시 없음
 }) {
+  const tag = useContext(SameNameTagsContext).get(person.id ?? '');
   return (
     <>
       <GradeBadge grade={person.grade} />
       {crown && person.role && <RoleCrown role={person.role} />}
       <span className={nameClassName}>{person.name}</span>
+      {tag && <span className="tabular -ml-0.5 shrink-0 text-caption font-medium text-dim">{tag}</span>}
       <GenderMarker gender={person.gender} />
       {guest && person.isGuest && <GuestMark size={guest} />}
     </>
