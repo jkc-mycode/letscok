@@ -12,7 +12,8 @@ export function ElapsedText({ since }: { since: string }) {
   return <>{formatElapsed(since, useNow())}</>;
 }
 
-// 오래 기다린 사람 강조 기준(분) — 15분 주황, 20분 빨강
+// 오래 기다린 사람 강조 기준(분) — 10분 노랑, 15분 주황, 20분 빨강
+const WAIT_NOTICE_MINUTES = 10;
 const WAIT_WARN_MINUTES = 15;
 const WAIT_ALERT_MINUTES = 20;
 
@@ -22,7 +23,14 @@ export function WaitingMinutesText({ since, alert = false }: { since: string; al
   const text = formatWaitingMinutes(since, now);
   if (!alert) return <>{text}</>;
   const minutes = (now - new Date(since).getTime()) / 60000;
-  const cls = minutes >= WAIT_ALERT_MINUTES ? 'font-bold text-coral' : minutes >= WAIT_WARN_MINUTES ? 'font-bold text-amber' : '';
+  const cls =
+    minutes >= WAIT_ALERT_MINUTES
+      ? 'font-bold text-coral'
+      : minutes >= WAIT_WARN_MINUTES
+        ? 'font-bold text-amber'
+        : minutes >= WAIT_NOTICE_MINUTES
+          ? 'font-bold text-gold'
+          : '';
   return cls ? <span className={cls}>{text}</span> : <>{text}</>;
 }
 
