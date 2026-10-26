@@ -23,11 +23,13 @@ type OptimisticGame = { game: IGame; ids: string[]; realId?: string };
 export const firstFreeSlot = (players: GamePlayer[]) => [0, 1, 2, 3].find((n) => !players.some((p) => p.slot === n));
 
 // 서버 화면에 같은 조합이 실렸는지 — 같은 4명 조합은 서버가 중복으로 막아서 사람 묶음으로 알아볼 수 있다
+// 서버 id를 아는 조합은 사람까지 같아야 — 만든 직후 넣기·빼기가 서버에 닿기 전 옛 사람으로 돌아가 보이지 않게
 function isSettled(t: OptimisticGame, games: IGame[]): boolean {
   return games.some((g) => {
     const ids = (g.players ?? []).map((p) => p.attendanceId);
-    if (g.id === t.realId) return ids.length >= t.ids.length;
-    return g.status === 'QUEUED' && ids.length === t.ids.length && t.ids.every((id) => ids.includes(id));
+    const same = ids.length === t.ids.length && t.ids.every((id) => ids.includes(id));
+    if (g.id === t.realId) return same;
+    return g.status === 'QUEUED' && same;
   });
 }
 
@@ -63,7 +65,14 @@ function overlayGames(serverGames: IGame[], { optAssign, optCreated, optEnded, o
   // 대기 조합 목록은 배열 순서대로 그려진다 — 대기로 돌린 조합을 배열에서도 맨 앞으로
   const front = base.filter((g) => g.status === 'QUEUED' && optEnded.get(g.id)?.kind === 'UNASSIGNED');
   const rest = front.length ? base.filter((g) => !front.includes(g)) : base;
-  return [...front, ...rest, ...pending.map((t) => t.game)];
+  // 만드는 중인 조합 — 다 뺀(해체한) 건 숨기고, 배정을 누른 건 게임 중으로
+  const temps = pending
+    .filter((t) => (t.game.players?.length ?? 0) > 0)
+    .map((t) => {
+      const assigned = optAssign.get(t.game.id) ?? (t.realId ? optAssign.get(t.realId) : undefined);
+      return assigned ? { ...t.game, status: 'PLAYING' as const, courtId: assigned.courtId, startedAt: assigned.startedAt } : t.game;
+    });
+  return [...front, ...rest, ...temps];
 }
 
 function overlayAttendances(
@@ -73,8 +82,11 @@ function overlayAttendances(
   { optAssign, optCreated, optEnded, optPlayers }: OptimisticBoard,
 ): ISessionSnapshot['attendances'] {
   if (optAssign.size === 0 && optCreated.length === 0 && optEnded.size === 0 && optPlayers.size === 0) return serverAttendances;
+  // 배정을 누른 조합 — 만드는 중인 조합은 배정 표시가 서버 id로 옮겨 가도 게임 중으로 보인다
   const playing = new Set(
-    games.filter((g) => optAssign.has(g.id)).flatMap((g) => (g.players ?? []).map((p) => p.attendanceId)),
+    games
+      .filter((g) => optAssign.has(g.id) || (g.status === 'PLAYING' && g.id.startsWith(TEMP_GAME_PREFIX)))
+      .flatMap((g) => (g.players ?? []).map((p) => p.attendanceId)),
   );
   const matched = new Set(optCreated.flatMap((t) => t.ids));
   // 종료: 전원 대기 시간 리셋 + 게임 수 +1, 다른 조합에 들어 있으면 '대기 조합', 아니면 대기로(서버 finish와 같은 규칙)
@@ -202,10 +214,13 @@ export function useOptimisticBoard({
 
   // 코트 배정·조합 만들기는 누르자마자 보여 준다 — 서버 응답과 화면 새로고침(두 번 오감)을 기다리면 멈춘 것처럼 보였다.
   // 서버 화면에 실리면 이 표시는 지우고, 실패하면 되돌린다(알림은 runParallel)
-  const [optAssign, assignOpt] = useOptimisticMap<{ courtId: string; startedAt: string }>(
-    (id) => snapshot.games.find((g) => g.id === id)?.status === 'QUEUED', // 서버에서 '게임 중'이 되면 지운다
-    snapshot.games,
-  );
+  // 막 만든 조합에 배정을 보내는 중 — 서버 화면에 아직 그 조합이 없어도 덧씌움을 지우지 않는다
+  const assigningNew = useRef(new Set<string>());
+  const [optAssign, assignOpt] = useOptimisticMap<{ courtId: string; startedAt: string }>((id) => {
+    if (id.startsWith(TEMP_GAME_PREFIX)) return true; // 만드는 중인 조합 — 서버 id로 옮길 때 직접 지운다
+    const server = snapshot.games.find((g) => g.id === id);
+    return server ? server.status === 'QUEUED' : assigningNew.current.has(id); // 서버에서 '게임 중'이 되면 지운다
+  }, snapshot.games);
   const [optCreated, setOptCreated] = useState<OptimisticGame[]>([]);
   // 조합 안 사람 빼기·자리 바꾸기 — 바뀐 사람 목록을 대신 보여 준다. base=처음 누를 때 서버 목록, pending=아직 안 끝난 요청 수
   // 요청이 다 끝났고 서버 목록이 base와 달라지면(반영됨) 지운다 — 연달아 누르는 중엔 지우지 않아 앞 단계로 깜빡이지 않게
@@ -303,21 +318,46 @@ export function useOptimisticBoard({
   );
   const gamesRef = useRef(games);
   gamesRef.current = games;
+  // 임시 조합 → 서버 조합 id(만들어지면). 만든 직후의 조작(넣기·빼기·배정·해체)은 이걸 기다렸다 보낸다
+  const tempReal = useRef(new Map<string, Promise<string | null>>());
+  const serverIdOf = useCallback(async (gameId: string) => {
+    if (!gameId.startsWith(TEMP_GAME_PREFIX)) return gameId;
+    const realId = await tempReal.current.get(gameId);
+    if (!realId) throw new Error('조합을 만들지 못해 바꾸지 못했어요');
+    return realId;
+  }, []);
   const snapshotRef = useRef(snapshot); // 순서 요청이 줄을 서 있다 나갈 때 그때의 서버 화면을 보려고
   snapshotRef.current = snapshot;
   // 카드 사람 목록을 먼저 바꿔 보여 주고 요청을 보낸다 — 카드끼리 옮길 때는 두 카드를 함께(요청 안에서 넣기 → 빼기 차례로)
   // 실패하면 바꾼 카드 모두 서버 화면대로. 결과(성공 여부)를 돌려줘 이어서 할 일을 정할 수 있게
   const patchGames = useCallback(
     (changes: [string, (players: GamePlayer[]) => GamePlayer[]][], request: () => Promise<unknown>) => {
-      const ready = changes.every(
-        ([gameId]) =>
-          !gameId.startsWith(TEMP_GAME_PREFIX) &&
-          snapshot.games.some((g) => g.id === gameId) &&
-          gamesRef.current.some((g) => g.id === gameId),
+      // 만드는 중인 조합(임시 id)은 임시 카드를 바꾸고, 요청 안에서 serverIdOf로 서버 id를 기다린다
+      const ready = changes.every(([gameId]) =>
+        gameId.startsWith(TEMP_GAME_PREFIX)
+          ? tempReal.current.has(gameId) && gamesRef.current.some((g) => g.id === gameId)
+          : snapshot.games.some((g) => g.id === gameId) && gamesRef.current.some((g) => g.id === gameId),
       );
       if (!ready) return Promise.resolve(false);
-      const ids = changes.map(([gameId]) => gameId);
-      const patched = changes.map(([gameId, change]) => ({
+      // 만드는 중인 조합(임시 카드) — 임시 카드의 사람을 바로 바꾸고, 실패하면 원래대로
+      const tempChanges = changes.filter(([gameId]) => gameId.startsWith(TEMP_GAME_PREFIX));
+      const tempBefore = new Map<string, OptimisticGame>();
+      if (tempChanges.length > 0) {
+        setOptCreated((prev) =>
+          prev.map((t) => {
+            const change = tempChanges.find(([gameId]) => gameId === t.game.id)?.[1];
+            if (!change) return t;
+            tempBefore.set(t.game.id, t);
+            const players = change(t.game.players ?? []);
+            return { ...t, ids: players.map((p) => p.attendanceId), game: { ...t.game, players } };
+          }),
+        );
+      }
+      const restoreTemps = () =>
+        tempBefore.size > 0 && setOptCreated((prev) => prev.map((t) => tempBefore.get(t.game.id) ?? t));
+      const serverChanges = changes.filter(([gameId]) => !gameId.startsWith(TEMP_GAME_PREFIX));
+      const ids = serverChanges.map(([gameId]) => gameId);
+      const patched = serverChanges.map(([gameId, change]) => ({
         gameId,
         players: change(gamesRef.current.find((g) => g.id === gameId)?.players ?? []),
         base: playersSignature(snapshot.games.find((g) => g.id === gameId)?.players),
@@ -331,6 +371,7 @@ export function useOptimisticBoard({
         return next;
       });
       return runParallel(request).then((ok) => {
+        if (!ok) restoreTemps();
         setOptPlayers((prev) => {
           const next = new Map(prev);
           for (const gameId of ids) {
@@ -356,7 +397,7 @@ export function useOptimisticBoard({
         return ok;
       });
     },
-    [snapshot.games, runParallel],
+    [snapshot.games, runParallel, setOptCreated],
   );
   const patchPlayers = useCallback(
     (gameId: string, change: (players: GamePlayer[]) => GamePlayer[], request: () => Promise<unknown>) =>
@@ -379,16 +420,23 @@ export function useOptimisticBoard({
               ),
           ],
         ],
-        () => api(`/games/${gameId}/players`, { method: 'PATCH', admin: true, body: { outAttendanceId, inAttendanceId } }),
+        async () =>
+          api(`/games/${await serverIdOf(gameId)}/players`, {
+            method: 'PATCH',
+            admin: true,
+            body: { outAttendanceId, inAttendanceId },
+          }),
       );
     },
-    [snapshot.attendances, patchGames],
+    [snapshot.attendances, patchGames, serverIdOf],
   );
   // 게임 취소·조합 해체 — 사람을 다 뺀 모습(서버처럼 해체)으로 바로 보여 준다. 사람은 다른 조합에 없으면 대기로, 코트는 빈다
   const cancelGame = useCallback(
     (gameId: string) =>
-      void patchGames([[gameId, () => []]], () => api(`/games/${gameId}/cancel`, { method: 'PATCH', admin: true })),
-    [patchGames],
+      void patchGames([[gameId, () => []]], async () =>
+        api(`/games/${await serverIdOf(gameId)}/cancel`, { method: 'PATCH', admin: true }),
+      ),
+    [patchGames, serverIdOf],
   );
   const slotActions = useMemo(
     () => ({
@@ -403,24 +451,44 @@ export function useOptimisticBoard({
               p.attendanceId === attendanceId ? { ...p, slot } : p.slot === slot ? { ...p, slot: mover.slot } : p,
             );
           },
-          () => api(`/games/${gameId}/slots`, { method: 'PATCH', admin: true, body: { attendanceId, slot } }),
+          async () =>
+            api(`/games/${await serverIdOf(gameId)}/slots`, { method: 'PATCH', admin: true, body: { attendanceId, slot } }),
         ),
       removePlayer: (gameId: string, attendanceId: string) =>
         patchPlayers(
           gameId,
           (players) => players.filter((p) => p.attendanceId !== attendanceId),
-          () => api(`/games/${gameId}/players/${attendanceId}`, { method: 'DELETE', admin: true }),
+          async () => api(`/games/${await serverIdOf(gameId)}/players/${attendanceId}`, { method: 'DELETE', admin: true }),
         ),
     }),
-    [patchPlayers],
+    [patchPlayers, serverIdOf],
   );
   const assignToCourt = useCallback(
     (gameId: string, courtId: string) => {
-      if (gameId.startsWith(TEMP_GAME_PREFIX) || optAssign.has(gameId)) return; // 아직 서버에 없는 조합·이미 누른 조합
-      assignOpt.set(gameId, { courtId, startedAt: new Date().toISOString() });
-      void waitForEnds()
-        .then(() => runParallel(() => api(`/games/${gameId}/assign`, { method: 'PATCH', admin: true, body: { courtId } })))
-        .then((ok) => !ok && assignOpt.remove(gameId));
+      if (optAssign.has(gameId)) return; // 이미 누른 조합
+      const temp = gameId.startsWith(TEMP_GAME_PREFIX);
+      if (temp && !tempReal.current.has(gameId)) return;
+      const value = { courtId, startedAt: new Date().toISOString() };
+      assignOpt.set(gameId, value);
+      void (async () => {
+        let realId = gameId;
+        if (temp) {
+          // 막 만든 조합 — 서버 id가 오면 덧씌움을 그 id로 옮긴다(임시 카드가 서버 조합으로 바뀌어도 게임 중으로 보이게)
+          const created = await tempReal.current.get(gameId);
+          if (!created) {
+            assignOpt.remove(gameId);
+            return;
+          }
+          realId = created;
+          assigningNew.current.add(realId);
+          assignOpt.set(realId, value);
+          assignOpt.remove(gameId);
+        }
+        await waitForEnds();
+        const ok = await runParallel(() => api(`/games/${realId}/assign`, { method: 'PATCH', admin: true, body: { courtId } }));
+        assigningNew.current.delete(realId);
+        if (!ok) assignOpt.remove(realId);
+      })();
     },
     [optAssign, assignOpt, runParallel, waitForEnds],
   );
@@ -473,8 +541,6 @@ export function useOptimisticBoard({
   };
   // 새 조합을 대기 조합 맨 끝에 바로 보여 주고 서버에 보낸다([조합 만들기]·새 조합 자리로 끌기 공용)
   // removeFrom = 다른 카드에서 끌어온 사람 — 만든 뒤 그 카드에서 뺀다(그 카드도 바로 빠진 모습으로)
-  // 임시 조합 → 서버 조합 id(만들어지면). 빈칸 채우기에서 만드는 중인 조합에 이어서 넣을 때 기다린다
-  const tempReal = useRef(new Map<string, Promise<string | null>>());
   const startGame = useCallback(
     (ids: string[], removeFrom?: string, onDone?: (ok: boolean) => void) => {
       // 원래 카드가 그 사이 해체됐으면 뺄 곳이 없다 — 만들기만
@@ -504,8 +570,13 @@ export function useOptimisticBoard({
       const request = async () => {
         try {
           if (ids.length === GAME_SIZE) {
-            await api(`/sessions/${session.id}/games`, { method: 'POST', admin: true, body: { attendanceIds: ids } });
-            resolveReal(null);
+            const created = await api<IGame>(`/sessions/${session.id}/games`, {
+              method: 'POST',
+              admin: true,
+              body: { attendanceIds: ids },
+            });
+            resolveReal(created.id);
+            setOptCreated((prev) => prev.map((t) => (t.game.id === tempId ? { ...t, realId: created.id } : t)));
           } else {
             const draft = await api<IGame>(`/sessions/${session.id}/games/draft`, {
               method: 'POST',
