@@ -128,6 +128,31 @@ function overlayAttendances(
   });
 }
 
+// 조합 카드 안 사람의 상태도 덧씌운 출석대로 — 카드는 이 값으로 '게임 중이라 배정 불가'를 가린다
+// (안 맞추면 게임 종료를 눌러도 실시간 화면이 올 때까지 다음 조합의 [배정]이 막혀 있다)
+function syncPlayerStatus(
+  games: IGame[],
+  attendances: ISessionSnapshot['attendances'],
+  serverAttendances: ISessionSnapshot['attendances'],
+): IGame[] {
+  if (attendances === serverAttendances) return games;
+  const statusOf = new Map(attendances.map((a) => [a.id, a.status]));
+  const stale = (p: GamePlayer) => {
+    const status = statusOf.get(p.attendanceId);
+    return p.attendance !== undefined && status !== undefined && status !== p.attendance.status;
+  };
+  return games.map((g) =>
+    g.players?.some(stale)
+      ? {
+          ...g,
+          players: g.players.map((p) =>
+            stale(p) ? { ...p, attendance: { ...p.attendance!, status: statusOf.get(p.attendanceId)! } } : p,
+          ),
+        }
+      : g,
+  );
+}
+
 // 종료한 공유 코트는 서버처럼 '다른 모임 차례'로, [우리 차례로]·[넘기기]는 누른 값으로
 function overlayCourts(
   serverCourts: ISessionSnapshot['courts'],
@@ -208,13 +233,18 @@ export function useOptimisticBoard({
       return next.length === prev.length ? prev : next;
     });
   }, [snapshot.games]);
-  const games = useMemo(
+  const overlaidGames = useMemo(
     () => overlayGames(snapshot.games, { optAssign, optCreated, optEnded, optPlayers }),
     [snapshot.games, optAssign, optCreated, optEnded, optPlayers],
   );
   const attendances = useMemo(
-    () => overlayAttendances(snapshot.attendances, snapshot.games, games, { optAssign, optCreated, optEnded, optPlayers }),
-    [snapshot.attendances, snapshot.games, games, optAssign, optCreated, optEnded, optPlayers],
+    () =>
+      overlayAttendances(snapshot.attendances, snapshot.games, overlaidGames, { optAssign, optCreated, optEnded, optPlayers }),
+    [snapshot.attendances, snapshot.games, overlaidGames, optAssign, optCreated, optEnded, optPlayers],
+  );
+  const games = useMemo(
+    () => syncPlayerStatus(overlaidGames, attendances, snapshot.attendances),
+    [overlaidGames, attendances, snapshot.attendances],
   );
   // 공유 코트 [우리 차례로]·[넘기기]도 누르자마자 — 서버 화면이 같아지면 지우고, 실패하면 되돌린다
   const [optTurn, turnOpt] = useOptimisticMap<boolean>((id, ourTurn) => {
@@ -234,6 +264,10 @@ export function useOptimisticBoard({
     },
     [runParallel, turnOpt],
   );
+  // 아직 서버에 안 닿은 게임 종료·대기로 — 배정·빈 코트 채우기는 이게 끝난 뒤 보낸다
+  // (화면은 종료를 누르자마자 다음 조합을 풀어 주므로, 먼저 닿으면 서버가 '아직 게임 중'으로 거절한다)
+  const endingRef = useRef(new Set<Promise<unknown>>());
+  const waitForEnds = useCallback(() => Promise.allSettled([...endingRef.current]), []);
   const endGame = useCallback(
     (gameId: string, kind: 'FINISHED' | 'UNASSIGNED'): Promise<boolean> => {
       // 이미 누른 게임·배정이 서버에 아직 안 닿은 게임(종료하면 409)은 무시
@@ -243,7 +277,10 @@ export function useOptimisticBoard({
       const clearEnded = () => endedOpt.remove(gameId);
       const courtNo = snapshot.courts.find((c) => c.id === games.find((g) => g.id === gameId)?.courtId)?.courtNo;
       // 결과(성공 여부)를 돌려준다 — AI 명령은 서버에 닿은 뒤 다음 단계로 넘어간다(다음 추천이 끝난 사람을 대기로 보게)
-      return runParallel(() => api(`/games/${gameId}/${path}`, { method: 'PATCH', admin: true })).then((ok) => {
+      const request = runParallel(() => api(`/games/${gameId}/${path}`, { method: 'PATCH', admin: true }));
+      endingRef.current.add(request);
+      void request.finally(() => endingRef.current.delete(request));
+      return request.then((ok) => {
         if (!ok) {
           clearEnded();
           return false;
@@ -381,11 +418,11 @@ export function useOptimisticBoard({
     (gameId: string, courtId: string) => {
       if (gameId.startsWith(TEMP_GAME_PREFIX) || optAssign.has(gameId)) return; // 아직 서버에 없는 조합·이미 누른 조합
       assignOpt.set(gameId, { courtId, startedAt: new Date().toISOString() });
-      void runParallel(() => api(`/games/${gameId}/assign`, { method: 'PATCH', admin: true, body: { courtId } })).then(
-        (ok) => !ok && assignOpt.remove(gameId),
-      );
+      void waitForEnds()
+        .then(() => runParallel(() => api(`/games/${gameId}/assign`, { method: 'PATCH', admin: true, body: { courtId } })))
+        .then((ok) => !ok && assignOpt.remove(gameId));
     },
-    [optAssign, assignOpt, runParallel],
+    [optAssign, assignOpt, runParallel, waitForEnds],
   );
 
   const playingByCourt = useMemo(() => {
@@ -683,6 +720,7 @@ export function useOptimisticBoard({
     void run(async () => {
       let result: IFillCourtsResult;
       try {
+        await waitForEnds();
         result = await api<IFillCourtsResult>(`/sessions/${session.id}/fill-courts`, {
           method: 'POST',
           admin: true,
