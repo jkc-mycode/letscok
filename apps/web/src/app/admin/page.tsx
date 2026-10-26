@@ -343,6 +343,7 @@ function BoardBody({
     cancelGame,
     slotActions,
     assignToCourt,
+    moveGame,
     moveQueue,
     startGame,
     growTemp,
@@ -759,12 +760,7 @@ function BoardBody({
               .filter((c) => c.id !== moveTarget.courtId && playingByCourt.has(c.id))
               .sort((a, b) => a.courtNo - b.courtNo)}
             title={`${courts.find((c) => c.id === moveTarget.courtId)?.courtNo ?? ''}번 코트에서 어디로 옮길까요?`}
-            onAssign={(gameId, courtId) =>
-              void run(
-                () => api(`/games/${gameId}/court`, { method: 'PATCH', admin: true, body: { courtId } }),
-                `game:${gameId}`,
-              )
-            }
+            onAssign={moveGame}
             onClose={() => setMoveGameId(null)}
           />
         )}

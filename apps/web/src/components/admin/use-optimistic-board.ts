@@ -40,6 +40,7 @@ type OptimisticBoard = {
   optCreated: OptimisticGame[]; // 새 조합
   optEnded: Map<string, { kind: 'FINISHED' | 'UNASSIGNED'; at: string }>; // 게임 종료·대기로
   optPlayers: Map<string, { players: GamePlayer[]; base: string; pending: number }>; // 조합 안 사람 바꾸기
+  optMove: Map<string, string>; // 게임 중 코트 옮기기·맞바꾸기(게임 → 옮길 코트)
 };
 
 // 게임 종료·대기로를 지금 보여 줄지 — 서버에서 게임 중이거나 배정을 눌러 둔 게임만. 배정과 둘 다 서버에 안 닿았으면 나중에 누른 쪽
@@ -52,8 +53,16 @@ function endedNow(g: IGame, keys: string[], { optAssign, optEnded }: Pick<Optimi
   return !assigned || ended.at >= assigned.startedAt ? ended : undefined;
 }
 
-function overlayGames(serverGames: IGame[], { optAssign, optCreated, optEnded, optPlayers }: OptimisticBoard): IGame[] {
-  if (optAssign.size === 0 && optCreated.length === 0 && optEnded.size === 0 && optPlayers.size === 0) return serverGames;
+function overlayGames(serverGames: IGame[], board: OptimisticBoard): IGame[] {
+  const { optAssign, optCreated, optEnded, optPlayers, optMove } = board;
+  if (optAssign.size === 0 && optCreated.length === 0 && optEnded.size === 0 && optPlayers.size === 0 && optMove.size === 0) {
+    return serverGames;
+  }
+  // 코트 옮기기 — 게임 중으로 보이는 게임만 옮긴 코트로
+  const moved = (g: IGame, keys: string[] = [g.id]): IGame => {
+    const courtId = keys.map((k) => optMove.get(k)).find(Boolean);
+    return courtId && g.status === 'PLAYING' ? { ...g, courtId } : g;
+  };
   const pending = optCreated.filter((t) => !isSettled(t, serverGames));
   // 대기로 돌린 조합은 서버처럼 대기 조합 맨 앞
   let firstOrder = Math.min(1, ...serverGames.map((g) => (g.status === 'QUEUED' ? (g.queueOrder ?? 1) : 1)));
@@ -71,7 +80,7 @@ function overlayGames(serverGames: IGame[], { optAssign, optCreated, optEnded, o
       if (ended) return { ...g, status: 'QUEUED' as const, courtId: null, startedAt: null, queueOrder: --firstOrder };
       // 배정 — 서버에서 아직 대기 조합이거나, 대기로를 누른 뒤 다시 배정한 게임
       const assigned = g.status === 'QUEUED' || optEnded.has(g.id) ? optAssign.get(g.id) : undefined;
-      return assigned ? { ...g, status: 'PLAYING' as const, courtId: assigned.courtId, startedAt: assigned.startedAt } : g;
+      return moved(assigned ? { ...g, status: 'PLAYING' as const, courtId: assigned.courtId, startedAt: assigned.startedAt } : g);
     });
   // 대기 조합 목록은 배열 순서대로 그려진다 — 대기로 돌린 조합을 배열에서도 맨 앞으로
   const front = base.filter((g) => g.status === 'QUEUED' && optEnded.get(g.id)?.kind === 'UNASSIGNED' && !optAssign.has(g.id));
@@ -85,9 +94,12 @@ function overlayGames(serverGames: IGame[], { optAssign, optCreated, optEnded, o
       if (ended?.kind === 'FINISHED') return [];
       const assigned = keys.map((k) => optAssign.get(k)).find(Boolean);
       return [
-        assigned && !ended
-          ? { ...t.game, status: 'PLAYING' as const, courtId: assigned.courtId, startedAt: assigned.startedAt }
-          : t.game,
+        moved(
+          assigned && !ended
+            ? { ...t.game, status: 'PLAYING' as const, courtId: assigned.courtId, startedAt: assigned.startedAt }
+            : t.game,
+          keys,
+        ),
       ];
     });
   return [...front, ...rest, ...temps];
@@ -279,14 +291,27 @@ export function useOptimisticBoard({
       return next.length === prev.length ? prev : next;
     });
   }, [snapshot.games]);
+  // 코트 옮기기·맞바꾸기 — 서버 화면에서 그 게임이 옮긴 코트에 실리면(또는 끝나면) 지운다
+  const moveRequests = useRef(new Map<string, Promise<boolean>>());
+  const [optMove, moveOpt] = useOptimisticMap<string>((id, courtId) => {
+    if (id.startsWith(TEMP_GAME_PREFIX) || moveRequests.current.has(id)) return true;
+    const server = snapshot.games.find((g) => g.id === id);
+    return !!server && (server.status === 'PLAYING' || server.status === 'QUEUED') && server.courtId !== courtId;
+  }, snapshot.games);
   const overlaidGames = useMemo(
-    () => overlayGames(snapshot.games, { optAssign, optCreated, optEnded, optPlayers }),
-    [snapshot.games, optAssign, optCreated, optEnded, optPlayers],
+    () => overlayGames(snapshot.games, { optAssign, optCreated, optEnded, optPlayers, optMove }),
+    [snapshot.games, optAssign, optCreated, optEnded, optPlayers, optMove],
   );
   const attendances = useMemo(
     () =>
-      overlayAttendances(snapshot.attendances, snapshot.games, overlaidGames, { optAssign, optCreated, optEnded, optPlayers }),
-    [snapshot.attendances, snapshot.games, overlaidGames, optAssign, optCreated, optEnded, optPlayers],
+      overlayAttendances(snapshot.attendances, snapshot.games, overlaidGames, {
+        optAssign,
+        optCreated,
+        optEnded,
+        optPlayers,
+        optMove,
+      }),
+    [snapshot.attendances, snapshot.games, overlaidGames, optAssign, optCreated, optEnded, optPlayers, optMove],
   );
   const games = useMemo(
     () => syncPlayerStatus(overlaidGames, attendances, snapshot.attendances),
@@ -332,8 +357,10 @@ export function useOptimisticBoard({
       // 배정 직후 누른 거면 배정이 서버에 닿은 뒤 보낸다(먼저 닿으면 '게임 중이 아님'으로 거절). 배정이 실패했으면 보낼 것도 없다
       const assigning = assignRequests.current.get(gameId);
       // 결과(성공 여부)를 돌려준다 — AI 명령은 서버에 닿은 뒤 다음 단계로 넘어간다(다음 추천이 끝난 사람을 대기로 보게)
+      const moving = moveRequests.current.get(gameId);
       const request = (async () => {
         if (assigning && !(await assigning)) return false;
+        await moving; // 옮기는 중이면 옮긴 뒤에(먼저 끝내면 옮기기가 '게임 중이 아님'으로 거절된다)
         let serverId = gameId;
         const ok = await runParallel(async () => {
           serverId = await serverIdOf(gameId);
@@ -540,6 +567,34 @@ export function useOptimisticBoard({
       });
     },
     [optAssign, assignOpt, runParallel, waitForEnds],
+  );
+
+  // 코트 옮기기·맞바꾸기 — 바로 옮긴 모습으로(게임 중인 코트면 두 게임을 맞바꾼 모습). 요청은 두 게임의 배정과
+  // 진행 중인 종료가 서버에 닿은 뒤 보낸다(빈 코트가 되기 전에 닿으면 서버가 맞바꾸기 대상을 못 찾는다). 실패하면 서버 화면대로
+  const moveGame = useCallback(
+    (gameId: string, courtId: string) => {
+      const current = gamesRef.current.find((g) => g.id === gameId);
+      if (!current || current.status !== 'PLAYING' || !current.courtId || current.courtId === courtId) return;
+      const other = gamesRef.current.find((g) => g.status === 'PLAYING' && g.courtId === courtId && g.id !== gameId);
+      const ids = other ? [gameId, other.id] : [gameId];
+      moveOpt.set(gameId, courtId);
+      if (other) moveOpt.set(other.id, current.courtId);
+      const before = ids.map((id) => moveRequests.current.get(id)); // 같은 게임을 연달아 옮기면 차례로
+      const request = (async () => {
+        await Promise.allSettled([...before, ...ids.map((id) => assignRequests.current.get(id))]);
+        await waitForEnds();
+        const ok = await runParallel(async () =>
+          api(`/games/${await serverIdOf(gameId)}/court`, { method: 'PATCH', admin: true, body: { courtId } }),
+        );
+        if (!ok) moveOpt.remove(...ids);
+        return ok;
+      })();
+      ids.forEach((id) => moveRequests.current.set(id, request));
+      void request.finally(() =>
+        ids.forEach((id) => moveRequests.current.get(id) === request && moveRequests.current.delete(id)),
+      );
+    },
+    [moveOpt, runParallel, serverIdOf, waitForEnds],
   );
 
   const playingByCourt = useMemo(() => {
@@ -965,6 +1020,7 @@ export function useOptimisticBoard({
   };
 
   return {
+    moveGame,
     games,
     attendances,
     courts,
