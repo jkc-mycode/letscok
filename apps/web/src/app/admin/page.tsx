@@ -752,6 +752,9 @@ function BoardBody({
         <CourtPickSheet
           game={moveTarget}
           idleCourts={idleCourts}
+          swapCourts={courts
+            .filter((c) => c.id !== moveTarget.courtId && playingByCourt.has(c.id))
+            .sort((a, b) => a.courtNo - b.courtNo)}
           title={`${courts.find((c) => c.id === moveTarget.courtId)?.courtNo ?? ''}번 코트에서 어디로 옮길까요?`}
           onAssign={(gameId, courtId) =>
             void run(

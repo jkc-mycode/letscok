@@ -63,8 +63,9 @@ export class GamesService {
     return toGameResponse(assigned);
   }
 
-  // 코트 옮기기: 게임 중인 조합을 다른 빈 코트로 — 게임 시간은 이어지고 코트만 바뀐다(대기로 → 다시 배정하면 시간이 0부터)
-  // 원래 코트는 비운다. 공유 코트의 차례는 건드리지 않는다(게임이 끝난 게 아니므로)
+  // 코트 옮기기: 게임 중인 조합을 다른 코트로 — 게임 시간은 이어지고 코트만 바뀐다(대기로 → 다시 배정하면 시간이 0부터)
+  // 빈 코트면 원래 코트를 비우고, 게임 중인 코트면 두 게임의 코트를 맞바꾼다(두 코트 모두 계속 게임 중)
+  // 공유 코트의 차례는 건드리지 않는다(게임이 끝난 게 아니므로)
   async moveCourt(id: string, dto: AssignGameDto): Promise<IGame> {
     const game = await findGameOrThrow(this.prisma, id);
     if (game.status !== 'PLAYING' || !game.courtId) {
@@ -76,23 +77,41 @@ export class GamesService {
     const court = await this.findOurCourt(game.sessionId, dto.courtId); // 비어 있는지는 트랜잭션 안에서
     const fromCourtId = game.courtId;
 
-    const moved = await this.prisma.$transaction(async (tx) => {
-      // 새 코트가 비어 있고 게임이 아직 그 코트에서 게임 중일 때만 — 다른 기기가 먼저 배정·종료했으면 409
+    const { moved, swappedId } = await this.prisma.$transaction(async (tx) => {
+      // 새 코트가 비어 있으면 차지한다 — 다른 기기가 먼저 배정했으면 아래 맞바꾸기 쪽으로
       const target = await tx.court.updateMany({
         where: { id: court.id, status: 'IDLE' },
         data: { status: 'IN_GAME' },
       });
-      if (target.count === 0) throw new ConflictException('이미 게임이 진행 중인 코트입니다.');
+      const other =
+        target.count === 0
+          ? await tx.game.findFirst({ where: { courtId: court.id, status: 'PLAYING' }, select: { id: true } })
+          : null;
+      if (target.count === 0 && !other) throw new ConflictException('이미 게임이 진행 중인 코트입니다.');
+
       const updated = await tx.game.updateMany({
         where: { id, status: 'PLAYING', courtId: fromCourtId },
         data: { courtId: court.id },
       });
       if (updated.count === 0) throw new ConflictException('이미 끝났거나 옮겨진 게임입니다.');
-      await tx.court.update({ where: { id: fromCourtId }, data: { status: 'IDLE' } });
-      return tx.game.findUniqueOrThrow({ where: { id }, include: GAME_INCLUDE });
+      if (other) {
+        // 상대 게임도 읽은 그대로일 때만 — 그 사이 끝났거나 옮겨졌으면 둘 다 되돌린다
+        const swapped = await tx.game.updateMany({
+          where: { id: other.id, status: 'PLAYING', courtId: court.id },
+          data: { courtId: fromCourtId },
+        });
+        if (swapped.count === 0) throw new ConflictException('맞바꿀 게임이 그 사이 끝났거나 옮겨졌어요.');
+      } else {
+        await tx.court.update({ where: { id: fromCourtId }, data: { status: 'IDLE' } });
+      }
+      return {
+        moved: await tx.game.findUniqueOrThrow({ where: { id }, include: GAME_INCLUDE }),
+        swappedId: other?.id ?? null,
+      };
     });
     this.realtime.broadcastSnapshot(game.sessionId);
     this.push.notifyGame(id); // 4명에게 "N번 코트로 오세요"를 새 코트로
+    if (swappedId) this.push.notifyGame(swappedId); // 맞바꾼 상대 4명도 바뀐 코트로
     return toGameResponse(moved);
   }
 

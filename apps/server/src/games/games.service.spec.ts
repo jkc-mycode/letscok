@@ -446,16 +446,35 @@ describe('moveCourt', () => {
     expect(pushStub.notifyGame).toHaveBeenLastCalledWith(game.id);
   });
 
-  it('게임 중인 코트·다른 모임 차례인 공유 코트로는 못 옮긴다', async () => {
+  it('게임 중인 코트로 옮기면 두 게임의 코트를 맞바꾼다 — 시작 시각은 그대로, 두 코트 모두 게임 중', async () => {
+    pushStub.notifyGame.mockClear();
     const session = await seedSession();
-    const [from, busy] = [await seedCourt(session.id, 1), await seedCourt(session.id, 2)];
+    const [one, two] = [await seedCourt(session.id, 1), await seedCourt(session.id, 2)];
+    const first = await playOn(session.id, one.id);
+    const second = await playOn(session.id, two.id);
+
+    const moved = await service.moveCourt(first.id, { courtId: two.id });
+
+    expect(moved.courtId).toBe(two.id);
+    expect(moved.startedAt).toEqual(first.startedAt);
+    const other = await prisma.game.findUniqueOrThrow({ where: { id: second.id } });
+    expect(other.courtId).toBe(one.id);
+    expect(other.status).toBe('PLAYING');
+    expect(other.startedAt?.toISOString()).toBe(second.startedAt);
+    expect((await prisma.court.findUniqueOrThrow({ where: { id: one.id } })).status).toBe('IN_GAME');
+    expect((await prisma.court.findUniqueOrThrow({ where: { id: two.id } })).status).toBe('IN_GAME');
+    expect(pushStub.notifyGame).toHaveBeenCalledWith(first.id);
+    expect(pushStub.notifyGame).toHaveBeenCalledWith(second.id);
+  });
+
+  it('다른 모임 차례인 공유 코트로는 못 옮긴다', async () => {
+    const session = await seedSession();
+    const from = await seedCourt(session.id, 1);
     const shared = await prisma.court.create({
       data: { sessionId: session.id, courtNo: 3, isShared: true, ourTurn: false },
     });
     const game = await playOn(session.id, from.id);
-    await playOn(session.id, busy.id);
 
-    await expect(service.moveCourt(game.id, { courtId: busy.id })).rejects.toThrow('이미 게임이 진행 중');
     await expect(service.moveCourt(game.id, { courtId: shared.id })).rejects.toThrow('다른 모임 차례');
     expect((await prisma.game.findUniqueOrThrow({ where: { id: game.id } })).courtId).toBe(from.id);
   });

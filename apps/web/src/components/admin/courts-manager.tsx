@@ -196,15 +196,18 @@ export function CourtsManager({
 }
 
 // 코트 고르기 — 빈 코트가 둘 이상일 때 [코트 배정]에서 열린다. 상대 차례인 공유 코트는 이유와 함께 비활성
+// swapCourts: 게임 중 조합 옮기기에서만 — 게임 중인 다른 코트를 고르면 두 게임의 코트를 맞바꾼다
 export function CourtPickSheet({
   game,
   idleCourts,
+  swapCourts = [],
   title = '몇 번 코트에 넣을까요?',
   onAssign,
   onClose,
 }: {
   game: IGame;
   idleCourts: ICourt[];
+  swapCourts?: ICourt[];
   title?: string; // 게임 중 조합 옮기기에서도 쓴다
   onAssign: (gameId: string, courtId: string) => void;
   onClose: () => void;
@@ -217,8 +220,23 @@ export function CourtPickSheet({
       header={<h2 className="min-w-0 truncate text-lg font-bold text-amber">{title}</h2>}
     >
       <p className="text-sm text-dim">{names.join(', ')}</p>
-      {idleCourts.length === 0 && <p className="py-4 text-center text-sm text-faint">빈 코트가 없어요</p>}
+      {idleCourts.length === 0 && swapCourts.length === 0 && (
+        <p className="py-4 text-center text-sm text-faint">빈 코트가 없어요</p>
+      )}
       <div className="grid grid-cols-2 gap-2">
+        {swapCourts.map((court) => (
+          <button
+            key={court.id}
+            onClick={() => {
+              onAssign(game.id, court.id);
+              onClose();
+            }}
+            className="flex h-16 flex-col items-center justify-center rounded-xl border border-amber bg-amber/10 text-lg font-bold text-amber"
+          >
+            {court.courtNo}번 코트
+            <span className="text-caption font-medium">게임 중 · 맞바꾸기</span>
+          </button>
+        ))}
         {idleCourts.map((court) => {
           const theirTurn = court.isShared && !court.ourTurn;
           return (

@@ -246,7 +246,7 @@ export function GameActionSheet({
           }}
           className={`${row} bg-panel2 text-ink`}
         >
-          다른 코트로 옮기기 — 빈 코트로(타이머 유지)
+          다른 코트로 옮기기 — 게임 중이면 맞바꾸기(타이머 유지)
         </button>
       )}
       <ConfirmButton
