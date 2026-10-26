@@ -3,16 +3,29 @@
 // 전광판 — 대회·모임 때 태블릿·TV에 띄워 모임원에게 보여 주는 보기 전용 화면(뒤로 버튼 하나뿐, 로그인 없음)
 // 관제판 앱 영역(/admin) 안에 둬서, 설치된 관제판 앱에서 열어도 주소창 없는 앱 화면으로 뜬다
 // 모임원 화면과 같은 공개 현황(실시간)을 크게: 왼쪽 코트별 게임 중(팀으로 나눠), 오른쪽 다음 게임 순서
+// 좁은 화면(폰·세로 태블릿)은 두 구역을 반씩 나누면 카드가 한 장씩만 보여서, 탭으로 한 구역씩 보여 준다
 
 import { GAME_SIZE, IGame, IGamePlayer } from '@letscok/shared-types';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { buildSameNameTags, PersonName, SameNameTagsProvider } from '@/components/badges';
 import { ConnectionError } from '@/components/connection-error';
 import { useStandalone } from '@/components/home-link';
 import { LogoLoader } from '@/components/logo-loader';
 import { SessionSwitcher } from '@/components/session-switcher';
 import { formatElapsed, useNow, useSnapshot } from '@/lib/use-snapshot';
+
+// 좁은 화면에서 고른 탭 — 기기마다 기억(띄워 두는 기기는 늘 같은 구역을 보는 경우가 많다)
+type BoardTab = 'courts' | 'queue';
+const BOARD_TAB_KEY = 'letscok:board-tab';
+
+function readBoardTab(): BoardTab {
+  try {
+    return localStorage.getItem(BOARD_TAB_KEY) === 'queue' ? 'queue' : 'courts';
+  } catch {
+    return 'courts'; // 서버 렌더·저장소를 못 쓰는 환경
+  }
+}
 
 // 띄워 두는 화면이라 꺼지지 않게 — 지원 안 하는 브라우저·거절은 그냥 넘어간다. 탭을 다시 보면 다시 요청(가려지면 풀린다)
 function useWakeLock() {
@@ -44,6 +57,15 @@ export default function BoardDisplayPage() {
   useWakeLock();
   const standalone = useStandalone();
   const router = useRouter();
+  const [tab, setTabState] = useState<BoardTab>(readBoardTab);
+  const setTab = (next: BoardTab) => {
+    setTabState(next);
+    try {
+      localStorage.setItem(BOARD_TAB_KEY, next);
+    } catch {
+      // 저장 못 해도 지금 화면은 바뀐다
+    }
+  };
   // 뒤로 — 관제판에서 열었으면 그 화면으로. 주소로 바로 연 경우(기록 없음)엔 설치된 앱은 관제판, 브라우저는 홈으로
   const goBack = () => {
     if (window.history.length > 1) router.back();
@@ -103,10 +125,22 @@ export default function BoardDisplayPage() {
           </span>
         </header>
 
-        {/* 세로 화면은 위아래 두 줄을 같은 높이로(내용 길이와 상관없이 5:5), 가로 화면은 좌우 5:5 한 줄 */}
-        <div className="grid min-h-0 flex-1 grid-rows-2 gap-6 lg:grid-cols-2 lg:grid-rows-1">
+        {/* 좁은 화면만 — 두 구역을 탭으로 오간다 */}
+        <div className="grid grid-cols-2 gap-2 lg:hidden" role="tablist" aria-label="전광판 구역">
+          <BoardTabButton active={tab === 'courts'} onClick={() => setTab('courts')} activeCls="bg-court text-bg">
+            게임 중 <span className="tabular">{playingByCourt.size}</span>
+          </BoardTabButton>
+          <BoardTabButton active={tab === 'queue'} onClick={() => setTab('queue')} activeCls="bg-amber text-bg">
+            다음 게임 <span className="tabular">{queuedGames.length}</span>
+          </BoardTabButton>
+        </div>
+
+        {/* 넓은 화면은 좌우 5:5 한 줄, 좁은 화면은 고른 탭의 구역 하나만 */}
+        <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-2">
           {/* 구역마다 옅은 색 틀 — 멀리서도 게임 중(초록)과 다음 게임(주황)이 갈리게 */}
-          <section className="flex min-w-0 flex-col gap-3 rounded-3xl border border-court/25 bg-court/5 p-3 sm:p-4">
+          <section
+            className={`${tab === 'courts' ? 'flex' : 'hidden lg:flex'} min-w-0 flex-col gap-3 rounded-3xl border border-court/25 bg-court/5 p-3 sm:p-4`}
+          >
             <h2 className="text-heading font-bold text-court">게임 중</h2>
             {courts.length === 0 ? (
               <Empty>등록된 코트가 없어요</Empty>
@@ -142,7 +176,9 @@ export default function BoardDisplayPage() {
             )}
           </section>
 
-          <section className="flex min-w-0 flex-col gap-3 rounded-3xl border border-amber/25 bg-amber/5 p-3 sm:p-4">
+          <section
+            className={`${tab === 'queue' ? 'flex' : 'hidden lg:flex'} min-w-0 flex-col gap-3 rounded-3xl border border-amber/25 bg-amber/5 p-3 sm:p-4`}
+          >
             <h2 className="text-heading font-bold text-amber">
               다음 게임 <span className="tabular text-body text-faint">{queuedGames.length}</span>
             </h2>
@@ -232,6 +268,29 @@ function Person({ player }: { player?: IGamePlayer }) {
     <span className="flex h-10 min-w-0 items-center gap-2 rounded-xl bg-panel2 px-3">
       <PersonName person={member} nameClassName="truncate text-body font-bold" />
     </span>
+  );
+}
+
+function BoardTabButton({
+  active,
+  onClick,
+  activeCls,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  activeCls: string; // 구역 색(게임 중 초록, 다음 게임 주황)
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`h-12 cursor-pointer rounded-full text-body font-bold transition-colors ${active ? activeCls : 'bg-panel text-dim'}`}
+    >
+      {children}
+    </button>
   );
 }
 
