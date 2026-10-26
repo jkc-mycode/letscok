@@ -367,16 +367,18 @@ describe('page 정렬', () => {
 });
 
 describe('search 공개 응답', () => {
-  it('공개 검색은 생년월일을 빼고 출생 연도만, 운영진 검색은 전체', async () => {
-    await service.create(memberDto({ name: '공개테스트', birthDate: '1997-03-12' }));
+  it('공개 검색은 생년월일·가입일을 빼고 출생 연도만, 운영진 검색은 전체', async () => {
+    await service.create(memberDto({ name: '공개테스트', birthDate: '1997-03-12', joinedAt: '2024-03-15' }));
 
     const [pub] = await service.search('공개테스트');
     expect(pub.birthDate).toBeNull();
     expect(pub.birthYear).toBe(1997);
+    expect(pub.joinedAt).toBeNull();
 
     const [full] = await service.search('공개테스트', true);
     expect(full.birthDate).toBe('1997-03-12');
     expect(full.birthYear).toBe(1997);
+    expect(full.joinedAt).toBe('2024-03-15');
   });
 });
 

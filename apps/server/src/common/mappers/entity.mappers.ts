@@ -38,10 +38,10 @@ export function toMemberResponse(member: Member): IMember {
 }
 
 // 세션 → 응답. date는 날짜만(YYYY-MM-DD), opened/closedAt은 시각까지 ISO로
-// 패스코드 없이 나가는 응답용 — 생년월일은 개인정보라 연도만 남긴다(동명이인 구분엔 충분)
+// 패스코드 없이 나가는 응답용 — 생년월일은 개인정보라 연도만 남긴다(동명이인 구분엔 충분), 가입일은 모임원 관리 전용이라 뺀다
 // 보드(스냅샷·소켓)는 누구나 받으므로 출석·게임 안의 회원은 항상 이 모양
 export function toPublicMemberResponse(member: Member): IMember {
-  return { ...toMemberResponse(member), birthDate: null };
+  return { ...toMemberResponse(member), birthDate: null, joinedAt: null };
 }
 
 export function toSessionResponse(session: Session): ISession {
