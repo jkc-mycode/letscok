@@ -257,6 +257,8 @@ export function useOptimisticBoard({
   const assignRequests = useRef(new Map<string, Promise<boolean>>());
   const [optAssign, assignOpt] = useOptimisticMap<{ courtId: string; startedAt: string }>((id) => {
     if (id.startsWith(TEMP_GAME_PREFIX)) return true; // 만드는 중인 조합 — 서버 id로 옮길 때 직접 지운다
+    // 요청이 아직 안 닿았으면 남긴다 — 대기로 직후 다시 배정하면 그 사이 서버는 아직 게임 중이라 아래 조건으론 지워졌다
+    if (assignRequests.current.has(id)) return true;
     const server = snapshot.games.find((g) => g.id === id);
     return server ? server.status === 'QUEUED' : assigningNew.current.has(id); // 서버에서 '게임 중'이 되면 지운다
   }, snapshot.games);
@@ -278,6 +280,7 @@ export function useOptimisticBoard({
   }, [snapshot.games]);
   // 게임 종료·대기로도 누르자마자 — 서버 화면에서 그 게임이 더는 '게임 중'이 아니면 지운다
   // (만드는 중인 조합은 직접 지울 때까지, 배정 요청이 아직 안 닿은 게임은 서버에서 대기 조합이어도 남긴다)
+  const optEndedRef = useRef<Map<string, { kind: 'FINISHED' | 'UNASSIGNED'; at: string }>>(new Map());
   const [optEnded, endedOpt] = useOptimisticMap<{ kind: 'FINISHED' | 'UNASSIGNED'; at: string }>(
     (id) =>
       id.startsWith(TEMP_GAME_PREFIX) ||
@@ -285,6 +288,7 @@ export function useOptimisticBoard({
       snapshot.games.find((g) => g.id === id)?.status === 'PLAYING',
     snapshot.games,
   );
+  optEndedRef.current = optEnded;
   useEffect(() => {
     setOptCreated((prev) => {
       const next = prev.filter((t) => !isSettled(t, snapshot.games));
@@ -557,6 +561,15 @@ export function useOptimisticBoard({
         const ok = await runParallel(() => api(`/games/${realId}/assign`, { method: 'PATCH', admin: true, body: { courtId } }));
         assigningNew.current.delete(realId);
         if (!ok) assignOpt.remove(realId);
+        // 이 배정보다 먼저 누른 대기로·종료 표시는 끝났다 — 남겨 두면 서버가 다시 게임 중이 된 뒤에도 대기 조합으로 보인다
+        // (배정 뒤에 누른 종료는 남긴다 — 그 종료가 끝날 때 지운다)
+        if (ok) {
+          const stale = [gameId, realId].filter((id) => {
+            const ended = optEndedRef.current.get(id);
+            return ended !== undefined && ended.at < value.startedAt;
+          });
+          if (stale.length > 0) endedOpt.remove(...stale);
+        }
         return ok;
       })();
       assignRequests.current.set(gameId, request);
@@ -566,7 +579,7 @@ export function useOptimisticBoard({
         for (const [id, pending] of assignRequests.current) if (pending === request) assignRequests.current.delete(id);
       });
     },
-    [optAssign, assignOpt, runParallel, waitForEnds],
+    [optAssign, assignOpt, endedOpt, runParallel, waitForEnds],
   );
 
   // 코트 옮기기·맞바꾸기 — 바로 옮긴 모습으로(게임 중인 코트면 두 게임을 맞바꾼 모습). 요청은 두 게임의 배정과
