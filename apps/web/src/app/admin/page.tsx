@@ -344,6 +344,7 @@ function BoardBody({
     slotActions,
     assignToCourt,
     moveGame,
+    reopenGame,
     moveQueue,
     startGame,
     growTemp,
@@ -725,10 +726,10 @@ function BoardBody({
             // 확인 창에서 고른 코트로 게임 중 — 기록을 닫고 코트에서 바로 보이게. 안 되면 서버가 이유를 알려 준다
             onReopen={(game, court) => {
               setGamesLogOpen(false);
-              void run(async () => {
-                await api(`/games/${game.id}/reopen`, { method: 'PATCH', admin: true, body: { courtId: court.id } });
-                showToast(`#${game.no} 게임을 ${court.courtNo}번 코트 게임 중으로 되돌렸어요`, 'success');
-              }, `game:${game.id}`);
+              const players = game.lineup.map(({ attendanceId, slot }) => ({ id: `${game.id}:${slot}`, gameId: game.id, attendanceId, slot }));
+              void reopenGame(game.id, court.id, { startedAt: game.startedAt, players }).then(
+                (ok) => ok && showToast(`#${game.no} 게임을 ${court.courtNo}번 코트 게임 중으로 되돌렸어요`, 'success'),
+              );
             }}
           />
         )}

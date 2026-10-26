@@ -385,6 +385,7 @@ export interface IHistoryGame {
   startedAt: string | null;
   endedAt: string | null;
   players: IHistoryGamePlayer[]; // 4인
+  lineup: { attendanceId: string; slot: number }[]; // 관제판 게임 기록에서 되돌릴 때 누르자마자 그 코트에 보여 주려고(운영진 전용 응답)
 }
 
 export interface IHistorySessionDetail {

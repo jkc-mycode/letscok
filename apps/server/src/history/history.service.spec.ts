@@ -173,6 +173,9 @@ describe('getSessionDetail', () => {
     expect(detail.games[0].courtNo).toBe(3); // soft-delete 코트 번호 유지
     expect(detail.games[0].players.map((p) => p.name).sort()).toEqual(['가', '나', '다', '라']);
     expect(detail.games[0].players.every((p) => p.grade)).toBe(true); // 동명이인 구분용 급수 포함
+    // 되돌릴 때 바로 보여 줄 선수 자리 — 자리 없는 옛 데이터도 0~3으로 채운다
+    expect(detail.games[0].lineup.map((p) => p.attendanceId).sort()).toEqual([a1.id, a2.id, a3.id, a4.id].sort());
+    expect(detail.games[0].lineup.map((p) => p.slot).sort()).toEqual([0, 1, 2, 3]);
   });
 
   it('없는 세션은 404', async () => {

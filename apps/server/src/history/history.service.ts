@@ -111,6 +111,7 @@ export class HistoryService {
           name: player.attendance.member.name,
           grade: player.attendance.member.grade,
         })),
+        lineup: withSlots(game.players).map((player) => ({ attendanceId: player.attendanceId, slot: player.slot })),
       })),
     };
   }

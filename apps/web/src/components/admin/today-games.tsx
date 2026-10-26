@@ -22,7 +22,7 @@ export function TodayGamesModal({
   sessionId: string;
   snapshot: ISessionSnapshot;
   onClose: () => void;
-  onReopen: (game: { id: string; no: number }, court: { id: string; courtNo: number }) => void;
+  onReopen: (game: GameItem, court: { id: string; courtNo: number }) => void;
 }) {
   const [pending, setPending] = useState<GameItem | null>(null); // 길게 눌러 확인 중인 게임
   const [detail, setDetail] = useState<IHistorySessionDetail | null>(null);
@@ -92,7 +92,7 @@ export function TodayGamesModal({
           snapshot={snapshot}
           timeOf={timeOf}
           onCancel={() => setPending(null)}
-          onConfirm={(court) => onReopen({ id: pending.id, no: pending.no }, court)}
+          onConfirm={(court) => onReopen(pending, court)}
         />
       ) : (
         <>

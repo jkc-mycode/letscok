@@ -41,6 +41,7 @@ type OptimisticBoard = {
   optEnded: Map<string, { kind: 'FINISHED' | 'UNASSIGNED'; at: string }>; // 게임 종료·대기로
   optPlayers: Map<string, { players: GamePlayer[]; base: string; pending: number }>; // 조합 안 사람 바꾸기
   optMove: Map<string, string>; // 게임 중 코트 옮기기·맞바꾸기(게임 → 옮길 코트)
+  optReopen: Map<string, IGame>; // 끝난 게임 되돌리기 — 그 코트에 보여 줄 게임 중 게임
 };
 
 // 게임 종료·대기로를 지금 보여 줄지 — 서버에서 게임 중이거나 배정을 눌러 둔 게임만. 배정과 둘 다 서버에 안 닿았으면 나중에 누른 쪽
@@ -54,8 +55,15 @@ function endedNow(g: IGame, keys: string[], { optAssign, optEnded }: Pick<Optimi
 }
 
 function overlayGames(serverGames: IGame[], board: OptimisticBoard): IGame[] {
-  const { optAssign, optCreated, optEnded, optPlayers, optMove } = board;
-  if (optAssign.size === 0 && optCreated.length === 0 && optEnded.size === 0 && optPlayers.size === 0 && optMove.size === 0) {
+  const { optAssign, optCreated, optEnded, optPlayers, optMove, optReopen } = board;
+  if (
+    optAssign.size === 0 &&
+    optCreated.length === 0 &&
+    optEnded.size === 0 &&
+    optPlayers.size === 0 &&
+    optMove.size === 0 &&
+    optReopen.size === 0
+  ) {
     return serverGames;
   }
   // 코트 옮기기 — 게임 중으로 보이는 게임만 옮긴 코트로
@@ -102,16 +110,22 @@ function overlayGames(serverGames: IGame[], board: OptimisticBoard): IGame[] {
         ),
       ];
     });
-  return [...front, ...rest, ...temps];
+  // 되돌린 게임 — 서버 화면에 아직 게임 중으로 없으면 대신 보여 준다(끝난 게임은 서버 화면에 없다)
+  const reopened = [...optReopen.values()].filter(
+    (r) => !serverGames.some((g) => g.id === r.id && g.status === 'PLAYING'),
+  );
+  return [...front, ...rest, ...temps, ...reopened.map((r) => moved(r))];
 }
 
 function overlayAttendances(
   serverAttendances: ISessionSnapshot['attendances'],
   serverGames: IGame[],
   games: IGame[], // overlayGames 결과
-  { optAssign, optCreated, optEnded, optPlayers }: OptimisticBoard,
+  { optAssign, optCreated, optEnded, optPlayers, optReopen }: OptimisticBoard,
 ): ISessionSnapshot['attendances'] {
-  if (optAssign.size === 0 && optCreated.length === 0 && optEnded.size === 0 && optPlayers.size === 0) return serverAttendances;
+  if (optAssign.size === 0 && optCreated.length === 0 && optEnded.size === 0 && optPlayers.size === 0 && optReopen.size === 0) {
+    return serverAttendances;
+  }
   // 배정을 누른 조합 — 만드는 중인 조합은 배정 표시가 서버 id로 옮겨 가도 게임 중으로 보인다
   const playing = new Set(
     games
@@ -154,7 +168,16 @@ function overlayAttendances(
     }
     for (const p of patch.players) if (!before.has(p.attendanceId)) added.set(p.attendanceId, server?.status === 'PLAYING' ? 'PLAYING' : 'MATCHED');
   }
+  // 되돌린 게임 — 서버에서 아직 게임 중이 아니면 게임 중으로, 종료 때 오른 게임 수는 빼서
+  const reopenedIds = new Set(
+    [...optReopen.values()]
+      .filter((r) => !serverGames.some((g) => g.id === r.id && g.status === 'PLAYING'))
+      .flatMap((r) => (r.players ?? []).map((p) => p.attendanceId)),
+  );
   return serverAttendances.map((a) => {
+    if (reopenedIds.has(a.id) && a.status !== 'PLAYING') {
+      return { ...a, status: 'PLAYING' as const, gamesPlayed: Math.max(0, a.gamesPlayed - 1) };
+    }
     if (playing.has(a.id)) return { ...a, status: 'PLAYING' as const };
     const finishedAt = finished.get(a.id);
     if (finishedAt) {
@@ -302,9 +325,15 @@ export function useOptimisticBoard({
     const server = snapshot.games.find((g) => g.id === id);
     return !!server && (server.status === 'PLAYING' || server.status === 'QUEUED') && server.courtId !== courtId;
   }, snapshot.games);
+  // 끝난 게임 되돌리기 — 요청이 끝나고 서버 화면에 게임 중으로 실리면 지운다(성공 뒤 실리지 않아도 잠시 뒤 지운다)
+  const reopenRequests = useRef(new Set<string>());
+  const [optReopen, reopenOpt] = useOptimisticMap<IGame>(
+    (id) => reopenRequests.current.has(id) || snapshot.games.find((g) => g.id === id)?.status !== 'PLAYING',
+    snapshot.games,
+  );
   const overlaidGames = useMemo(
-    () => overlayGames(snapshot.games, { optAssign, optCreated, optEnded, optPlayers, optMove }),
-    [snapshot.games, optAssign, optCreated, optEnded, optPlayers, optMove],
+    () => overlayGames(snapshot.games, { optAssign, optCreated, optEnded, optPlayers, optMove, optReopen }),
+    [snapshot.games, optAssign, optCreated, optEnded, optPlayers, optMove, optReopen],
   );
   const attendances = useMemo(
     () =>
@@ -314,8 +343,9 @@ export function useOptimisticBoard({
         optEnded,
         optPlayers,
         optMove,
+        optReopen,
       }),
-    [snapshot.attendances, snapshot.games, overlaidGames, optAssign, optCreated, optEnded, optPlayers, optMove],
+    [snapshot.attendances, snapshot.games, overlaidGames, optAssign, optCreated, optEnded, optPlayers, optMove, optReopen],
   );
   const games = useMemo(
     () => syncPlayerStatus(overlaidGames, attendances, snapshot.attendances),
@@ -351,13 +381,48 @@ export function useOptimisticBoard({
   // (화면은 종료를 누르자마자 다음 조합을 풀어 주므로, 먼저 닿으면 서버가 '아직 게임 중'으로 거절한다)
   const endingRef = useRef(new Set<Promise<unknown>>());
   const waitForEnds = useCallback(() => Promise.allSettled([...endingRef.current]), []);
+  // 끝난 게임 되돌리기 — 고른 코트에 게임 중으로 바로 보여 주고(시작 시각 그대로), 진행 중인 종료가 서버에 닿은 뒤 보낸다
+  // 실패하면(그 사이 코트가 찼거나 사람이 다른 게임에 들어감) 서버 화면대로 — 이유는 서버가 알려 준다
+  const reopenGame = useCallback(
+    (gameId: string, courtId: string, game: Pick<IGame, 'startedAt' | 'players'>): Promise<boolean> => {
+      const shown: IGame = {
+        id: gameId,
+        sessionId: session.id,
+        courtId,
+        status: 'PLAYING',
+        queuedAt: game.startedAt ?? new Date().toISOString(),
+        startedAt: game.startedAt,
+        endedAt: null,
+        queueOrder: null,
+        players: (game.players ?? []).map((p) => ({
+          ...p,
+          gameId,
+          attendance: snapshot.attendances.find((a) => a.id === p.attendanceId) ?? p.attendance,
+        })),
+      };
+      reopenRequests.current.add(gameId);
+      reopenOpt.set(gameId, shown);
+      return (async () => {
+        await waitForEnds();
+        const ok = await runParallel(async () =>
+          api(`/games/${await serverIdOf(gameId)}/reopen`, { method: 'PATCH', admin: true, body: { courtId } }),
+        );
+        reopenRequests.current.delete(gameId);
+        if (!ok) reopenOpt.remove(gameId);
+        else setTimeout(() => reopenOpt.remove(gameId), 5000); // 실시간 화면을 못 받아도 새로고침으로 실린 뒤엔 버린다
+        return ok;
+      })();
+    },
+    [session.id, snapshot.attendances, reopenOpt, runParallel, serverIdOf, waitForEnds],
+  );
   const endGame = useCallback(
     (gameId: string, kind: 'FINISHED' | 'UNASSIGNED'): Promise<boolean> => {
       if (optEnded.has(gameId)) return Promise.resolve(false); // 이미 누른 게임
       endedOpt.set(gameId, { kind, at: new Date().toISOString() });
       const path = kind === 'FINISHED' ? 'finish' : 'unassign';
       const clearEnded = () => endedOpt.remove(gameId);
-      const courtNo = courts.find((c) => c.id === games.find((g) => g.id === gameId)?.courtId)?.courtNo;
+      const before = games.find((g) => g.id === gameId); // 되돌리기에서 그 코트에 그대로 다시 보여 주려고
+      const courtNo = courts.find((c) => c.id === before?.courtId)?.courtNo;
       // 배정 직후 누른 거면 배정이 서버에 닿은 뒤 보낸다(먼저 닿으면 '게임 중이 아님'으로 거절). 배정이 실패했으면 보낼 것도 없다
       const assigning = assignRequests.current.get(gameId);
       // 결과(성공 여부)를 돌려준다 — AI 명령은 서버에 닿은 뒤 다음 단계로 넘어간다(다음 추천이 끝난 사람을 대기로 보게)
@@ -389,13 +454,13 @@ export function useOptimisticBoard({
             hideToast();
             // 종료 덧씌움은 서버 화면이 '게임 중'인 동안 남는다 — 되돌린 게임이 계속 끝난 것처럼 보이지 않게 먼저 지운다
             clearEnded();
-            void run(async () => api(`/games/${await serverIdOf(gameId)}/reopen`, { method: 'PATCH', admin: true }), `game:${gameId}`);
+            if (before?.courtId) void reopenGame(gameId, before.courtId, before);
           },
         });
         return true;
       });
     },
-    [optEnded, endedOpt, assignOpt, runParallel, run, courts, games, showToast, hideToast, serverIdOf],
+    [optEnded, endedOpt, assignOpt, runParallel, courts, games, showToast, hideToast, serverIdOf, reopenGame],
   );
   const gamesRef = useRef(games);
   gamesRef.current = games;
@@ -1033,6 +1098,7 @@ export function useOptimisticBoard({
   };
 
   return {
+    reopenGame,
     moveGame,
     games,
     attendances,
