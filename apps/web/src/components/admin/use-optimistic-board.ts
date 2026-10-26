@@ -42,6 +42,16 @@ type OptimisticBoard = {
   optPlayers: Map<string, { players: GamePlayer[]; base: string; pending: number }>; // 조합 안 사람 바꾸기
 };
 
+// 게임 종료·대기로를 지금 보여 줄지 — 서버에서 게임 중이거나 배정을 눌러 둔 게임만. 배정과 둘 다 서버에 안 닿았으면 나중에 누른 쪽
+// (배정 직후 종료 → 종료, 대기로 직후 다시 배정 → 배정)
+function endedNow(g: IGame, keys: string[], { optAssign, optEnded }: Pick<OptimisticBoard, 'optAssign' | 'optEnded'>) {
+  const ended = keys.map((k) => optEnded.get(k)).find(Boolean);
+  if (!ended) return undefined;
+  const assigned = keys.map((k) => optAssign.get(k)).find(Boolean);
+  if (g.status !== 'PLAYING' && !assigned) return undefined;
+  return !assigned || ended.at >= assigned.startedAt ? ended : undefined;
+}
+
 function overlayGames(serverGames: IGame[], { optAssign, optCreated, optEnded, optPlayers }: OptimisticBoard): IGame[] {
   if (optAssign.size === 0 && optCreated.length === 0 && optEnded.size === 0 && optPlayers.size === 0) return serverGames;
   const pending = optCreated.filter((t) => !isSettled(t, serverGames));
@@ -56,21 +66,29 @@ function overlayGames(serverGames: IGame[], { optAssign, optCreated, optEnded, o
         // 마지막 한 명까지 빼면 서버처럼 조합 해체
         g = patch.players.length === 0 ? { ...g, status: 'CANCELED' as const, queueOrder: null, players: [] } : { ...g, players: patch.players };
       }
-      const ended = g.status === 'PLAYING' ? optEnded.get(g.id) : undefined;
+      const ended = endedNow(g, [g.id], { optAssign, optEnded });
       if (ended?.kind === 'FINISHED') return { ...g, status: 'FINISHED' as const, endedAt: ended.at };
       if (ended) return { ...g, status: 'QUEUED' as const, courtId: null, startedAt: null, queueOrder: --firstOrder };
-      const assigned = g.status === 'QUEUED' ? optAssign.get(g.id) : undefined;
+      // 배정 — 서버에서 아직 대기 조합이거나, 대기로를 누른 뒤 다시 배정한 게임
+      const assigned = g.status === 'QUEUED' || optEnded.has(g.id) ? optAssign.get(g.id) : undefined;
       return assigned ? { ...g, status: 'PLAYING' as const, courtId: assigned.courtId, startedAt: assigned.startedAt } : g;
     });
   // 대기 조합 목록은 배열 순서대로 그려진다 — 대기로 돌린 조합을 배열에서도 맨 앞으로
-  const front = base.filter((g) => g.status === 'QUEUED' && optEnded.get(g.id)?.kind === 'UNASSIGNED');
+  const front = base.filter((g) => g.status === 'QUEUED' && optEnded.get(g.id)?.kind === 'UNASSIGNED' && !optAssign.has(g.id));
   const rest = front.length ? base.filter((g) => !front.includes(g)) : base;
-  // 만드는 중인 조합 — 다 뺀(해체한) 건 숨기고, 배정을 누른 건 게임 중으로
+  // 만드는 중인 조합 — 다 뺀(해체한) 건 숨기고, 배정을 누른 건 게임 중으로(그 뒤 종료하면 숨기고, 대기로면 대기 조합으로)
   const temps = pending
     .filter((t) => (t.game.players?.length ?? 0) > 0)
-    .map((t) => {
-      const assigned = optAssign.get(t.game.id) ?? (t.realId ? optAssign.get(t.realId) : undefined);
-      return assigned ? { ...t.game, status: 'PLAYING' as const, courtId: assigned.courtId, startedAt: assigned.startedAt } : t.game;
+    .flatMap((t) => {
+      const keys = t.realId ? [t.game.id, t.realId] : [t.game.id];
+      const ended = endedNow(t.game, keys, { optAssign, optEnded });
+      if (ended?.kind === 'FINISHED') return [];
+      const assigned = keys.map((k) => optAssign.get(k)).find(Boolean);
+      return [
+        assigned && !ended
+          ? { ...t.game, status: 'PLAYING' as const, courtId: assigned.courtId, startedAt: assigned.startedAt }
+          : t.game,
+      ];
     });
   return [...front, ...rest, ...temps];
 }
@@ -85,7 +103,7 @@ function overlayAttendances(
   // 배정을 누른 조합 — 만드는 중인 조합은 배정 표시가 서버 id로 옮겨 가도 게임 중으로 보인다
   const playing = new Set(
     games
-      .filter((g) => optAssign.has(g.id) || (g.status === 'PLAYING' && g.id.startsWith(TEMP_GAME_PREFIX)))
+      .filter((g) => g.status === 'PLAYING' && (optAssign.has(g.id) || g.id.startsWith(TEMP_GAME_PREFIX)))
       .flatMap((g) => (g.players ?? []).map((p) => p.attendanceId)),
   );
   const matched = new Set(optCreated.flatMap((t) => t.ids));
@@ -93,8 +111,12 @@ function overlayAttendances(
   // 대기로: 조합이 그대로 대기 조합에 남으니 전원 '대기 조합'
   const finished = new Map<string, string>();
   const unassigned = new Set<string>();
-  for (const g of serverGames) {
-    const ended = g.status === 'PLAYING' ? optEnded.get(g.id) : undefined;
+  const endSources: [IGame, string[]][] = [
+    ...serverGames.map((g): [IGame, string[]] => [g, [g.id]]),
+    ...optCreated.map((t): [IGame, string[]] => [t.game, t.realId ? [t.game.id, t.realId] : [t.game.id]]),
+  ];
+  for (const [g, keys] of endSources) {
+    const ended = endedNow(g, keys, { optAssign, optEnded });
     if (!ended) continue;
     for (const p of g.players ?? []) {
       if (ended.kind === 'FINISHED') finished.set(p.attendanceId, ended.at);
@@ -170,11 +192,14 @@ function overlayCourts(
   serverCourts: ISessionSnapshot['courts'],
   serverGames: IGame[],
   optEnded: OptimisticBoard['optEnded'],
+  optAssign: OptimisticBoard['optAssign'],
   optTurn: Map<string, boolean>,
 ): ISessionSnapshot['courts'] {
   if (optEnded.size === 0 && optTurn.size === 0) return serverCourts;
   const yielded = new Set(
-    serverGames.filter((g) => g.status === 'PLAYING' && optEnded.get(g.id)?.kind === 'FINISHED').map((g) => g.courtId),
+    serverGames
+      .filter((g) => endedNow(g, [g.id], { optAssign, optEnded })?.kind === 'FINISHED')
+      .map((g) => g.courtId ?? optAssign.get(g.id)?.courtId),
   );
   return serverCourts.map((c) => {
     const turn = optTurn.get(c.id);
@@ -216,6 +241,8 @@ export function useOptimisticBoard({
   // 서버 화면에 실리면 이 표시는 지우고, 실패하면 되돌린다(알림은 runParallel)
   // 막 만든 조합에 배정을 보내는 중 — 서버 화면에 아직 그 조합이 없어도 덧씌움을 지우지 않는다
   const assigningNew = useRef(new Set<string>());
+  // 서버에 아직 안 닿은 배정 요청(게임 id → 성공 여부) — 배정 직후 누른 종료·대기로는 이게 끝난 뒤 보낸다
+  const assignRequests = useRef(new Map<string, Promise<boolean>>());
   const [optAssign, assignOpt] = useOptimisticMap<{ courtId: string; startedAt: string }>((id) => {
     if (id.startsWith(TEMP_GAME_PREFIX)) return true; // 만드는 중인 조합 — 서버 id로 옮길 때 직접 지운다
     const server = snapshot.games.find((g) => g.id === id);
@@ -238,8 +265,12 @@ export function useOptimisticBoard({
     });
   }, [snapshot.games]);
   // 게임 종료·대기로도 누르자마자 — 서버 화면에서 그 게임이 더는 '게임 중'이 아니면 지운다
+  // (만드는 중인 조합은 직접 지울 때까지, 배정 요청이 아직 안 닿은 게임은 서버에서 대기 조합이어도 남긴다)
   const [optEnded, endedOpt] = useOptimisticMap<{ kind: 'FINISHED' | 'UNASSIGNED'; at: string }>(
-    (id) => snapshot.games.find((g) => g.id === id)?.status === 'PLAYING',
+    (id) =>
+      id.startsWith(TEMP_GAME_PREFIX) ||
+      assignRequests.current.has(id) ||
+      snapshot.games.find((g) => g.id === id)?.status === 'PLAYING',
     snapshot.games,
   );
   useEffect(() => {
@@ -267,8 +298,8 @@ export function useOptimisticBoard({
     return court !== undefined && court.ourTurn !== ourTurn;
   }, snapshot.courts);
   const courts = useMemo(
-    () => overlayCourts(snapshot.courts, snapshot.games, optEnded, optTurn),
-    [snapshot.courts, snapshot.games, optEnded, optTurn],
+    () => overlayCourts(snapshot.courts, snapshot.games, optEnded, optAssign, optTurn),
+    [snapshot.courts, snapshot.games, optEnded, optAssign, optTurn],
   );
   const setCourtTurn = useCallback(
     (courtId: string, ourTurn: boolean) => {
@@ -279,20 +310,39 @@ export function useOptimisticBoard({
     },
     [runParallel, turnOpt],
   );
+  // 임시 조합 → 서버 조합 id(만들어지면). 만든 직후의 조작(넣기·빼기·배정·해체)은 이걸 기다렸다 보낸다
+  const tempReal = useRef(new Map<string, Promise<string | null>>());
+  const serverIdOf = useCallback(async (gameId: string) => {
+    if (!gameId.startsWith(TEMP_GAME_PREFIX)) return gameId;
+    const realId = await tempReal.current.get(gameId);
+    if (!realId) throw new Error('조합을 만들지 못해 바꾸지 못했어요');
+    return realId;
+  }, []);
   // 아직 서버에 안 닿은 게임 종료·대기로 — 배정·빈 코트 채우기는 이게 끝난 뒤 보낸다
   // (화면은 종료를 누르자마자 다음 조합을 풀어 주므로, 먼저 닿으면 서버가 '아직 게임 중'으로 거절한다)
   const endingRef = useRef(new Set<Promise<unknown>>());
   const waitForEnds = useCallback(() => Promise.allSettled([...endingRef.current]), []);
   const endGame = useCallback(
     (gameId: string, kind: 'FINISHED' | 'UNASSIGNED'): Promise<boolean> => {
-      // 이미 누른 게임·배정이 서버에 아직 안 닿은 게임(종료하면 409)은 무시
-      if (optEnded.has(gameId) || optAssign.has(gameId)) return Promise.resolve(false);
+      if (optEnded.has(gameId)) return Promise.resolve(false); // 이미 누른 게임
       endedOpt.set(gameId, { kind, at: new Date().toISOString() });
       const path = kind === 'FINISHED' ? 'finish' : 'unassign';
       const clearEnded = () => endedOpt.remove(gameId);
-      const courtNo = snapshot.courts.find((c) => c.id === games.find((g) => g.id === gameId)?.courtId)?.courtNo;
+      const courtNo = courts.find((c) => c.id === games.find((g) => g.id === gameId)?.courtId)?.courtNo;
+      // 배정 직후 누른 거면 배정이 서버에 닿은 뒤 보낸다(먼저 닿으면 '게임 중이 아님'으로 거절). 배정이 실패했으면 보낼 것도 없다
+      const assigning = assignRequests.current.get(gameId);
       // 결과(성공 여부)를 돌려준다 — AI 명령은 서버에 닿은 뒤 다음 단계로 넘어간다(다음 추천이 끝난 사람을 대기로 보게)
-      const request = runParallel(() => api(`/games/${gameId}/${path}`, { method: 'PATCH', admin: true }));
+      const request = (async () => {
+        if (assigning && !(await assigning)) return false;
+        let serverId = gameId;
+        const ok = await runParallel(async () => {
+          serverId = await serverIdOf(gameId);
+          return api(`/games/${serverId}/${path}`, { method: 'PATCH', admin: true });
+        });
+        // 배정 표시는 '서버에서 대기 조합인 동안' 남는다 — 대기로까지 끝나 다시 대기 조합이 되면 남은 배정 표시가 화면을 게임 중으로 되돌린다
+        if (assigning) assignOpt.remove(gameId, serverId);
+        return ok;
+      })();
       endingRef.current.add(request);
       void request.finally(() => endingRef.current.delete(request));
       return request.then((ok) => {
@@ -308,24 +358,16 @@ export function useOptimisticBoard({
             hideToast();
             // 종료 덧씌움은 서버 화면이 '게임 중'인 동안 남는다 — 되돌린 게임이 계속 끝난 것처럼 보이지 않게 먼저 지운다
             clearEnded();
-            void run(() => api(`/games/${gameId}/reopen`, { method: 'PATCH', admin: true }), `game:${gameId}`);
+            void run(async () => api(`/games/${await serverIdOf(gameId)}/reopen`, { method: 'PATCH', admin: true }), `game:${gameId}`);
           },
         });
         return true;
       });
     },
-    [optEnded, optAssign, endedOpt, runParallel, run, snapshot.courts, games, showToast, hideToast],
+    [optEnded, endedOpt, assignOpt, runParallel, run, courts, games, showToast, hideToast, serverIdOf],
   );
   const gamesRef = useRef(games);
   gamesRef.current = games;
-  // 임시 조합 → 서버 조합 id(만들어지면). 만든 직후의 조작(넣기·빼기·배정·해체)은 이걸 기다렸다 보낸다
-  const tempReal = useRef(new Map<string, Promise<string | null>>());
-  const serverIdOf = useCallback(async (gameId: string) => {
-    if (!gameId.startsWith(TEMP_GAME_PREFIX)) return gameId;
-    const realId = await tempReal.current.get(gameId);
-    if (!realId) throw new Error('조합을 만들지 못해 바꾸지 못했어요');
-    return realId;
-  }, []);
   const snapshotRef = useRef(snapshot); // 순서 요청이 줄을 서 있다 나갈 때 그때의 서버 화면을 보려고
   snapshotRef.current = snapshot;
   // 카드 사람 목록을 먼저 바꿔 보여 주고 요청을 보낸다 — 카드끼리 옮길 때는 두 카드를 함께(요청 안에서 넣기 → 빼기 차례로)
@@ -470,14 +512,14 @@ export function useOptimisticBoard({
       if (temp && !tempReal.current.has(gameId)) return;
       const value = { courtId, startedAt: new Date().toISOString() };
       assignOpt.set(gameId, value);
-      void (async () => {
+      const request = (async () => {
         let realId = gameId;
         if (temp) {
           // 막 만든 조합 — 서버 id가 오면 덧씌움을 그 id로 옮긴다(임시 카드가 서버 조합으로 바뀌어도 게임 중으로 보이게)
           const created = await tempReal.current.get(gameId);
           if (!created) {
             assignOpt.remove(gameId);
-            return;
+            return false;
           }
           realId = created;
           assigningNew.current.add(realId);
@@ -488,7 +530,14 @@ export function useOptimisticBoard({
         const ok = await runParallel(() => api(`/games/${realId}/assign`, { method: 'PATCH', admin: true, body: { courtId } }));
         assigningNew.current.delete(realId);
         if (!ok) assignOpt.remove(realId);
+        return ok;
       })();
+      assignRequests.current.set(gameId, request);
+      // 만드는 중인 조합 — 서버 조합으로 바뀐 카드에서 누른 종료도 이 배정을 기다리게 서버 id로도 둔다
+      if (temp) void tempReal.current.get(gameId)?.then((realId) => realId && assignRequests.current.set(realId, request));
+      void request.finally(() => {
+        for (const [id, pending] of assignRequests.current) if (pending === request) assignRequests.current.delete(id);
+      });
     },
     [optAssign, assignOpt, runParallel, waitForEnds],
   );
@@ -788,6 +837,11 @@ export function useOptimisticBoard({
     const startedAt = new Date().toISOString();
     plan.forEach(({ gameId, courtId }) => assignOpt.set(gameId, { courtId, startedAt }));
     const undo = (gameIds: string[]) => assignOpt.remove(...gameIds);
+    // 넣은 직후 누른 종료·대기로가 기다리게 — 서버가 실제로 넣은 조합만 성공
+    let settleFill: (assigned: Set<string>) => void = () => {};
+    const fillDone = new Promise<Set<string>>((resolve) => (settleFill = resolve));
+    const fillRequests = plan.map(({ gameId }) => [gameId, fillDone.then((ids) => ids.has(gameId))] as const);
+    fillRequests.forEach(([gameId, request]) => assignRequests.current.set(gameId, request));
     void run(async () => {
       let result: IFillCourtsResult;
       try {
@@ -798,9 +852,11 @@ export function useOptimisticBoard({
         });
       } catch (error) {
         undo(plan.map((p) => p.gameId));
+        settleFill(new Set());
         throw error;
       }
       const assigned = new Set(result.assigned.map((a) => a.gameId));
+      settleFill(assigned);
       undo(plan.filter((p) => !assigned.has(p.gameId)).map((p) => p.gameId));
       // 결과는 구역 안에 몇 초 보여 준다(보드 토스트는 오류 전용 빨간색이라)
       const lines = [
@@ -812,6 +868,10 @@ export function useOptimisticBoard({
       fillNoticeTimer.current = setTimeout(() => setFillNotice(null), 5000);
     }, 'fill-courts').finally(() => {
       filling.current = false;
+      settleFill(new Set()); // 잠금에 막혀 안 보냈을 때 — 이미 정해졌으면 무시된다
+      fillRequests.forEach(([gameId, request]) => {
+        if (assignRequests.current.get(gameId) === request) assignRequests.current.delete(gameId);
+      });
     });
   };
 
