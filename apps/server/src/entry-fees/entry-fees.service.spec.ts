@@ -71,6 +71,16 @@ describe('EntryFeesService', () => {
     await expect(service.setMembers(session.id, { attendanceIds: [payee.id], included: false })).rejects.toThrow(ConflictException);
   });
 
+  it('동시에 연 모임은 모임 이름이 함께 온다(창 제목·안내 문구용)', async () => {
+    const plain = await seedSession();
+    const labeled = await prisma.session.create({
+      data: { date: new Date('2026-01-08'), checkInCode: '0102', label: '여복' },
+    });
+
+    expect((await service.get(plain.id)).label).toBeNull();
+    expect((await service.get(labeled.id)).label).toBe('여복');
+  });
+
   it('다른 모임 출석이 섞이면 아무도 바꾸지 않고 409', async () => {
     const session = await seedSession();
     const mine = await seedAttendance(session.id, '가');

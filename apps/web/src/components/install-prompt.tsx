@@ -51,6 +51,14 @@ export function isIos(): boolean {
   return /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
 }
 
+// 공유 버튼 자리 — 아이폰 사파리만 화면 아래, 아이패드 사파리와 크롬(아이폰·아이패드)은 주소창 오른쪽
+// (iPadOS 26 사파리는 공유가 주소창 오른쪽 [⋯] 안에 들어가 있을 수 있다)
+function iosShareSpot(): 'bottom' | 'top' {
+  const ua = navigator.userAgent;
+  const iPad = /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  return iPad || /CriOS/.test(ua) ? 'top' : 'bottom';
+}
+
 // 문구만 갈라진다 — 모임원은 폰, 운영진은 체육관 태블릿이라 설치 이유가 서로 다르다
 const COPY = {
   member: {
@@ -168,8 +176,10 @@ export function InstallPrompt({ app = 'member', className = '' }: { app?: keyof 
             <>
               <p className="text-sm font-medium text-court">홈 화면에 추가하기</p>
               <p className="mt-1 text-xs leading-relaxed text-dim">
-                아래 공유 버튼 <span className="text-ink">⬆️</span> 을 누르고 목록에서{' '}
-                <span className="text-ink">홈 화면에 추가</span> 를 선택하세요. {COPY[app].ios}
+                {iosShareSpot() === 'top' ? '주소창 오른쪽의 공유 버튼' : '아래 공유 버튼'}{' '}
+                <span className="text-ink">⬆️</span> 을 누르고 목록에서 <span className="text-ink">홈 화면에 추가</span> 를
+                선택하세요.
+                {iosShareSpot() === 'top' && ' 공유 버튼이 안 보이면 주소창 오른쪽 [⋯]을 눌러 보세요.'} {COPY[app].ios}
               </p>
             </>
           )}

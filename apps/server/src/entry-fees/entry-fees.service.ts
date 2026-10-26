@@ -45,6 +45,7 @@ export class EntryFeesService {
     return {
       sessionId: session.id,
       date: toDateString(session.date),
+      label: session.label,
       fee: session.entryFee,
       payeeAttendanceId: session.entryPayeeAttendanceId,
       account: session.entryAccount,

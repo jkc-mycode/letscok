@@ -154,15 +154,17 @@ export function EntryFeeSheet({ sessionId, onClose }: { sessionId: string; onClo
   const payeeName = rows.find((r) => r.isPayee)?.name;
   const ready = fee !== null && account !== '';
   const when = data ? monthDay(data.date) : '';
+  const label = data?.label ?? ''; // 여복·남복을 동시에 열면 어느 모임 입장비인지 — 하나만 열면 보통 비어 있다
+  const whenLabel = label ? `${when} ${label}` : when;
 
   const guideText = ready
-    ? [`🏸 ${when} 입장비 안내`, `1인 ${won(fee)}`, account, payeeName ? `(${payeeName}님이 먼저 냈어요)` : '', '입금 부탁드려요 🙏']
+    ? [`🏸 ${whenLabel} 입장비 안내`, `1인 ${won(fee)}`, account, payeeName ? `(${payeeName}님이 먼저 냈어요)` : '', '입금 부탁드려요 🙏']
         .filter(Boolean)
         .join('\n')
     : '';
   const remindText = ready
     ? [
-        `🏸 ${when} 입장비 아직 확인이 안 된 분`,
+        `🏸 ${whenLabel} 입장비 아직 확인이 안 된 분`,
         `${unpaid.map((r) => r.name).join(', ')} (${unpaid.length}명)`,
         `1인 ${won(fee)} · ${account}`,
         '이미 보내셨다면 말씀해 주세요 🙏',
@@ -179,7 +181,7 @@ export function EntryFeeSheet({ sessionId, onClose }: { sessionId: string; onClo
         onClose={onClose}
         header={
           <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">
-            입장비 {data && <span className="text-body-sm font-medium text-dim">{when}</span>}
+            입장비 {data && <span className="text-body-sm font-medium text-dim">{whenLabel}</span>}
           </h2>
         }
       >

@@ -671,6 +671,7 @@ export interface IEntryFeeRow {
 export interface IEntryFee {
   sessionId: string;
   date: string; // YYYY-MM-DD — 안내 문구용
+  label: string | null; // 모임 이름(여복·남복) — 동시에 연 모임이면 창 제목·안내 문구에 붙인다
   fee: number | null;
   payeeAttendanceId: string | null;
   account: string | null;
