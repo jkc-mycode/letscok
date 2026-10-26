@@ -36,6 +36,10 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  // 체육관에서 땀 묻은 손이 두 번째 손가락으로 잡혀 화면이 확대되던 문제 — 확대를 막는다.
+  // 안드로이드는 이것만으로 막히고, iOS 사파리는 무시하므로 아래 block-pinch-zoom 스크립트가 짝을 이룬다
+  maximumScale: 1,
+  userScalable: false,
   themeColor: '#0c1310',
   viewportFit: 'cover', // 노치 영역까지 배경을 채우고, 여백은 safe-area로 직접 준다
 };
@@ -57,6 +61,10 @@ export default function RootLayout({
       </Script>
       <Script id="capture-install-prompt" strategy="beforeInteractive">
         {`window.__letscokInstallEvent=null;window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__letscokInstallEvent=e;window.dispatchEvent(new Event('letscok:installable'))});`}
+      </Script>
+      {/* iOS 사파리 두 손가락 확대 막기 — gesturestart는 사파리 전용 이벤트, 손가락 하나짜리 스와이프·끌어다 놓기는 그대로 둔다 */}
+      <Script id="block-pinch-zoom" strategy="beforeInteractive">
+        {`document.addEventListener('gesturestart',function(e){e.preventDefault()});document.addEventListener('touchmove',function(e){if(e.touches.length>1)e.preventDefault()},{passive:false});`}
       </Script>
       <body className="court-bg min-h-dvh font-sans antialiased">
         {children}
