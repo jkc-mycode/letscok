@@ -146,7 +146,8 @@ export function EntryFeeSheet({ sessionId, onClose }: { sessionId: string; onClo
     return { ...r, isPayee, paid, included };
   });
   const rows = allRows.filter((r) => r.included && !removing.has(r.attendanceId));
-  const candidates = allRows.filter((r) => !r.included); // [명단에서 고르기] 후보
+  // [명단에서 고르기] 후보 — 미리 출석만 해 두고 콕을 안 낸(아직 안 온) 사람은 뺀다
+  const candidates = allRows.filter((r) => !r.included && r.shuttleConfirmed);
   const paidCount = rows.filter((r) => r.paid).length;
   const unpaid = rows.filter((r) => !r.paid);
   const fee = form.feeText ? Number(form.feeText) : null;

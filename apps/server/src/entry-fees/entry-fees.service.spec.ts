@@ -71,6 +71,17 @@ describe('EntryFeesService', () => {
     await expect(service.setMembers(session.id, { attendanceIds: [payee.id], included: false })).rejects.toThrow(ConflictException);
   });
 
+  it('콕 확인 여부가 행마다 실린다 — 웹은 확인된 사람만 [명단에서 고르기] 후보로 띄운다', async () => {
+    const session = await seedSession();
+    const confirmed = await seedAttendance(session.id, '가');
+    const unconfirmed = await seedAttendance(session.id, '나');
+    await prisma.attendance.update({ where: { id: confirmed.id }, data: { shuttleConfirmedAt: new Date() } });
+
+    const { rows } = await service.get(session.id);
+    expect(rows.find((r) => r.attendanceId === confirmed.id)?.shuttleConfirmed).toBe(true);
+    expect(rows.find((r) => r.attendanceId === unconfirmed.id)?.shuttleConfirmed).toBe(false);
+  });
+
   it('동시에 연 모임은 모임 이름이 함께 온다(창 제목·안내 문구용)', async () => {
     const plain = await seedSession();
     const labeled = await prisma.session.create({

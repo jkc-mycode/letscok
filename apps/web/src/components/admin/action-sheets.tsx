@@ -35,9 +35,10 @@ export function ReplacePlayerModal({
 
   const isPlaying = game.status === 'PLAYING';
   const playerIds = new Set((game.players ?? []).map((p) => p.attendanceId));
-  // 후보: 퇴장·휴식·이 게임 인원 제외. 게임 중 게임엔 다른 코트에서 뛰는 사람 투입 불가(PLAYING 동시 한 곳만)
+  // 후보: 콕 미확인·퇴장·휴식·이 게임 인원 제외. 게임 중 게임엔 다른 코트에서 뛰는 사람 투입 불가(PLAYING 동시 한 곳만)
   const candidates = sortCandidates(attendances, sort).filter(
     (a) =>
+      a.shuttleConfirmedAt &&
       a.status !== 'LEFT' &&
       a.status !== 'RESTING' &&
       !playerIds.has(a.id) &&

@@ -681,7 +681,8 @@ export interface IEntryFeeRow {
   paid: boolean; // 받는 사람 본인은 항상 true
   paidAt: string | null;
   isPayee: boolean;
-  included: boolean; // 입장비 목록에 넣었나 — 받는 사람은 항상 true. false인 행은 [명단에서 고르기] 후보
+  included: boolean; // 입장비 목록에 넣었나 — 받는 사람은 항상 true
+  shuttleConfirmed: boolean; // 콕 확인을 받았나 — 안 넣은 사람 중 이 값이 true인 행만 [명단에서 고르기] 후보
 }
 
 export interface IEntryFee {
