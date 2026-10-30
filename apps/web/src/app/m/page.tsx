@@ -17,6 +17,7 @@ import {
   SameNameTagsProvider,
   Toast,
 } from '@/components/badges';
+import { CodeBoxes } from '@/components/code-boxes';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ConnectionError } from '@/components/connection-error';
 import { HomeLink } from '@/components/home-link';
@@ -26,9 +27,10 @@ import { LogoLoader } from '@/components/logo-loader';
 import { MotionCard } from '@/components/motion-card';
 import { PushToggle } from '@/components/push-toggle';
 import { sessionName } from '@/components/session-switcher';
+import { Sheet } from '@/components/sheet';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { api, ApiError } from '@/lib/api';
-import { clearMemberId, getMemberId } from '@/lib/member';
+import { clearMemberId, clearMemberToken, fetchMemberToken, getMemberId, getMemberToken } from '@/lib/member';
 import { disablePush } from '@/lib/push';
 import {
   formatElapsed,
@@ -72,17 +74,30 @@ export default function MyStatusPage() {
   // 타임(잠깐 쉴래요) — 유일한 셀프 액션. 조합에 묶여 있으면 서버 409 안내를 토스트로
   const [busy, setBusy] = useState(false);
   const { toast, showToast } = useToast();
+  // 본인 확인 값이 없는 폰(이 기능 전에 연결한 폰·값을 못 받은 폰) — 입장 코드를 다시 물어 값을 받는다
+  // rest: 받은 뒤 바로 이어서 누른 동작을 한다 / push: 권한 창은 직접 눌러야 떠서 다시 누르게 안내만
+  const [codeFor, setCodeFor] = useState<'rest' | 'push' | null>(null);
   const toggleRest = async () => {
     if (busy || !me) return;
+    const memberToken = getMemberToken();
+    if (!memberToken) {
+      setCodeFor('rest');
+      return;
+    }
     setBusy(true);
     const action = me.status === 'RESTING' ? 'resume' : 'rest';
     // 조합에 든 사람(MATCHED)은 서버가 막으니 미리 바꿔 보이지 않는다 — 막힌 이유만 알림으로
     if (me.status !== 'MATCHED') setOptStatus(action === 'rest' ? 'RESTING' : 'CHECKED_IN');
     try {
-      await api(`/attendances/${me.id}/${action}`, { method: 'PATCH' });
+      await api(`/attendances/${me.id}/${action}`, { method: 'PATCH', memberToken });
       void refetch(); // 실시간 화면을 놓쳐도 바뀐 상태가 실리게
     } catch (e) {
       setOptStatus(null);
+      if (e instanceof ApiError && e.status === 401) {
+        clearMemberToken(); // 서버 비밀값이 바뀌어 값이 무효 — 코드를 다시 받는다
+        setCodeFor('rest');
+        return;
+      }
       showToast(e instanceof ApiError ? e.message : '요청에 실패했습니다.', 'error', 4000);
     } finally {
       setBusy(false);
@@ -203,7 +218,20 @@ export default function MyStatusPage() {
             다시 뛸래요
           </button>
         )}
-        <PushToggle memberId={me.memberId} />
+        <PushToggle memberId={me.memberId} onNeedToken={() => setCodeFor('push')} />
+        {codeFor && (
+          <MemberCodeSheet
+            sessionId={me.sessionId}
+            memberId={me.memberId}
+            onClose={() => setCodeFor(null)}
+            onDone={() => {
+              const next = codeFor;
+              setCodeFor(null);
+              if (next === 'rest') void toggleRest();
+              else showToast('확인됐어요. 알림 받기를 한 번 더 눌러 주세요.');
+            }}
+          />
+        )}
 
         {/* 지금 코트 — 한 덩어리 카드에 줄로(테두리 대신 면) */}
         <Section title="지금 코트" count={`${playingByCourt.size}/${courts.length}`}>
@@ -574,6 +602,58 @@ function DisconnectButton({ name, onDone }: { name: string | null; onDone: () =>
       idleCls="text-faint"
       armedCls="font-bold text-coral"
     />
+  );
+}
+
+// 입장 코드 다시 넣기 — 맞으면 이 폰에 본인 확인 값을 저장한다(다음 모임에도 쓰인다)
+function MemberCodeSheet({
+  sessionId,
+  memberId,
+  onClose,
+  onDone,
+}: {
+  sessionId: string;
+  memberId: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    if (busy || code.length !== 4) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await fetchMemberToken(sessionId, memberId, code);
+      onDone();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '확인에 실패했어요. 잠시 후 다시 시도해주세요.');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Sheet
+      ariaLabel="본인 확인"
+      dismissible={false}
+      onClose={onClose}
+      header={<h2 className="shrink-0 text-lg font-bold text-court">본인 확인</h2>}
+      footer={
+        <button
+          onClick={() => void submit()}
+          disabled={busy || code.length !== 4}
+          className="h-12 w-full rounded-xl bg-court text-base font-bold text-bg disabled:bg-panel2 disabled:text-faint"
+        >
+          {busy ? '확인 중...' : '확인'}
+        </button>
+      }
+    >
+      <p className="text-body-sm text-dim">이 폰이 본인 것인지 한 번만 확인할게요. 다음부터는 묻지 않아요.</p>
+      <CodeBoxes id="member-code" value={code} onChange={setCode} />
+      {error && <p className="text-caption text-coral">{error}</p>}
+    </Sheet>
   );
 }
 

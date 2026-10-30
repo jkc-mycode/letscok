@@ -5,8 +5,10 @@ import {
   HttpStatus,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
-import { IAttendance, IPushCallResult } from '@letscok/shared-types';
+import { IAttendance, IMemberTokenResponse, IPushCallResult } from '@letscok/shared-types';
+import { signMemberToken } from '../common/auth/member-token';
 import { toAttendanceResponse } from '../common/mappers/entity.mappers';
 import { createCooldown } from '../common/utils/cooldown.util';
 import { lockKey } from '../common/utils/lock.util';
@@ -15,6 +17,7 @@ import { PushService } from '../push/push.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { SessionsService } from '../sessions/sessions.service';
 import { CheckInDto } from './dto/check-in.dto';
+import { IssueMemberTokenDto } from './dto/issue-member-token.dto';
 
 // 코드 오입력 잠금 — 코드가 숫자 4자리(1만 가지)라 무차별 대입이 현실적이어서 실패만 센다
 // 성공 요청은 세지 않는다: 체육관 공용 와이파이면 여러 명이 한 IP로 들어오므로
@@ -46,21 +49,53 @@ export class AttendancesService {
     dto: CheckInDto,
     ip = 'unknown',
   ): Promise<IAttendance> {
-    this.assertNotLockedOut(ip);
-    const session = await this.sessionsService.findOpenSessionOrThrow(sessionId);
-
-    // 코드 대조 — 세션에 코드가 있으면 입력한 code가 일치해야 통과
-    // (코드 없는 레거시 세션은 grandfather로 통과 — 배포 시 진행 중이던 세션이 안 깨지게)
-    if (session.checkInCode && dto.code !== session.checkInCode) {
-      this.recordCodeFailure(ip);
-      throw new ForbiddenException('코드가 맞지 않아요. 다시 확인해주세요.');
-    }
+    await this.assertCheckInCode(sessionId, dto.code, ip);
 
     // 운영진 대리 등록은 동의를 못 받으므로 본인이 처음 들어오는 이 시점에 받는다
     // 이미 수동 체크인된 사람은 아래에서 409가 나므로, 동의 기록은 반드시 그보다 먼저
     await this.recordConsentIfNeeded(dto.memberId, dto.consent);
 
     return this.checkInMember(sessionId, dto.memberId);
+  }
+
+  // 본인 확인 값 — 체크인과 같은 코드·잠금을 거친다. 체크인 직후(409 포함)와, 값이 없는 폰이 휴식을 누를 때 받는다
+  async issueMemberToken(sessionId: string, dto: IssueMemberTokenDto, ip = 'unknown'): Promise<IMemberTokenResponse> {
+    await this.assertCheckInCode(sessionId, dto.code, ip);
+    const member = await this.prisma.member.findFirst({
+      where: { id: dto.memberId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!member) {
+      throw new NotFoundException('등록되지 않은 모임원입니다.');
+    }
+    const token = signMemberToken(member.id);
+    if (!token) {
+      throw new ServiceUnavailableException('서버에 본인 확인 설정이 없어요. 운영진에게 알려 주세요.');
+    }
+    return { token };
+  }
+
+  // 휴식/복귀 전 본인 확인용 — 출석이 누구 것인지만
+  async findMemberIdOrThrow(attendanceId: string): Promise<string> {
+    const attendance = await this.prisma.attendance.findUnique({
+      where: { id: attendanceId },
+      select: { memberId: true },
+    });
+    if (!attendance) {
+      throw new NotFoundException('출석 정보를 찾을 수 없습니다.');
+    }
+    return attendance.memberId;
+  }
+
+  // 코드 대조 — 세션에 코드가 있으면 입력한 code가 일치해야 통과
+  // (코드 없는 레거시 세션은 grandfather로 통과 — 배포 시 진행 중이던 세션이 안 깨지게)
+  private async assertCheckInCode(sessionId: string, code: string | undefined, ip: string) {
+    this.assertNotLockedOut(ip);
+    const session = await this.sessionsService.findOpenSessionOrThrow(sessionId);
+    if (session.checkInCode && code !== session.checkInCode) {
+      this.recordCodeFailure(ip);
+      throw new ForbiddenException('코드가 맞지 않아요. 다시 확인해주세요.');
+    }
   }
 
   private assertNotLockedOut(ip: string) {

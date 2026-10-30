@@ -12,13 +12,14 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { PersonName, Toast } from '@/components/badges';
 import { ClearableInput } from '@/components/clearable-input';
+import { CodeBoxes } from '@/components/code-boxes';
 import { ConnectionError } from '@/components/connection-error';
 import { HomeLink } from '@/components/home-link';
 import { InstallPrompt } from '@/components/install-prompt';
 import { LogoLoader } from '@/components/logo-loader';
 import { sessionName } from '@/components/session-switcher';
 import { api, ApiError } from '@/lib/api';
-import { saveMemberId } from '@/lib/member';
+import { fetchMemberToken, saveMemberId } from '@/lib/member';
 import { useMemberSearch } from '@/lib/use-member-search';
 import { useSnapshot } from '@/lib/use-snapshot';
 import { useToast } from '@/lib/use-toast';
@@ -36,6 +37,13 @@ export default function CheckinPage() {
   const openSessions = snapshot?.openSessions ?? [];
   const targetSessionId = openSessions.length > 1 ? pickedSessionId : (snapshot?.session.id ?? null);
 
+  // 이 폰을 본인과 잇고 확인 값까지 받아 둔다 — 값을 못 받아도 연결은 하고, 휴식을 누를 때 코드를 다시 묻는다
+  const connect = async (sessionId: string, memberId: string) => {
+    saveMemberId(memberId);
+    await fetchMemberToken(sessionId, memberId, code).catch(() => undefined);
+    router.replace('/m');
+  };
+
   const checkIn = async (member: IMember, consent: boolean) => {
     if (busy || !snapshot) return;
     if (!targetSessionId) {
@@ -49,14 +57,12 @@ export default function CheckinPage() {
         method: 'POST',
         body: { memberId: member.id, code, ...(consent && { consent: true }) },
       });
-      saveMemberId(member.id);
-      router.replace('/m');
+      await connect(targetSessionId, member.id);
     } catch (e) {
       // 운영진이 미리 체크인해둔 경우도 본인 확인은 된 것 — 내 상태로 진입
       // (서버는 이 409보다 먼저 동의를 기록하므로 동의가 유실되지 않는다)
       if (e instanceof ApiError && e.status === 409) {
-        saveMemberId(member.id);
-        router.replace('/m');
+        await connect(targetSessionId, member.id);
         return;
       }
       showToast(e instanceof ApiError ? e.message : '출석에 실패했습니다.');
@@ -115,7 +121,7 @@ export default function CheckinPage() {
         </div>
       )}
 
-      <CodeBoxes value={inputCode} onChange={setInputCode} />
+      <CodeBoxes id="checkin-code" value={inputCode} onChange={setInputCode} />
 
       <SearchPanel busy={busy} hasCode={code !== null} onSelect={checkIn} />
 
@@ -136,50 +142,6 @@ function Shell({ children }: { children: React.ReactNode }) {
       </HomeLink>
       {children}
     </main>
-  );
-}
-
-// 코드 입력 — 실제 입력칸은 하나(붙여넣기·자동 채우기·지우기가 평소처럼 동작), 보이는 모양만 4칸
-// 투명한 입력칸을 4칸 위에 겹쳐 두고, 칸마다 숫자를 그린다. 지금 입력할 칸은 초록 테두리
-// 틀린 값은 서버가 막으므로 여기선 형식(숫자 4자리)만 맞춘다
-function CodeBoxes({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [focused, setFocused] = useState(false);
-  return (
-    <div className="flex flex-col gap-2.5">
-      <label htmlFor="checkin-code" className="text-body-sm font-bold text-dim">
-        입장 코드
-      </label>
-      <div className="relative">
-        <div className="grid grid-cols-4 gap-2" aria-hidden>
-          {[0, 1, 2, 3].map((i) => {
-            const active = focused && (i === value.length || (i === 3 && value.length === 4));
-            return (
-              <span
-                key={i}
-                className={`tabular flex h-15 items-center justify-center rounded-xl bg-panel font-mono text-[1.625rem] font-semibold transition-shadow ${
-                  active ? 'ring-2 ring-court' : ''
-                }`}
-              >
-                {value[i] ?? ''}
-              </span>
-            );
-          })}
-        </div>
-        <input
-          id="checkin-code"
-          value={value}
-          onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 4))}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          inputMode="numeric"
-          autoComplete="off"
-          maxLength={4}
-          aria-label="입장 코드 4자리"
-          className="absolute inset-0 h-full w-full cursor-pointer text-transparent caret-transparent opacity-0"
-        />
-      </div>
-      <p className="text-caption text-faint">소모임 [필독]공지사항의 작성월일 4자리예요</p>
-    </div>
   );
 }
 

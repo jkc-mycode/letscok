@@ -3,6 +3,7 @@
 import { IPushPublicKey, ISubscribePushDto } from '@letscok/shared-types';
 import { isInstalled, isIos } from '@/components/install-prompt';
 import { api } from './api';
+import { getMemberToken } from './member';
 
 // unsupported   푸시 불가(카톡 인앱·구형 브라우저·서버 키 없음·개발 모드) — UI 숨김
 // needs-install iOS 사파리 탭 — 홈 화면 앱에서만 푸시를 받을 수 있다
@@ -69,7 +70,7 @@ async function register(memberId: string, subscription: PushSubscription): Promi
   const { endpoint, keys } = subscription.toJSON();
   if (!endpoint || !keys?.p256dh || !keys.auth) throw new Error('구독 정보를 읽지 못했습니다.');
   const body: ISubscribePushDto = { memberId, endpoint, p256dh: keys.p256dh, auth: keys.auth };
-  await api('/push/subscriptions', { method: 'POST', body });
+  await api('/push/subscriptions', { method: 'POST', body, memberToken: getMemberToken() });
 }
 
 // 반드시 버튼 클릭 핸들러 안에서 호출 — iOS는 사용자 동작 없이 권한을 요청하면 거부한다
@@ -115,7 +116,8 @@ export async function syncPush(memberId: string): Promise<void> {
 
   const permission = await currentPermission(registration);
   if (permission === 'granted') {
-    await register(memberId, subscription).catch(() => undefined);
+    // 확인 값이 없으면 서버가 거부한다 — 휴식이나 알림 켜기에서 코드를 넣어 값을 받은 뒤에 맞춘다
+    if (getMemberToken()) await register(memberId, subscription).catch(() => undefined);
   } else if (permission === 'denied') {
     await api('/push/subscriptions', {
       method: 'DELETE',

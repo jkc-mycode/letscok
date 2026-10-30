@@ -219,6 +219,16 @@ export interface ICheckInDto {
   consent?: boolean; // 동의 이력이 없는 회원(운영진 대리 등록)의 첫 체크인에만 필요
 }
 
+// 본인 확인 값 받기 — 입장 코드가 맞아야 준다. 휴식/복귀·알림 등록 때 x-member-token 헤더로 싣는다
+export interface IIssueMemberTokenDto {
+  memberId: string;
+  code?: string; // 체크인과 같은 코드 — 코드 없는 레거시 세션이면 생략
+}
+
+export interface IMemberTokenResponse {
+  token: string;
+}
+
 // 운영진 수동 체크인 — 코드 대조 없음(AdminGuard 뒤). 사전 등록·현장 대리 등 예외 상황용
 export interface IManualCheckInDto {
   memberId: string;

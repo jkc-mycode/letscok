@@ -10,10 +10,12 @@ import {
   syncPush,
 } from '@/lib/push';
 import { ApiError } from '@/lib/api';
+import { clearMemberToken, getMemberToken } from '@/lib/member';
 
 // 게임 알림 토글 — 토글은 "권한"이 아니라 "이 기기의 구독"을 켜고 끈다
 // (웹은 브라우저·OS의 알림 권한을 코드로 바꿀 수 없다. 권한이 막히면 설정 경로를 안내할 뿐)
-export function PushToggle({ memberId }: { memberId: string }) {
+// onNeedToken: 이 폰에 본인 확인 값이 없을 때 — 화면이 입장 코드를 묻는다
+export function PushToggle({ memberId, onNeedToken }: { memberId: string; onNeedToken: () => void }) {
   const [state, setState] = useState<PushState | null>(null); // null = 판정 중
   const [busy, setBusy] = useState<'on' | 'off' | null>(null); // 켜는 중·끄는 중 — 버튼 안에 진행을 보여 준다
   const [error, setError] = useState<string | null>(null);
@@ -36,13 +38,23 @@ export function PushToggle({ memberId }: { memberId: string }) {
 
   // 켜기는 클릭 직후 바로 권한 창을 띄워야 한다 — 그 앞에서 네트워크를 기다리면
   // iOS가 사용자 동작으로 인정하지 않아 창이 조용히 안 뜰 수 있다 (enablePush의 첫 동작이 권한 요청)
+  // 확인 값이 없으면 권한 창보다 코드 입력이 먼저 — 코드를 넣은 뒤 다시 누르면 권한 창이 뜬다
   const toggle = async (on: boolean) => {
     if (busy) return;
+    if (on && !getMemberToken()) {
+      onNeedToken();
+      return;
+    }
     setBusy(on ? 'on' : 'off');
     setError(null);
     try {
       setState(on ? await enablePush(memberId) : await disablePush());
     } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        clearMemberToken(); // 서버 비밀값이 바뀌어 값이 무효 — 코드를 다시 받는다
+        onNeedToken();
+        return;
+      }
       // 서버가 막은 이유(기기 수 초과 등)는 그대로 보여 준다
       setError(e instanceof ApiError ? e.message : '알림 설정에 실패했어요. 잠시 후 다시 시도해주세요.');
     } finally {

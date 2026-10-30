@@ -1036,10 +1036,8 @@ export function useOptimisticBoard({
   const changeAttendance = (attendanceId: string, change: AttendanceChange): Promise<boolean> => {
     if (optAttendance.has(attendanceId)) return Promise.resolve(false);
     attendanceOpt.set(attendanceId, change);
-    const admin = change === 'leave' || change === 'shuttle/cancel';
-    return runParallel(() =>
-      api(`/attendances/${attendanceId}/${change}`, { method: 'PATCH', ...(admin && { admin: true }) }),
-    ).then((ok) => {
+    // 휴식/복귀도 운영진 인증을 싣는다 — 서버가 운영진이 아니면 본인 확인 값을 요구한다
+    return runParallel(() => api(`/attendances/${attendanceId}/${change}`, { method: 'PATCH', admin: true })).then((ok) => {
       if (!ok) attendanceOpt.remove(attendanceId); // 실패 — 서버 화면대로(알림은 runParallel)
       return ok;
     });

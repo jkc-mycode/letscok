@@ -6,12 +6,18 @@ import {
   Param,
   Patch,
   Post,
+  Req,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import { IApiResponse, IAttendance, IPushCallResult } from '@letscok/shared-types';
-import { AdminGuard } from '../common/guards/admin.guard';
+import { Throttle } from '@nestjs/throttler';
+import { IApiResponse, IAttendance, IMemberTokenResponse, IPushCallResult } from '@letscok/shared-types';
+import type { Request } from 'express';
+import { verifyMemberToken } from '../common/auth/member-token';
+import { AdminGuard, isAdminRequest } from '../common/guards/admin.guard';
 import { AttendancesService } from './attendances.service';
 import { CheckInDto } from './dto/check-in.dto';
+import { IssueMemberTokenDto } from './dto/issue-member-token.dto';
 import { ManualCheckInDto } from './dto/manual-check-in.dto';
 import { SetPartnerDto } from './dto/set-partner.dto';
 import { PartnersService } from './partners.service';
@@ -95,16 +101,41 @@ export class AttendancesController {
     return { success: true, data: await this.attendancesService.call(id) };
   }
 
-  // 잠깐 휴식/복귀 — 본인이 /m에서 직접 쓰는 셀프 액션이라 가드 없음(체크인과 같은 신뢰 모델)
-  // 운영진 관제판도 같은 API를 사용한다
+  // 본인 확인 값 받기 — 체크인과 같은 코드·잠금. 값은 /m의 휴식/복귀와 알림 등록에 쓴다
+  @Post('sessions/:sessionId/member-token')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  async issueMemberToken(
+    @Param('sessionId') sessionId: string,
+    @Body() dto: IssueMemberTokenDto,
+    @Ip() ip: string,
+  ): Promise<IApiResponse<IMemberTokenResponse>> {
+    return { success: true, data: await this.attendancesService.issueMemberToken(sessionId, dto, ip) };
+  }
+
+  // 잠깐 휴식/복귀 — 본인이 /m에서 직접 쓰는 셀프 액션. 운영진 관제판도 같은 API를 사용한다
   @Patch('attendances/:id/rest')
-  async rest(@Param('id') id: string): Promise<IApiResponse<IAttendance>> {
+  async rest(@Param('id') id: string, @Req() req: Request): Promise<IApiResponse<IAttendance>> {
+    await this.assertSelfOrAdmin(id, req);
     return { success: true, data: await this.attendancesService.rest(id) };
   }
 
   @Patch('attendances/:id/resume')
-  async resume(@Param('id') id: string): Promise<IApiResponse<IAttendance>> {
+  async resume(@Param('id') id: string, @Req() req: Request): Promise<IApiResponse<IAttendance>> {
+    await this.assertSelfOrAdmin(id, req);
     return { success: true, data: await this.attendancesService.resume(id) };
+  }
+
+  // 출석 id는 공개 현황에 다 실려 있어 id만으로는 남의 출석을 바꿀 수 있었다 — 운영진이거나 그 회원의 확인 값을 든 기기만
+  private async assertSelfOrAdmin(attendanceId: string, req: Request): Promise<void> {
+    const admin = isAdminRequest(
+      { authorization: req.headers.authorization, passcode: req.headers['x-admin-passcode'] },
+      req.ip ?? 'unknown',
+    );
+    if (admin) return;
+    const memberId = await this.attendancesService.findMemberIdOrThrow(attendanceId);
+    if (!verifyMemberToken(memberId, req.headers['x-member-token'])) {
+      throw new UnauthorizedException('본인 확인이 필요해요. 입장 코드를 다시 넣어 주세요.');
+    }
   }
 
   // 콕 제출 확인/취소 (운영진 전용) — 회비에 준하는 검증이라 셀프 불가

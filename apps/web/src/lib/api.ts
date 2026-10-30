@@ -56,6 +56,7 @@ interface ApiOptions {
   body?: unknown;
   admin?: boolean; // true면 저장된 출입증(없으면 패스코드)을 헤더에 실어 보낸다
   passcode?: string; // 저장 전 검증용 — 지정하면 저장된 값 대신 이 값을 보낸다
+  memberToken?: string | null; // 모임원 본인 확인 값 — 휴식/복귀·알림 등록
 }
 
 export async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
@@ -69,6 +70,7 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     if (token) headers.Authorization = `Bearer ${token}`;
     else headers['x-admin-passcode'] = getPasscode() ?? '';
   }
+  if (options.memberToken) headers['x-member-token'] = options.memberToken;
 
   const res = await fetch(`${API_URL}${path}`, {
     method: options.method ?? 'GET',
