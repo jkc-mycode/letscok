@@ -6,9 +6,10 @@ import {
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { IAttendance, IMemberTokenResponse, IPushCallResult } from '@letscok/shared-types';
-import { signMemberToken } from '../common/auth/member-token';
+import { signMemberToken, verifyMemberToken } from '../common/auth/member-token';
 import { toAttendanceResponse } from '../common/mappers/entity.mappers';
 import { createCooldown } from '../common/utils/cooldown.util';
 import { lockKey } from '../common/utils/lock.util';
@@ -48,12 +49,19 @@ export class AttendancesService {
     sessionId: string,
     dto: CheckInDto,
     ip = 'unknown',
+    memberToken?: unknown,
   ): Promise<IAttendance> {
     await this.assertCheckInCode(sessionId, dto.code, ip);
 
+    // 대리 체크인 — 폰 주인의 확인 값이 맞을 때만. 코드만 알면 남의 동의까지 눌러 주던 틈을 막는다
+    const byOther = dto.byMemberId !== undefined && dto.byMemberId !== dto.memberId;
+    if (byOther && !verifyMemberToken(dto.byMemberId as string, memberToken)) {
+      throw new UnauthorizedException('본인 확인이 필요해요. 입장 코드를 다시 넣어 주세요.');
+    }
+
     // 운영진 대리 등록은 동의를 못 받으므로 본인이 처음 들어오는 이 시점에 받는다
     // 이미 수동 체크인된 사람은 아래에서 409가 나므로, 동의 기록은 반드시 그보다 먼저
-    await this.recordConsentIfNeeded(dto.memberId, dto.consent);
+    await this.recordConsentIfNeeded(dto.memberId, dto.consent, byOther);
 
     return this.checkInMember(sessionId, dto.memberId);
   }
@@ -128,14 +136,15 @@ export class AttendancesService {
     this.codeFailures.set(ip, { count: 1, firstAt: now });
   }
 
-  private async recordConsentIfNeeded(memberId: string, consent?: boolean) {
+  // byOther: 대리 체크인이면 동의 없이 출석만 — 동의는 그 사람이 자기 폰으로 들어올 때 받는다(운영진 수동 체크인과 같은 처리)
+  private async recordConsentIfNeeded(memberId: string, consent: boolean | undefined, byOther: boolean) {
     const member = await this.prisma.member.findFirst({
       where: { id: memberId, deletedAt: null },
     });
     if (!member) {
       throw new NotFoundException('등록되지 않은 모임원입니다.');
     }
-    if (member.consentedAt) return;
+    if (member.consentedAt || byOther) return;
 
     if (consent !== true) {
       throw new ForbiddenException('개인정보 수집·이용에 동의해주세요.');

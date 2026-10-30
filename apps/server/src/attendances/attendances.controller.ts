@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  Headers,
   Ip,
   Param,
   Patch,
@@ -47,15 +48,17 @@ export class AttendancesController {
 
   // 체크인 — 모임원이 코드 입력 후 본인 선택으로 직접 호출 (가드 없음)
   // 코드 오입력 잠금은 서비스에서 IP 단위로 — 공용 와이파이를 고려해 실패만 센다
+  // 대리 체크인이면 폰 주인의 확인 값을 x-member-token으로 받는다
   @Post('sessions/:sessionId/attendances')
   async checkIn(
     @Param('sessionId') sessionId: string,
     @Body() dto: CheckInDto,
     @Ip() ip: string,
+    @Headers('x-member-token') memberToken?: string,
   ): Promise<IApiResponse<IAttendance>> {
     return {
       success: true,
-      data: await this.attendancesService.checkIn(sessionId, dto, ip),
+      data: await this.attendancesService.checkIn(sessionId, dto, ip, memberToken),
     };
   }
 

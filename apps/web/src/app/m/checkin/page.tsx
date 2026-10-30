@@ -9,7 +9,7 @@
 
 import { IAttendance, IMember } from '@letscok/shared-types';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PersonName, Toast } from '@/components/badges';
 import { ClearableInput } from '@/components/clearable-input';
 import { CodeBoxes } from '@/components/code-boxes';
@@ -19,7 +19,7 @@ import { InstallPrompt } from '@/components/install-prompt';
 import { LogoLoader } from '@/components/logo-loader';
 import { sessionName } from '@/components/session-switcher';
 import { api, ApiError } from '@/lib/api';
-import { fetchMemberToken, saveMemberId } from '@/lib/member';
+import { clearMemberToken, fetchMemberToken, getMemberId, getMemberToken, saveMemberId } from '@/lib/member';
 import { useMemberSearch } from '@/lib/use-member-search';
 import { useSnapshot } from '@/lib/use-snapshot';
 import { useToast } from '@/lib/use-toast';
@@ -44,6 +44,26 @@ export default function CheckinPage() {
     router.replace('/m');
   };
 
+  // 이 폰에 이미 연결된 사람 — 다른 사람을 고르면 대리 체크인(연결은 그대로, 동의는 기록하지 않음)
+  const [ownerId, setOwnerId] = useState<string | null>(null);
+  useEffect(() => setOwnerId(getMemberId()), []);
+
+  // 폰 없는 친구를 대신 출석시킨다 — 서버가 폰 주인의 확인 값으로 대리인지 확인한다
+  const proxyCheckIn = async (sessionId: string, owner: string, member: IMember) => {
+    if (!getMemberToken()) await fetchMemberToken(sessionId, owner, code);
+    try {
+      await api<IAttendance>(`/sessions/${sessionId}/attendances`, {
+        method: 'POST',
+        body: { memberId: member.id, code, byMemberId: owner },
+        memberToken: getMemberToken(),
+      });
+      showToast(`${member.name} 님 출석했어요`);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) clearMemberToken(); // 다음에 누르면 값을 새로 받는다
+      throw e;
+    }
+  };
+
   const checkIn = async (member: IMember, consent: boolean) => {
     if (busy || !snapshot) return;
     if (!targetSessionId) {
@@ -51,6 +71,12 @@ export default function CheckinPage() {
       return;
     }
     setBusy(true);
+    if (ownerId && ownerId !== member.id) {
+      await proxyCheckIn(targetSessionId, ownerId, member)
+        .catch((e) => showToast(e instanceof ApiError ? e.message : '출석에 실패했습니다.'))
+        .finally(() => setBusy(false));
+      return;
+    }
     try {
       // 다른 모임에 이미 출석 중이어도 409 — 아래처럼 내 상태로 가면 그 모임 보드가 뜬다
       await api<IAttendance>(`/sessions/${targetSessionId}/attendances`, {
@@ -123,7 +149,7 @@ export default function CheckinPage() {
 
       <CodeBoxes id="checkin-code" value={inputCode} onChange={setInputCode} />
 
-      <SearchPanel busy={busy} hasCode={code !== null} onSelect={checkIn} />
+      <SearchPanel busy={busy} hasCode={code !== null} ownerId={ownerId} onSelect={checkIn} />
 
       {toast && <Toast toast={toast} />}
     </Shell>
@@ -150,10 +176,12 @@ function Shell({ children }: { children: React.ReactNode }) {
 function SearchPanel({
   busy,
   hasCode,
+  ownerId,
   onSelect,
 }: {
   busy: boolean;
   hasCode: boolean;
+  ownerId: string | null;
   onSelect: (member: IMember, consent: boolean) => Promise<void>;
 }) {
   const [query, setQuery] = useState('');
@@ -161,8 +189,10 @@ function SearchPanel({
   const [selected, setSelected] = useState<IMember | null>(null);
   const [consent, setConsent] = useState(false);
 
+  // 이 폰 주인이 아닌 사람을 고르면 대리 체크인 — 동의는 본인 폰에서 받으므로 여기선 묻지 않는다
+  const proxy = selected !== null && ownerId !== null && ownerId !== selected.id;
   // 운영진 대리 등록분만 동의를 받는다 — 한 번 동의하면 다음 모임부턴 안 뜬다
-  const needsConsent = selected !== null && !selected.consented;
+  const needsConsent = selected !== null && !selected.consented && !proxy;
   const blocked = !selected || !hasCode || busy || (needsConsent && !consent);
 
   return (
@@ -259,9 +289,15 @@ function SearchPanel({
               ? '코드 4자리를 입력해주세요'
               : needsConsent && !consent
                 ? '동의 후 출석할 수 있어요'
-                : `${selected.name}(으)로 들어가기`}
+                : proxy
+                  ? `${selected.name} 님 대신 출석하기`
+                  : `${selected.name}(으)로 들어가기`}
         </button>
-        <p className="text-center text-caption text-faint">이름이 안 보이면 운영진에게 등록을 요청해 주세요</p>
+        <p className="text-center text-caption text-faint">
+          {proxy
+            ? '이 폰은 지금 연결된 사람 그대로예요. 동의는 본인이 자기 폰으로 들어올 때 받아요'
+            : '이름이 안 보이면 운영진에게 등록을 요청해 주세요'}
+        </p>
       </div>
     </>
   );

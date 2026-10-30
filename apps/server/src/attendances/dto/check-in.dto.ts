@@ -15,4 +15,9 @@ export class CheckInDto implements ICheckInDto {
   @IsOptional()
   @IsBoolean()
   consent?: boolean;
+
+  // 대리 체크인일 때 이 폰 주인 — 확인 값 대조는 서비스에서
+  @IsOptional()
+  @IsString()
+  byMemberId?: string;
 }

@@ -2,7 +2,9 @@ import {
   ConflictException,
   ForbiddenException,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
+import { signMemberToken } from '../common/auth/member-token';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from '../push/push.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -245,6 +247,46 @@ describe('첫 체크인 개인정보 동의 (운영진 대리 등록분)', () =>
     const attendance = await service.manualCheckIn(session.id, member.id);
 
     expect(attendance.status).toBe('CHECKED_IN');
+  });
+
+  // 폰 없는 친구를 대신 출석시키는 경우 — 출석은 되지만 동의는 그 사람이 자기 폰에서
+  describe('대리 체크인 (폰 주인의 확인 값을 싣는다)', () => {
+    const original = process.env.ADMIN_TOKEN_SECRET;
+    beforeAll(() => {
+      process.env.ADMIN_TOKEN_SECRET = 'test-secret';
+    });
+    afterAll(() => {
+      process.env.ADMIN_TOKEN_SECRET = original;
+    });
+
+    it('동의 표시를 보내도 기록하지 않고 출석만 된다', async () => {
+      const session = await seedSession({ checkInCode: '0715' });
+      const owner = await seedMember();
+      const friend = await seedUnconsentedMember();
+
+      const attendance = await service.checkIn(
+        session.id,
+        { memberId: friend.id, code: '0715', consent: true, byMemberId: owner.id },
+        'unknown',
+        signMemberToken(owner.id),
+      );
+
+      expect(attendance.status).toBe('CHECKED_IN');
+      const after = await prisma.member.findUniqueOrThrow({ where: { id: friend.id } });
+      expect(after.consentedAt).toBeNull();
+    });
+
+    it('폰 주인의 확인 값이 없거나 틀리면 401', async () => {
+      const session = await seedSession({ checkInCode: '0715' });
+      const owner = await seedMember();
+      const friend = await seedUnconsentedMember();
+      const dto = { memberId: friend.id, code: '0715', consent: true, byMemberId: owner.id };
+
+      await expect(service.checkIn(session.id, dto)).rejects.toThrow(UnauthorizedException);
+      await expect(
+        service.checkIn(session.id, dto, 'unknown', signMemberToken(friend.id)),
+      ).rejects.toThrow(UnauthorizedException);
+    });
   });
 });
 

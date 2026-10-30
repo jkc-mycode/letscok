@@ -217,6 +217,9 @@ export interface ICheckInDto {
   memberId: string;
   code?: string; // 체크인 코드(공지 작성월일 4자리) — 세션에 코드가 있으면 서버가 대조, 불일치·누락 시 거부
   consent?: boolean; // 동의 이력이 없는 회원(운영진 대리 등록)의 첫 체크인에만 필요
+  // 대리 체크인 — 이 폰에 연결된 사람(폰 주인) id. x-member-token에 그 사람의 확인 값을 싣는다
+  // 대신 출석만 시키고 동의는 기록하지 않는다(동의는 본인이 자기 폰에서)
+  byMemberId?: string;
 }
 
 // 본인 확인 값 받기 — 입장 코드가 맞아야 준다. 휴식/복귀·알림 등록 때 x-member-token 헤더로 싣는다
