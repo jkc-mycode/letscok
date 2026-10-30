@@ -146,8 +146,9 @@ export class AttendancesService {
     }
     if (member.consentedAt || byOther) return;
 
+    // 공개 검색엔 동의 여부가 없어 웹은 이 코드를 보고 동의 칸을 띄운다(코드가 맞은 뒤에만 오므로 동의 여부가 새지 않는다)
     if (consent !== true) {
-      throw new ForbiddenException('개인정보 수집·이용에 동의해주세요.');
+      throw new ForbiddenException({ statusCode: 403, message: '개인정보 수집·이용에 동의해주세요.', error: 'CONSENT_REQUIRED' });
     }
     await this.prisma.member.update({
       where: { id: memberId },

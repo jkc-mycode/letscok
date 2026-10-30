@@ -64,7 +64,8 @@ export default function CheckinPage() {
     }
   };
 
-  const checkIn = async (member: IMember, consent: boolean) => {
+  // 'needs-consent': 서버가 동의를 요구 — 검색 결과엔 동의 여부가 없어 이 응답을 보고 동의 칸을 띄운다
+  const checkIn = async (member: IMember, consent: boolean): Promise<'needs-consent' | void> => {
     if (busy || !snapshot) return;
     if (!targetSessionId) {
       showToast('어느 모임에 오셨는지 먼저 골라 주세요.');
@@ -91,6 +92,7 @@ export default function CheckinPage() {
         await connect(targetSessionId, member.id);
         return;
       }
+      if (e instanceof ApiError && e.code === 'CONSENT_REQUIRED') return 'needs-consent';
       showToast(e instanceof ApiError ? e.message : '출석에 실패했습니다.');
     } finally {
       setBusy(false);
@@ -182,17 +184,25 @@ function SearchPanel({
   busy: boolean;
   hasCode: boolean;
   ownerId: string | null;
-  onSelect: (member: IMember, consent: boolean) => Promise<void>;
+  onSelect: (member: IMember, consent: boolean) => Promise<'needs-consent' | void>;
 }) {
   const [query, setQuery] = useState('');
   const results = useMemberSearch(query);
   const [selected, setSelected] = useState<IMember | null>(null);
   const [consent, setConsent] = useState(false);
+  // 동의가 필요한 사람인지는 서버가 알려 준다(코드가 맞은 뒤) — 고른 사람이 바뀌면 다시 모르는 상태로
+  const [consentAskedFor, setConsentAskedFor] = useState<string | null>(null);
 
   // 이 폰 주인이 아닌 사람을 고르면 대리 체크인 — 동의는 본인 폰에서 받으므로 여기선 묻지 않는다
   const proxy = selected !== null && ownerId !== null && ownerId !== selected.id;
   // 운영진 대리 등록분만 동의를 받는다 — 한 번 동의하면 다음 모임부턴 안 뜬다
-  const needsConsent = selected !== null && !selected.consented && !proxy;
+  const needsConsent = selected !== null && consentAskedFor === selected.id && !proxy;
+
+  const submit = async () => {
+    if (!selected) return;
+    const result = await onSelect(selected, needsConsent && consent);
+    if (result === 'needs-consent') setConsentAskedFor(selected.id);
+  };
   const blocked = !selected || !hasCode || busy || (needsConsent && !consent);
 
   return (
@@ -249,7 +259,9 @@ function SearchPanel({
           </div>
         )}
         {query.trim() && results.length === 0 && (
-          <p className="rounded-2xl bg-panel p-5 text-center text-body-sm text-faint">검색 결과가 없어요</p>
+          <p className="rounded-2xl bg-panel p-5 text-center text-body-sm text-faint">
+            {query.trim().length < 2 ? '이름을 두 글자 이상 넣어 주세요' : '검색 결과가 없어요'}
+          </p>
         )}
       </div>
 
@@ -279,7 +291,7 @@ function SearchPanel({
       {/* 주요 버튼 하나 — 화면 아래에 붙어 있어 검색 결과가 길어도 바로 누를 수 있다 */}
       <div className="sticky bottom-0 -mx-5 mt-auto flex flex-col gap-3 bg-bg/95 px-5 pt-3 pb-[calc(var(--safe-bottom)+0.25rem)] backdrop-blur">
         <button
-          onClick={() => selected && void onSelect(selected, needsConsent)}
+          onClick={() => void submit()}
           disabled={blocked}
           className="min-h-14 rounded-xl bg-court px-3 text-body font-bold whitespace-normal text-bg disabled:bg-panel disabled:text-faint"
         >

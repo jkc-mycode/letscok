@@ -46,7 +46,10 @@ export class MembersController {
     if (!name?.trim()) {
       throw new BadRequestException('검색할 이름을 입력해주세요.');
     }
-    return { success: true, data: await this.membersService.search(name.trim(), isAdminRequest({ authorization, passcode }, ip)) };
+    const admin = isAdminRequest({ authorization, passcode }, ip);
+    // 공개 검색은 두 글자부터 — 한 글자씩 바꿔 가며 명단 전체를 뽑아 가지 못하게(초성 두 글자도 허용)
+    if (!admin && name.trim().length < 2) return { success: true, data: [] };
+    return { success: true, data: await this.membersService.search(name.trim(), admin) };
   }
 
   // 명단 목록 — [모임원 관리] 화면 전용, 삭제 회원·출석 집계 포함

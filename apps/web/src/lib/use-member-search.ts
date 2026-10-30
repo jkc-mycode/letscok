@@ -13,7 +13,8 @@ export function useMemberSearch(query: string, { admin = false, enabled = true }
   const [results, setResults] = useState<IMember[]>([]);
   useEffect(() => {
     const trimmed = query.trim();
-    if (!enabled || !trimmed) {
+    // 공개 검색은 서버가 두 글자부터 찾는다 — 한 글자에선 요청하지 않는다
+    if (!enabled || !trimmed || (!admin && trimmed.length < 2)) {
       setResults([]);
       return;
     }

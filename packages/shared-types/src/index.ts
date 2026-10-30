@@ -66,14 +66,16 @@ export interface IMember {
   grade: Grade;
   gender: Gender | null; // null = 미지정 (도입 전 기존 회원)
   isGuest: boolean;
-  role: MemberRole; // 모임장/운영진/모임원 — 게스트는 항상 MEMBER
+  // 아래 세 값은 운영진 응답에만 다 실린다. 공개 이름 검색엔 셋 다 없고, 보드(현황)엔 role만 있다(관제판 왕관·정렬)
+  role?: MemberRole; // 모임장/운영진/모임원 — 게스트는 항상 MEMBER
   joinedAt: string | null; // YYYY-MM-DD — 소모임 가입일(표시용). 모르면 null
-  consented: boolean; // 개인정보 동의 이력 — false면 첫 체크인 때 본인 동의를 받아야 한다
-  createdAt: string;
+  consented?: boolean; // 개인정보 동의 이력 — 공개 응답엔 없다. 체크인은 서버가 동의가 필요하면 403(CONSENT_REQUIRED)으로 알린다
+  createdAt?: string;
 }
 
 // 명단 관리 목록 행 — 회원 정보 + 출석 집계 (관제판 [모임원 관리] 전용, AdminGuard 뒤)
 export interface IMemberSummary extends IMember {
+  role: MemberRole; // 운영진 응답이라 늘 실린다
   deletedAt: string | null; // 삭제된 회원도 목록에 실어 복구를 지원한다
   lastAttendedAt: string | null; // 마지막 출석 세션 날짜 (YYYY-MM-DD) — 없으면 미출석
   totalSessions: number;

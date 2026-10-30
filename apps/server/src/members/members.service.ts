@@ -81,7 +81,9 @@ export class MembersService {
     for (const m of sorted) nameCount.set(m.name, (nameCount.get(m.name) ?? 0) + 1);
     return sorted.map((m) => {
       const pub = toPublicMemberResponse(m);
-      return nameCount.get(m.name)! > 1 ? pub : { ...pub, birthYear: null };
+      // 역할도 뺀다 — 검색은 보드와 달리 출석하지 않은 사람까지 훑을 수 있다
+      const { role: _role, ...rest } = pub;
+      return nameCount.get(m.name)! > 1 ? rest : { ...rest, birthYear: null };
     });
   }
 

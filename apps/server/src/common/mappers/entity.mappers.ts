@@ -5,6 +5,7 @@ import {
   IGamePlayer,
   IMember,
   ISession,
+  MemberRole,
 } from '@letscok/shared-types';
 import { withSlots } from '../utils/game-slots';
 import {
@@ -20,8 +21,11 @@ import { toDateString } from '../utils/date.util';
 // Prisma 엔티티 → 공유 타입 응답 변환 모음
 // Date는 전부 ISO 문자열로 정규화 — 클라이언트가 타임존 계산(경과 시간 타이머)에 그대로 사용
 
+// 운영진 응답 — 공개 응답에서 빠지는 값까지 모두 실린다
+export type IFullMember = IMember & { role: MemberRole; consented: boolean; createdAt: string };
+
 // 회원 원장 → 응답. gender는 미지정(도입 전 회원)이면 null 그대로 내려간다
-export function toMemberResponse(member: Member): IMember {
+export function toMemberResponse(member: Member): IFullMember {
   return {
     id: member.id,
     name: member.name,
@@ -40,8 +44,10 @@ export function toMemberResponse(member: Member): IMember {
 // 세션 → 응답. date는 날짜만(YYYY-MM-DD), opened/closedAt은 시각까지 ISO로
 // 패스코드 없이 나가는 응답용 — 생년월일은 개인정보라 연도만 남긴다(동명이인 구분엔 충분), 가입일은 모임원 관리 전용이라 뺀다
 // 보드(스냅샷·소켓)는 누구나 받으므로 출석·게임 안의 회원은 항상 이 모양
+// 동의 여부·등록 시각도 뺀다 — 보드는 누구나 받으므로 명단을 훑어 미동의자·신입을 가려낼 수 없게. role은 관제판 왕관·정렬에 필요해 남긴다
 export function toPublicMemberResponse(member: Member): IMember {
-  return { ...toMemberResponse(member), birthDate: null, joinedAt: null };
+  const { consented: _consented, createdAt: _createdAt, ...rest } = toMemberResponse(member);
+  return { ...rest, birthDate: null, joinedAt: null };
 }
 
 export function toSessionResponse(session: Session): ISession {

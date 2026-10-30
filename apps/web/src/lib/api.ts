@@ -46,6 +46,7 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly code?: string, // 서버가 이유를 구분해 보낸 값(예: CONSENT_REQUIRED) — 없으면 HTTP 상태 이름
   ) {
     super(message);
   }
@@ -84,7 +85,7 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   });
 
   const json = (await res.json().catch(() => null)) as
-    | { data?: T; message?: string | string[] }
+    | { data?: T; message?: string | string[]; error?: string }
     | null;
 
   // 저장된 로그인 정보로 보낸 요청이 401 = 출입증 만료·패스코드 변경 등
@@ -100,7 +101,7 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     const message = Array.isArray(json?.message)
       ? json.message[0]
       : (json?.message ?? '요청에 실패했습니다.');
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, message, json?.error);
   }
   return json?.data as T;
 }
