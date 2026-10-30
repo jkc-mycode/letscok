@@ -39,7 +39,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version # Render와 같은 버전으로 검사
           cache: pnpm
 
       - name: 의존성 설치 (shared-types는 prepare 훅으로 빌드됨)

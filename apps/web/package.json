@@ -12,9 +12,9 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@letscok/shared-types": "workspace:*",
-    "@sentry/nextjs": "^10.63.0",
+    "@sentry/nextjs": "^10.78.0",
     "motion": "^12.42.2",
-    "next": "^15.3.0",
+    "next": "^15.5.28",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "socket.io-client": "^4.8.0"

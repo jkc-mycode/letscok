@@ -1,3 +1,16 @@
 packages:
   - apps/*
   - packages/*
+
+# 나온 지 하루가 안 된 버전은 설치하지 않는다 — 악성 버전은 보통 하루 안에 발견되어 내려간다
+minimumReleaseAge: 1440
+
+# 직접 고를 수 없는 하위 라이브러리의 보안 수정 버전을 강제한다 (express·socket.io·nest가 잡고 있는 버전)
+overrides:
+  body-parser: ^2.4.0
+  engine.io: ^6.6.10
+  socket.io-parser: ^4.2.7
+  qs: ^6.16.1
+  sharp: ^0.35.5
+  proxy-addr: ^2.0.8
+  multer: ^2.5.0
