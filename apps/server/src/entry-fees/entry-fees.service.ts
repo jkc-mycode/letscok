@@ -38,7 +38,6 @@ export class EntryFeesService {
           paidAt: a.entryPaidAt?.toISOString() ?? null,
           isPayee,
           included: isPayee || a.entryIncluded,
-          shuttleConfirmed: a.shuttleConfirmedAt !== null,
         };
       })
       .sort((x, y) => x.name.localeCompare(y.name, 'ko'));

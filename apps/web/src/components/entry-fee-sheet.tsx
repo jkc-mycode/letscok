@@ -146,9 +146,7 @@ export function EntryFeeSheet({ sessionId, onClose }: { sessionId: string; onClo
     return { ...r, isPayee, paid, included };
   });
   const rows = allRows.filter((r) => r.included && !removing.has(r.attendanceId));
-  // [명단에서 고르기] 후보 — 미리 출석만 해 두고 콕을 안 낸(아직 안 온) 사람은 뺀다
-  // 값이 없으면(웹이 먼저 배포된 사이 옛 서버) 빼지 않는다 — 버튼이 막혀 아무도 못 넣게 되지 않도록
-  const candidates = allRows.filter((r) => !r.included && r.shuttleConfirmed !== false);
+  const candidates = allRows.filter((r) => !r.included); // [명단에서 고르기] 후보
   const paidCount = rows.filter((r) => r.paid).length;
   const unpaid = rows.filter((r) => !r.paid);
   const fee = form.feeText ? Number(form.feeText) : null;
@@ -382,7 +380,7 @@ function EntryMemberPicker({
     >
       {/* 후보가 없어도 시트는 열어 이유를 보여 준다 — 버튼만 막으면 고장처럼 보인다 */}
       {candidates.length === 0 ? (
-        <p className="py-8 text-center text-body-sm text-dim">콕 확인된 사람은 모두 목록에 들어가 있어요</p>
+        <p className="py-8 text-center text-body-sm text-dim">출석한 사람은 모두 목록에 들어가 있어요</p>
       ) : (
         <button
           onClick={() => setSelected(allSelected ? new Set() : new Set(candidates.map((c) => c.attendanceId)))}
