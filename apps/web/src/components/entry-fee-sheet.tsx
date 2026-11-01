@@ -147,7 +147,8 @@ export function EntryFeeSheet({ sessionId, onClose }: { sessionId: string; onClo
   });
   const rows = allRows.filter((r) => r.included && !removing.has(r.attendanceId));
   // [명단에서 고르기] 후보 — 미리 출석만 해 두고 콕을 안 낸(아직 안 온) 사람은 뺀다
-  const candidates = allRows.filter((r) => !r.included && r.shuttleConfirmed);
+  // 값이 없으면(웹이 먼저 배포된 사이 옛 서버) 빼지 않는다 — 버튼이 막혀 아무도 못 넣게 되지 않도록
+  const candidates = allRows.filter((r) => !r.included && r.shuttleConfirmed !== false);
   const paidCount = rows.filter((r) => r.paid).length;
   const unpaid = rows.filter((r) => !r.paid);
   const fee = form.feeText ? Number(form.feeText) : null;
@@ -258,8 +259,7 @@ export function EntryFeeSheet({ sessionId, onClose }: { sessionId: string; onClo
               </span>
               <button
                 onClick={() => setPickerOpen(true)}
-                disabled={candidates.length === 0}
-                className="ml-auto h-9 shrink-0 rounded-lg border border-court/50 px-3 text-body-sm font-bold text-court disabled:border-line disabled:text-faint"
+                className="ml-auto h-9 shrink-0 rounded-lg border border-court/50 px-3 text-body-sm font-bold text-court"
               >
                 + 명단에서 고르기
               </button>
@@ -380,12 +380,17 @@ function EntryMemberPicker({
         </button>
       }
     >
-      <button
-        onClick={() => setSelected(allSelected ? new Set() : new Set(candidates.map((c) => c.attendanceId)))}
-        className="self-end text-caption font-medium text-dim"
-      >
-        {allSelected ? '전체 해제' : '전체 선택'}
-      </button>
+      {/* 후보가 없어도 시트는 열어 이유를 보여 준다 — 버튼만 막으면 고장처럼 보인다 */}
+      {candidates.length === 0 ? (
+        <p className="py-8 text-center text-body-sm text-dim">콕 확인된 사람은 모두 목록에 들어가 있어요</p>
+      ) : (
+        <button
+          onClick={() => setSelected(allSelected ? new Set() : new Set(candidates.map((c) => c.attendanceId)))}
+          className="self-end text-caption font-medium text-dim"
+        >
+          {allSelected ? '전체 해제' : '전체 선택'}
+        </button>
+      )}
       <div className="grid grid-cols-2 gap-1.5">
         {candidates.map((c) => {
           const on = selected.has(c.attendanceId);
