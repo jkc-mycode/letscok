@@ -12,7 +12,8 @@ import { RosterSort, RosterSortSelect, sortCandidates } from '@/components/admin
 
 // 보드에서 여는 시트 — 카드·명단 [⋯], 빈칸 채우기, 선수 교체
 
-// 부상·급한 일로 게임 중/대기 조합에서 한 명만 바꾼다 — 게임을 갈아엎지 않아 타이머·큐 순서 유지
+// 부상·급한 일로 게임 중/대기 조합에서 사람을 바꾼다 — 게임을 갈아엎지 않아 타이머·큐 순서 유지
+// 여러 명을 한 번에: 위에서 고른 순서대로 번호가 붙고, 아래에서 고르면 같은 번호의 자리로 짝이 된다(들어온 사람이 그 자리·팀을 잇는다)
 export function ReplacePlayerModal({
   game,
   attendances,
@@ -30,8 +31,23 @@ export function ReplacePlayerModal({
   onReplace: (outAttendanceId: string, inAttendanceId: string) => void; // 누르자마자 반영(보드가 맡음)
   onClose: () => void;
 }) {
-  const [outId, setOutId] = useState<string | null>(null);
-  const [inId, setInId] = useState<string | null>(null);
+  // 번호는 짝이 사라져도 다른 짝에서 바뀌지 않는다 — 취소할 때마다 번호가 당겨지면 누가 누구 자리인지 헷갈린다
+  const [pairs, setPairs] = useState<ReplacePair[]>([]);
+  const pairOfOut = (id: string) => pairs.find((p) => p.outId === id);
+  const pairOfIn = (id: string) => pairs.find((p) => p.inId === id);
+  const toggleOut = (id: string) =>
+    setPairs((list) => {
+      if (list.some((p) => p.outId === id)) return list.filter((p) => p.outId !== id);
+      const no = [1, 2, 3, 4].find((n) => !list.some((p) => p.no === n)) as number;
+      return [...list, { no, outId: id, inId: null }];
+    });
+  // 다시 누르면 그 사람만 빼고, 아니면 번호가 가장 빠른 빈 자리로 들어간다
+  const toggleIn = (id: string) =>
+    setPairs((list) => {
+      if (list.some((p) => p.inId === id)) return list.map((p) => (p.inId === id ? { ...p, inId: null } : p));
+      const open = list.filter((p) => !p.inId).sort((a, b) => a.no - b.no)[0];
+      return open ? list.map((p) => (p === open ? { ...p, inId: id } : p)) : list;
+    });
 
   const isPlaying = game.status === 'PLAYING';
   const playerIds = new Set((game.players ?? []).map((p) => p.attendanceId));
@@ -45,9 +61,13 @@ export function ReplacePlayerModal({
       !(isPlaying && a.status === 'PLAYING'),
   );
 
+  const missing = pairs.filter((p) => !p.inId).length;
+  const ready = pairs.length > 0 && missing === 0;
+  const nameOf = (id: string) => attendances.find((a) => a.id === id)?.member?.name ?? '';
+
   const submit = () => {
-    if (!outId || !inId) return;
-    onReplace(outId, inId);
+    if (!ready) return;
+    for (const pair of pairs) onReplace(pair.outId, pair.inId as string);
     onClose();
   };
 
@@ -60,37 +80,46 @@ export function ReplacePlayerModal({
         <>
           <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">선수 교체</h2>
           <p className="min-w-0 text-xs text-faint">
-            {isPlaying ? '타이머는 그대로 이어져요' : '조합 순서는 그대로 유지돼요'}
+            {isPlaying ? '타이머는 그대로 이어져요' : '조합 순서는 그대로 유지돼요'} · 같은 번호끼리 바뀌어요
           </p>
         </>
       }
       footer={
         <button
           onClick={submit}
-          disabled={!outId || !inId}
+          disabled={!ready}
           className="h-12 w-full rounded-xl bg-court text-base font-bold text-bg disabled:bg-panel2 disabled:text-faint"
         >
-          교체하기
+          {pairs.length === 0 ? '빠질 사람을 골라 주세요' : missing > 0 ? `들어올 사람을 ${missing}명 더 골라 주세요` : `${pairs.length}명 교체하기`}
         </button>
       }
     >
-      <div className="min-h-0 flex-1 scroll-area">
+      {/* 빠질 사람(짝 표시)은 고정 — 들어올 사람을 스크롤해도 누가 누구 자리인지 보인다 */}
+      <div className="shrink-0">
         <h3 className="pb-1.5 text-sm font-bold text-coral">빠질 사람</h3>
         <div className="grid grid-cols-2 gap-2">
           {(game.players ?? []).map((player) => {
             const member = player.attendance?.member;
             if (!member) return null;
+            const pair = pairOfOut(player.attendanceId);
             return (
               <button
                 key={player.attendanceId}
-                onClick={() => setOutId(player.attendanceId)}
-                className={`flex items-center gap-1.5 rounded-xl border p-3 text-sm ${
-                  outId === player.attendanceId
-                    ? 'border-coral bg-coral/10'
-                    : 'border-line bg-panel2'
+                onClick={() => toggleOut(player.attendanceId)}
+                aria-pressed={pair !== undefined}
+                className={`flex min-h-16 min-w-0 flex-col justify-center gap-1 rounded-xl border p-3 text-left text-sm ${
+                  pair ? 'border-coral bg-coral/10' : 'border-line bg-panel2'
                 }`}
               >
-                <PersonName person={member} nameClassName="truncate font-medium" crown />
+                <span className="flex min-w-0 items-center gap-1.5">
+                  {pair && <PairNumber no={pair.no} className="bg-coral text-bg" />}
+                  <PersonName person={member} nameClassName="truncate font-medium" crown />
+                </span>
+                {pair && (
+                  <span className={`truncate text-caption font-medium ${pair.inId ? 'text-court' : 'text-faint'}`}>
+                    → {pair.inId ? nameOf(pair.inId) : '들어올 사람 고르기'}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -102,6 +131,8 @@ export function ReplacePlayerModal({
             <RosterSortSelect value={sort} onChange={onSort} />
           </span>
         </div>
+      </div>
+      <div className="min-h-0 flex-1 scroll-area">
         {candidates.length === 0 && (
           <p className="py-6 text-center text-sm text-faint">교체 투입할 수 있는 인원이 없어요</p>
         )}
@@ -109,14 +140,17 @@ export function ReplacePlayerModal({
           {candidates.map((attendance) => {
             const member = attendance.member;
             if (!member) return null;
+            const pair = pairOfIn(attendance.id);
             return (
               <button
                 key={attendance.id}
-                onClick={() => setInId(attendance.id)}
+                onClick={() => toggleIn(attendance.id)}
+                aria-pressed={pair !== undefined}
                 className={`flex items-center gap-1.5 rounded-xl border p-3 text-sm ${
-                  inId === attendance.id ? 'border-court bg-court/10' : 'border-line bg-panel2'
+                  pair ? 'border-court bg-court/10' : 'border-line bg-panel2'
                 }`}
               >
+                {pair && <PairNumber no={pair.no} className="bg-court text-bg" />}
                 <RosterPerson member={member} chip={placeChip(attendance, placeLabels.get(attendance.id))} />
                 <GamesWaitText attendance={attendance} />
               </button>
@@ -125,6 +159,17 @@ export function ReplacePlayerModal({
         </div>
       </div>
     </Sheet>
+  );
+}
+
+type ReplacePair = { no: number; outId: string; inId: string | null };
+
+// 교체 짝 번호 — 빠질 사람(빨강)과 들어올 사람(초록)에 같은 번호를 붙인다
+function PairNumber({ no, className }: { no: number; className: string }) {
+  return (
+    <span className={`tabular flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-mono text-caption font-bold ${className}`}>
+      {no}
+    </span>
   );
 }
 
@@ -238,7 +283,7 @@ export function GameActionSheet({
         }}
         className={`${row} bg-panel2 text-ink`}
       >
-        {playing ? '교체 — 한 명만 바꾸기(타이머 유지)' : '교체 — 한 명만 바꾸기(순서 유지)'}
+        {playing ? '교체 — 사람만 바꾸기(타이머 유지)' : '교체 — 사람만 바꾸기(순서 유지)'}
       </button>
       {playing && (
         <button
