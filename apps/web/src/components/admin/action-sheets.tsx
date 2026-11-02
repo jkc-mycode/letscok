@@ -64,6 +64,15 @@ export function ReplacePlayerModal({
           </p>
         </>
       }
+      footer={
+        <button
+          onClick={submit}
+          disabled={!outId || !inId}
+          className="h-12 w-full rounded-xl bg-court text-base font-bold text-bg disabled:bg-panel2 disabled:text-faint"
+        >
+          교체하기
+        </button>
+      }
     >
       <div className="min-h-0 flex-1 scroll-area">
         <h3 className="pb-1.5 text-sm font-bold text-coral">빠질 사람</h3>
@@ -115,14 +124,6 @@ export function ReplacePlayerModal({
           })}
         </div>
       </div>
-
-      <button
-        onClick={submit}
-        disabled={!outId || !inId}
-        className="mt-4 h-12 rounded-xl bg-court text-base font-bold text-bg disabled:bg-panel2 disabled:text-faint"
-      >
-        교체하기
-      </button>
     </Sheet>
   );
 }
