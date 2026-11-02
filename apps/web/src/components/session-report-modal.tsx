@@ -1,11 +1,12 @@
 'use client';
 
 import { IHistorySessionDetail } from '@letscok/shared-types';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Sheet } from '@/components/sheet';
 import { ClearableTextarea } from '@/components/clearable-input';
 import { api, ApiError } from '@/lib/api';
 import { sessionReportText, sessionTag } from '@/lib/session-report';
+import { useCopy } from '@/lib/use-copy';
 
 const DEFAULT_CLOSING = '오늘도 수고 많으셨어요! 다음 모임에서 만나요 😊';
 
@@ -16,11 +17,6 @@ export function SessionReportModal({ sessionId, onClose }: { sessionId: string; 
   const [showSummary, setShowSummary] = useState(true);
   const [showTop, setShowTop] = useState(true);
   const [closing, setClosing] = useState(DEFAULT_CLOSING);
-  const [copied, setCopied] = useState<'done' | 'failed' | null>(null);
-  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (copiedTimer.current) clearTimeout(copiedTimer.current);
-  }, []);
 
   useEffect(() => {
     api<IHistorySessionDetail>(`/history/sessions/${sessionId}`, { admin: true })
@@ -41,16 +37,7 @@ export function SessionReportModal({ sessionId, onClose }: { sessionId: string; 
       })
     : '';
 
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied('done');
-    } catch {
-      setCopied('failed'); // 권한·비보안 환경 — 미리보기를 길게 눌러 직접 복사
-    }
-    if (copiedTimer.current) clearTimeout(copiedTimer.current);
-    copiedTimer.current = setTimeout(() => setCopied((c) => (c === 'done' ? null : c)), 2000);
-  };
+  const { copied, copy } = useCopy(text);
 
   const toggle = (on: boolean, set: (v: boolean) => void, label: string) => (
     <button

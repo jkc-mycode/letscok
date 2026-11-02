@@ -8,6 +8,7 @@ import { CameraIcon, ImageIcon } from '@/components/icons';
 import { Sheet } from '@/components/sheet';
 import { api, ApiError } from '@/lib/api';
 import { shrinkImage } from '@/lib/image';
+import { useCopy } from '@/lib/use-copy';
 import {
   DEFAULT_GROUPS,
   parseNames,
@@ -174,7 +175,6 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
   // 언제 뒤풀이였는지 — 보통 다음 날 공지라 기본 어제, 며칠 지났으면 [날짜]로 고른다
   const [day, setDay] = useState<'오늘' | '어제' | '날짜'>('어제');
   const [date, setDate] = useState(todayInput);
-  const [copied, setCopied] = useState<'done' | 'failed' | null>(null);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [receipt, setReceipt] = useState<ReceiptDraft | null>(null);
   const nextItemKey = useRef(1);
@@ -182,10 +182,6 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
   const [receiptError, setReceiptError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const cameraInput = useRef<HTMLInputElement>(null);
-  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (copiedTimer.current) clearTimeout(copiedTimer.current);
-  }, []);
 
   // 서버에 AI 키가 없으면 영수증 버튼을 숨긴다 (AI 체크인과 같은 AiClient라 상태 API를 같이 쓴다)
   useEffect(() => {
@@ -315,16 +311,7 @@ export function SettlementModal({ onClose }: { onClose: () => void }) {
       ? settlementPeopleText({ total: input.total, when, place, people: result.people })
       : settlementText({ total: input.total, when, place, shares: result.shares });
 
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied('done');
-    } catch {
-      setCopied('failed'); // 권한·비보안 환경 — 아래 상자에서 직접 길게 눌러 복사
-    }
-    if (copiedTimer.current) clearTimeout(copiedTimer.current);
-    copiedTimer.current = setTimeout(() => setCopied((c) => (c === 'done' ? null : c)), 2000);
-  };
+  const { copied, copy } = useCopy(text);
 
   return (
     // 입력 중인 시트라 바깥 배경 탭으로는 닫지 않는다(끌어내리기·[닫기]·뒤로가기는 됨)

@@ -1,10 +1,11 @@
 'use client';
 
 import { IEntryFee, ISetEntryMembersDto, IUpdateEntryFeeDto } from '@letscok/shared-types';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { GuestMark } from '@/components/badges';
 import { Sheet } from '@/components/sheet';
 import { api, ApiError } from '@/lib/api';
+import { useCopy } from '@/lib/use-copy';
 
 // 오늘의 입장비 — 한 사람이 체육관에 몰아서 내고 나머지가 계좌로 보낸다. 운영진이 입금 내역을 보고 체크한다
 // 다 같이 한 사람에게 내는 게 아니라(각자 내는 사람도 있다) 출석자 중 [명단에서 고르기]로 넣은 사람만 목록에 든다
@@ -421,21 +422,7 @@ function EntryMemberPicker({
 
 // 카톡 문구 복사 — 자동 복사가 막힌 환경(권한·비보안 주소)에서는 상자를 띄워 길게 눌러 복사하게 한다
 function CopyButton({ label, text }: { label: string; text: string }) {
-  const [state, setState] = useState<'done' | 'failed' | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
-  }, []);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setState('done');
-    } catch {
-      setState('failed');
-    }
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setState((s) => (s === 'done' ? null : s)), 2000);
-  };
+  const { copied: state, copy } = useCopy(text);
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1.5">
       <button
