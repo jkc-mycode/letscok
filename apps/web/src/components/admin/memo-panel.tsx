@@ -2,6 +2,7 @@
 
 import { IAdminMemo } from '@letscok/shared-types';
 import { useCallback, useEffect, useState } from 'react';
+import { Zone } from '@/components/admin/board-ui';
 import { ClearableInput } from '@/components/clearable-input';
 import { ConfirmButton } from '@/components/confirm-button';
 import { api } from '@/lib/api';
@@ -99,11 +100,13 @@ export function MemoPanel({
   };
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col rounded-2xl bg-panel">
-      <h2 className="flex items-center gap-2 px-4 pt-3 pb-2 text-sm font-bold text-sky">
-        메모
-        <span className="tabular font-mono text-xs text-faint">{view.length}</span>
-        {view.length > 0 && (
+    <Zone
+      title="메모"
+      accent="text-sky"
+      count={view.length}
+      className="flex-1"
+      headerExtra={
+        view.length > 0 && (
           <ConfirmButton
             label="초기화"
             confirmLabel="한 번 더 누르면 전체 삭제"
@@ -112,48 +115,44 @@ export function MemoPanel({
             idleCls="border-line text-dim"
             armedCls="border-coral bg-coral/15 text-coral"
           />
-        )}
-      </h2>
-      {view.length > 0 && (
-        <ul className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain px-3">
-          {view.map((memo) => (
-            <li
-              key={memo.id}
-              className="flex items-center gap-2 rounded-lg bg-panel2 px-3 py-2 text-sm"
-            >
-              <span className="min-w-0 flex-1 break-words">{memo.content}</span>
-              <button
-                onClick={() => remove(memo.id)}
-                disabled={memo.id.startsWith(TEMP_MEMO_PREFIX)} // 아직 서버에 없는 메모는 지울 id가 없다
-                title="완료 (삭제)"
-                className="tap h-7 w-7 shrink-0 rounded-lg text-xs text-dim hover:text-coral"
-              >
-                ✕
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="flex gap-2 p-3">
-        <ClearableInput
-          autoComplete="off"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && add()}
-          maxLength={200}
-          placeholder="메모 — 모임 끝나도 유지돼요"
-          className="h-10 rounded-lg border-2 border-transparent bg-panel2 px-3 text-sm outline-none focus:border-court"
-          onClear={() => setInput('')}
-          wrapperClassName="min-w-0 flex-1"
-        />
-        <button
-          onClick={add}
-          disabled={!input.trim()}
-          className="h-10 shrink-0 rounded-lg bg-court/10 px-3 text-sm font-medium text-court disabled:opacity-50"
-        >
-          추가
-        </button>
-      </div>
-    </section>
+        )
+      }
+      footer={
+        <>
+          <ClearableInput
+            autoComplete="off"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && add()}
+            maxLength={200}
+            placeholder="메모 — 모임 끝나도 유지돼요"
+            className="h-10 rounded-lg border-2 border-transparent bg-panel2 px-3 text-sm outline-none focus:border-court"
+            onClear={() => setInput('')}
+            wrapperClassName="min-w-0 flex-1"
+          />
+          <button
+            onClick={add}
+            disabled={!input.trim()}
+            className="h-10 shrink-0 rounded-lg bg-court/10 px-3 text-sm font-medium text-court disabled:opacity-50"
+          >
+            추가
+          </button>
+        </>
+      }
+    >
+      {view.map((memo) => (
+        <div key={memo.id} className="flex items-center gap-2 rounded-lg bg-panel2 px-3 py-2 text-sm">
+          <span className="min-w-0 flex-1 break-words">{memo.content}</span>
+          <button
+            onClick={() => remove(memo.id)}
+            disabled={memo.id.startsWith(TEMP_MEMO_PREFIX)} // 아직 서버에 없는 메모는 지울 id가 없다
+            title="완료 (삭제)"
+            className="tap h-7 w-7 shrink-0 rounded-lg text-xs text-dim hover:text-coral"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+    </Zone>
   );
 }
