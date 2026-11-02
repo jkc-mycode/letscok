@@ -82,6 +82,7 @@ export function CourtsZone({
 
 export function QueueZone({
   queuedGames,
+  cardKeyOf,
   idleCourts,
   overlapIds,
   fillableCount,
@@ -99,6 +100,7 @@ export function QueueZone({
   onRecommend,
 }: {
   queuedGames: IGame[];
+  cardKeyOf: (gameId: string) => string; // 임시 카드에서 서버 카드로 바뀌어도 같은 key
   idleCourts: ICourt[];
   overlapIds: Set<string>;
   fillableCount: number; // 지금 빈 코트에 넣을 수 있는 조합 수 — 0이면 [빈 코트 채우기]를 숨긴다
@@ -140,7 +142,7 @@ export function QueueZone({
       <AnimatePresence initial={false}>
         {queuedGames.map((game, index) => (
           <QueueCard
-            key={game.id}
+            key={cardKeyOf(game.id)}
             game={game}
             order={index + 1}
             neighborUp={queuedGames[index - 1]}

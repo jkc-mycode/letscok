@@ -371,6 +371,14 @@ export function useOptimisticBoard({
   );
   // 임시 조합 → 서버 조합 id(만들어지면). 만든 직후의 조작(넣기·빼기·배정·해체)은 이걸 기다렸다 보낸다
   const tempReal = useRef(new Map<string, Promise<string | null>>());
+  // 임시 카드와 그 서버 카드를 같은 카드로 그린다 — key가 바뀌면 카드가 사라졌다 다시 떠올라 깜빡여 보인다
+  // 서버 화면에 실린 바로 그 렌더에서 잡는다(임시 카드가 빠지는 순간과 같아야 끊기지 않는다)
+  const cardKeys = useRef(new Map<string, string>());
+  for (const t of optCreated) {
+    const server = snapshot.games.find((g) => isSettled(t, [g]));
+    if (server) cardKeys.current.set(server.id, t.game.id);
+  }
+  const cardKeyOf = (gameId: string) => cardKeys.current.get(gameId) ?? gameId;
   const serverIdOf = useCallback(async (gameId: string) => {
     if (!gameId.startsWith(TEMP_GAME_PREFIX)) return gameId;
     const realId = await tempReal.current.get(gameId);
@@ -1103,6 +1111,7 @@ export function useOptimisticBoard({
     courts,
     playingByCourt,
     queuedGames,
+    cardKeyOf,
     idleCourts,
     shuttleView,
     pendingShuttle,

@@ -330,6 +330,7 @@ function BoardBody({
     courts,
     playingByCourt,
     queuedGames,
+    cardKeyOf,
     idleCourts,
     shuttleView,
     pendingShuttle,
@@ -628,6 +629,7 @@ function BoardBody({
           <div className={pane}>
           <QueueZone
             queuedGames={queuedGames}
+            cardKeyOf={cardKeyOf}
             idleCourts={idleCourts}
             overlapIds={overlapIds}
             fillableCount={fillableCount}
