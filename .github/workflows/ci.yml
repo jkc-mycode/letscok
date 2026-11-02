@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# 테스트와 빌드는 코드를 읽기만 한다
+permissions:
+  contents: read
+
 jobs:
   test:
     name: 서버 테스트 + 빌드 검증

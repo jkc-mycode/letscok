@@ -17,6 +17,21 @@ const nextConfig: NextConfig = {
       { source: '/history/:path*', destination: '/admin/history/:path*', permanent: true },
     ];
   },
+  // 다른 사이트 안에 넣어 띄우지 못하게 — 관제판을 투명하게 겹쳐 클릭을 유도하는 공격(클릭재킹) 방지
+  // 스크립트까지 묶는 전체 CSP는 Sentry·Next 인라인 스크립트 예외가 많아 걸지 않고 frame-ancestors만 쓴다
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+        ],
+      },
+    ];
+  },
 };
 
 // Sentry 래핑: 빌드 시 소스맵을 업로드해 스택 트레이스를 원본 코드로 표시
