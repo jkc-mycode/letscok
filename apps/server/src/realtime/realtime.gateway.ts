@@ -19,6 +19,10 @@ function sessionRoom(sessionId: string): string {
   return `session:${sessionId}`;
 }
 
+const SESSION_ID_MAX = 64;
+// 한 연결이 들 수 있는 모임 방 수 — 화면이 동시에 연 모임을 오가며 들어가므로 넘치면 가장 오래된 방에서 나간다
+const MAX_ROOMS = 5;
+
 @WebSocketGateway({
   // REST와 달리 게이트웨이 데코레이터는 부팅 초기에 평가되므로 main.ts 최상단의
   // dotenv 로드에 의존한다 (CORS_ORIGINS 미설정 시 로컬 웹만 허용)
@@ -40,10 +44,13 @@ export class RealtimeGateway {
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: IJoinSessionPayload,
   ): { success: boolean } {
-    if (!payload?.sessionId) {
+    const sessionId = payload?.sessionId;
+    if (typeof sessionId !== 'string' || !sessionId || sessionId.length > SESSION_ID_MAX) {
       return { success: false };
     }
-    void client.join(sessionRoom(payload.sessionId));
+    const joined = [...client.rooms].filter((room) => room !== client.id);
+    if (joined.length >= MAX_ROOMS) void client.leave(joined[0]);
+    void client.join(sessionRoom(sessionId));
     return { success: true };
   }
 

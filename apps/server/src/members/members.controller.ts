@@ -18,6 +18,7 @@ import { AdminGuard, isAdminRequest } from '../common/guards/admin.guard';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { CreateMemberAliasDto } from './dto/member-alias.dto';
 import { MemberPageQueryDto } from './dto/member-page-query.dto';
+import { MemberSearchQueryDto } from './dto/member-search-query.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
 import { MembersService } from './members.service';
 
@@ -38,18 +39,19 @@ export class MembersController {
   // 공개 — 모임원 출석 화면이 쓴다. 생년월일은 운영진(토큰·패스코드)일 때만 전체, 아니면 출생 연도만
   @Get('search')
   async search(
-    @Query('name') name: string | undefined,
+    @Query() query: MemberSearchQueryDto,
     @Headers('x-admin-passcode') passcode: string | undefined,
     @Headers('authorization') authorization: string | undefined,
     @Ip() ip: string,
   ): Promise<IApiResponse<IMember[]>> {
-    if (!name?.trim()) {
+    const name = query.name?.trim();
+    if (!name) {
       throw new BadRequestException('검색할 이름을 입력해주세요.');
     }
     const admin = isAdminRequest({ authorization, passcode }, ip);
     // 공개 검색은 두 글자부터 — 한 글자씩 바꿔 가며 명단 전체를 뽑아 가지 못하게(초성 두 글자도 허용)
-    if (!admin && name.trim().length < 2) return { success: true, data: [] };
-    return { success: true, data: await this.membersService.search(name.trim(), admin) };
+    if (!admin && name.length < 2) return { success: true, data: [] };
+    return { success: true, data: await this.membersService.search(name, admin) };
   }
 
   // 명단 목록 — [모임원 관리] 화면 전용, 삭제 회원·출석 집계 포함

@@ -7,6 +7,7 @@ import {
   ISessionSnapshot,
 } from '@letscok/shared-types';
 import { AdminGuard } from '../common/guards/admin.guard';
+import { CurrentSessionQueryDto } from './dto/current-session-query.dto';
 import { OpenSessionDto } from './dto/open-session.dto';
 import { UpdateCheckInCodeDto } from './dto/update-check-in-code.dto';
 import { UpdateSessionLabelDto } from './dto/update-session-label.dto';
@@ -54,10 +55,9 @@ export class SessionsController {
   // 동시에 연 모임이 있으면 id(화면이 고른 모임)·memberId(내가 출석한 모임)로 고른다
   @Get('current')
   async getCurrent(
-    @Query('id') id?: string,
-    @Query('memberId') memberId?: string,
+    @Query() query: CurrentSessionQueryDto,
   ): Promise<IApiResponse<ISessionSnapshot>> {
-    return { success: true, data: await this.sessionsService.getCurrentSnapshot({ id, memberId }) };
+    return { success: true, data: await this.sessionsService.getCurrentSnapshot(query) };
   }
 
   // 체크인 코드 — 운영진 전용 (관제판 표시·변경용). 공개 스냅샷엔 코드를 안 싣기 때문에 별도 경로
