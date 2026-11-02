@@ -138,57 +138,6 @@ export function MeChip() {
   );
 }
 
-// 게임 참여 4인 그리드 — 관제판·모임원 화면 공용 (highlightMemberId = 본인 강조)
-// overlapIds = 여러 대기 조합에 겹쳐 들어간 인원 (중복 대기 허용 정책 표시용)
-export function PlayerGrid({
-  game,
-  highlightMemberId,
-  overlapIds,
-}: {
-  game: IGame;
-  highlightMemberId?: string | null;
-  overlapIds?: Set<string>;
-}) {
-  return (
-    <>
-    <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5">
-      {game.players?.map((player) => {
-        const member = player.attendance?.member;
-        if (!member) return null;
-        const isMe = member.id === highlightMemberId;
-        // 대기 조합 카드에 있는데 본인은 다른 코트에서 게임 중 = 미리 짜둔 조합의 차용 인원
-        const isBusy = game.status === 'QUEUED' && player.attendance?.status === 'PLAYING';
-        return (
-          <div key={player.id} className="flex min-w-0 items-center gap-1.5 overflow-hidden text-sm">
-            {/* 이름은 줄이지 않는다 — 좁으면 옆 칩이 줄어든다 */}
-            <PersonName
-              person={member}
-              nameClassName={`shrink-0 whitespace-nowrap font-medium ${isMe ? 'font-bold text-court' : ''}`}
-              guest="short"
-            />
-            {isMe && <MeChip />}
-            {isBusy && (
-              <span className="min-w-0 truncate rounded bg-coral/15 px-1 py-0.5 text-caption font-medium text-coral">
-                게임 중
-              </span>
-            )}
-            {!isBusy && overlapIds?.has(player.attendanceId) && (
-              <span
-                title="다른 대기 조합에도 포함"
-                className="min-w-0 truncate rounded bg-amber/15 px-1 py-0.5 text-caption font-medium text-amber"
-              >
-                겹침
-              </span>
-            )}
-          </div>
-        );
-      })}
-    </div>
-    <PartnerNote people={gamePartnerPeople(game)} />
-    </>
-  );
-}
-
 // 대회 연습 파트너 — 같은 게임에 든 두 사람이 서로를 가리키면 "한 팀" 한 줄(편은 코트에서 선수들이 정한다)
 export type PartnerPerson = { id: string; name: string; partnerId: string | null };
 export function PartnerNote({ people, className = 'mt-2' }: { people: PartnerPerson[]; className?: string }) {
