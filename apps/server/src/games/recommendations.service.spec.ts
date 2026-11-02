@@ -328,6 +328,41 @@ describe('recommend — 앞으로의 줄을 계산해 후보를 고른다', () =
   });
 });
 
+describe('recommend — 카드 4장과 다시 추천', () => {
+  const keyOf = (rec: { players: { attendanceId: string }[] }) => rec.players.map((p) => p.attendanceId).sort().join('|');
+
+  it('공정성 2장, 새 조합 2장을 서로 다른 조합으로 보여 준다', async () => {
+    const session = await seedSession();
+    await Promise.all(Array.from({ length: 10 }, () => seedAttendance(session.id, 'MALE')));
+
+    const recs = await service.recommend(session.id);
+
+    expect(recs.map((r) => r.kind)).toEqual(['FAIRNESS', 'FAIRNESS', 'FRESH', 'FRESH']);
+    expect(new Set(recs.map(keyOf)).size).toBe(4);
+  });
+
+  it('다시 추천은 본 조합을 빼고 다음 순위를 보여 주고, 후보가 끝나면 처음으로 돌아간다', async () => {
+    const session = await seedSession();
+    await Promise.all(Array.from({ length: 6 }, () => seedAttendance(session.id, 'MALE'))); // 조합 15개 — 4장씩 4묶음
+
+    const pages = await Promise.all([0, 1, 2, 3].map((page) => service.recommend(session.id, 'ALL', [], page)));
+    const keys = pages.flat().map(keyOf);
+    expect(new Set(keys).size).toBe(keys.length); // 한 번 본 조합은 다시 안 나온다
+    expect(keys).toHaveLength(15);
+
+    const wrapped = await service.recommend(session.id, 'ALL', [], 4);
+    expect(wrapped.map(keyOf)).toEqual(pages[0].map(keyOf));
+  });
+
+  it('후보가 1개뿐이면 다시 추천해도 그 조합이다', async () => {
+    const session = await seedSession();
+    await Promise.all(Array.from({ length: 4 }, () => seedAttendance(session.id, 'MALE')));
+
+    const recs = await service.recommend(session.id, 'ALL', [], 3);
+    expect(recs).toHaveLength(1);
+  });
+});
+
 describe('recommend — 지정 인원(fixedIds)', () => {
   it('지정한 사람은 모든 후보에 들어가고 pinned로 표시, 나머지 자리만 채운다', async () => {
     const session = await seedSession();

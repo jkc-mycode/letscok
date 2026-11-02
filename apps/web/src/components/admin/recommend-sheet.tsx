@@ -12,7 +12,7 @@ import { Sheet } from '@/components/sheet';
 import { PartnerNote, PersonName } from '@/components/badges';
 import { api, ApiError } from '@/lib/api';
 
-// 게임 추천 시트 — 공정성·새 조합·믹스 후보 3개, 종목 탭, 짜는 중 조합의 빈자리 추천
+// 게임 추천 시트 — 공정성 2장·새 조합 2장, 종목 탭, 짜는 중 조합의 빈자리 추천
 
 // 후보 성격별 표시 — 서버의 RecommendationKind와 1:1
 const KIND_META: Record<
@@ -21,7 +21,6 @@ const KIND_META: Record<
 > = {
   FAIRNESS: { label: '공정성', desc: '오래 기다린 사람부터', text: 'text-court', border: 'border-court/40' },
   FRESH: { label: '새 조합', desc: '오늘 안 만난 사람 위주', text: 'text-sky', border: 'border-sky/40' },
-  MIX: { label: '믹스', desc: '상위 조합에서 살짝 섞음', text: 'text-amber', border: 'border-amber/40' },
 };
 
 // 종목 탭 — 서버 category 필터와 1:1. ALL이 기본(기존 동작)
@@ -63,6 +62,7 @@ export function RecommendModal({
   const [category, setCategory] = useState<RecommendationCategory>('ALL');
   const [candidates, setCandidates] = useState<IGameRecommendation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(0); // [다시 추천] 횟수 — 누를 때마다 다음 순위
   const fixedIds = (fillGame?.players ?? []).map((p) => p.attendanceId);
   const fixedKey = fixedIds.join(','); // 조합 사람이 바뀌면 다시 추천
 
@@ -72,14 +72,14 @@ export function RecommendModal({
     try {
       setCandidates(
         await api<IGameRecommendation[]>(
-          `/sessions/${sessionId}/game-recommendations?category=${category}${fixedKey ? `&fixed=${fixedKey}` : ''}`,
+          `/sessions/${sessionId}/game-recommendations?category=${category}&page=${page}${fixedKey ? `&fixed=${fixedKey}` : ''}`,
           { admin: true },
         ),
       );
     } catch (e) {
       setError(e instanceof ApiError ? e.message : '추천을 불러오지 못했습니다.');
     }
-  }, [sessionId, category, fixedKey]);
+  }, [sessionId, category, fixedKey, page]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -103,7 +103,7 @@ export function RecommendModal({
           </h2>
           <p className="min-w-0 text-xs text-faint">참고용이에요 — 넣을지는 운영진 마음!</p>
           <button
-            onClick={() => void load()}
+            onClick={() => setPage((n) => n + 1)}
             className="ml-auto h-9 shrink-0 rounded-lg bg-panel2 px-3 text-sm text-dim"
           >
             다시 추천
@@ -116,7 +116,10 @@ export function RecommendModal({
         {CATEGORY_TABS.map((tab) => (
           <button
             key={tab.value}
-            onClick={() => setCategory(tab.value)}
+            onClick={() => {
+              setCategory(tab.value);
+              setPage(0);
+            }}
             className={`h-9 rounded-lg border px-3 text-sm font-medium ${
               category === tab.value
                 ? 'border-court bg-court/10 text-court'
@@ -138,12 +141,12 @@ export function RecommendModal({
             {emptyMessage(category, attendances)}
           </p>
         )}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {candidates?.map((rec) => {
             const meta = KIND_META[rec.kind];
             return (
               <div
-                key={rec.kind}
+                key={rec.players.map((p) => p.attendanceId).join('|')}
                 className={`flex flex-col rounded-xl border bg-panel2 p-4 ${meta.border}`}
               >
                 {/* 종류 라벨 + 성별 구성(혼복/남복/여복/혼성 N:N)을 한 줄, 설명은 아래 줄 */}

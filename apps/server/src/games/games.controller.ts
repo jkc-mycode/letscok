@@ -55,6 +55,7 @@ export class GamesController {
         sessionId,
         query.category,
         query.fixed ? query.fixed.split(',').filter(Boolean) : [],
+        query.page,
       ),
     };
   }

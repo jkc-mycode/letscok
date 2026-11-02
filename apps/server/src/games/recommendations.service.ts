@@ -28,6 +28,14 @@ const POOL_CAP = 30; // 전수 탐색 상한 — C(30,4)=27,405 조합
 // 코트가 1개여도 2칸은 띄운다 — 바로 붙은 조합끼리 겹치면 앞 조합이 코트에 들어가는 순간 뒤 조합이 막혀 순서가 꼬인다
 const MIN_QUEUE_GAP = 2;
 
+// 한 번에 보여 주는 카드 순서
+const CARD_ORDER = [
+  RecommendationKind.FAIRNESS,
+  RecommendationKind.FAIRNESS,
+  RecommendationKind.FRESH,
+  RecommendationKind.FRESH,
+];
+
 const CATEGORY_LABEL: Record<RecommendationCategory, string> = {
   ALL: '전체',
   MENS: '남복',
@@ -50,7 +58,8 @@ export class RecommendationsService {
     private readonly sessionsService: SessionsService,
   ) {}
 
-  // 줄 맨 끝에 넣을 1게임의 후보 조합 최대 3개 (공정성/새 조합/믹스) — 저장 없이 계산만
+  // 줄 맨 끝에 넣을 1게임의 후보 조합 — 공정성 2장, 새 조합 2장. 저장 없이 계산만
+  // page = [다시 추천] 횟수. 누를 때마다 다음 순위를 보여 주고, 후보가 끝나면 처음으로 돌아간다
   // 미리 짜는 운영이 기본이라 미배정 대기뿐 아니라 조합·게임에 든 사람도 후보다(휴식·콕 미확인 제외)
   // category = 종목 탭 필터. ALL은 표준 복식(남복·여복·혼복)만, 종목이면 성별 확정자 풀 + 구성 강제
   // fixedIds = "이 사람은 꼭 넣어"(AI 명령 등) — 모든 후보에 포함하고 나머지 자리만 점수로 채운다.
@@ -59,6 +68,7 @@ export class RecommendationsService {
     sessionId: string,
     category: RecommendationCategory = 'ALL',
     fixedIds: string[] = [],
+    page = 0,
   ): Promise<IGameRecommendation[]> {
     await this.sessionsService.findOpenSessionOrThrow(sessionId);
 
@@ -207,54 +217,49 @@ export class RecommendationsService {
         borrowed * W_BORROW;
       return {
         players,
+        key: players.map((p) => p.id).sort().join('|'),
         repeatPairs,
         score: base - repeatOccur * W_REPEAT,
         freshScore: base - repeatOccur * W_REPEAT * 3, // 반복 감점 3배 = "오늘 안 만난 사람" 버전
       };
     });
 
-    // 후보 구성: ①공정성 최고점 ②다양성 가중 최고점 ③상위 10위 내 무작위 — 서로 중복 제거
-    const results: IGameRecommendation[] = [];
+    // 후보 묶음 — 순위대로 공정성 2장·새 조합 2장씩 나누고 이미 쓴 조합은 다시 쓰지 않는다
+    // 상위 조합은 한두 명만 다른 경우가 많아, 같은 묶음 안에서는 절반 넘게 겹치지 않는 조합을 먼저 고른다
+    const byScore = [...scored].sort((a, b) => b.score - a.score);
+    const byFresh = [...scored].sort((a, b) => b.freshScore - a.freshScore);
     const used = new Set<string>();
-    const pick = (
-      candidate: (typeof scored)[number] | undefined,
-      kind: RecommendationKind,
-    ) => {
-      if (!candidate) return;
-      const key = candidate.players
-        .map((p) => p.id)
-        .sort()
-        .join('|');
-      if (used.has(key)) return;
-      used.add(key);
-      results.push({
-        kind,
-        repeatPairCount: candidate.repeatPairs,
-        genderLabel: genderLabel(candidate.players),
-        players: candidate.players.map((p) => toRecommendedPlayer(p, now, fixedSet.has(p.id))),
-      });
+    const maxShared = Math.floor(need / 2);
+    const takeNext = (ranked: typeof scored, batch: typeof scored) => {
+      const open = ranked.filter((c) => !used.has(c.key));
+      const shared = (c: (typeof scored)[number], other: (typeof scored)[number]) =>
+        c.players.filter((p) => !fixedSet.has(p.id) && other.players.includes(p)).length;
+      const candidate = open.find((c) => batch.every((other) => shared(c, other) <= maxShared)) ?? open[0];
+      if (candidate) {
+        used.add(candidate.key);
+        batch.push(candidate);
+      }
+      return candidate;
     };
 
-    const byScore = [...scored].sort((a, b) => b.score - a.score);
-    pick(byScore[0], RecommendationKind.FAIRNESS);
-
-    const byFresh = [...scored].sort((a, b) => b.freshScore - a.freshScore);
-    pick(
-      byFresh.find(
-        (c) => !used.has(c.players.map((p) => p.id).sort().join('|')),
-      ),
-      RecommendationKind.FRESH,
-    );
-
-    const topRest = byScore
-      .slice(0, 10)
-      .filter((c) => !used.has(c.players.map((p) => p.id).sort().join('|')));
-    pick(
-      topRest[Math.floor(Math.random() * topRest.length)],
-      RecommendationKind.MIX,
-    );
-
-    return results;
+    const batches: IGameRecommendation[][] = [];
+    while (batches.length <= page) {
+      const batch: typeof scored = [];
+      const cards: IGameRecommendation[] = [];
+      for (const [ranked, kind] of CARD_ORDER.map((k) => [k === RecommendationKind.FAIRNESS ? byScore : byFresh, k] as const)) {
+        const candidate = takeNext(ranked, batch);
+        if (!candidate) continue;
+        cards.push({
+          kind,
+          repeatPairCount: candidate.repeatPairs,
+          genderLabel: genderLabel(candidate.players),
+          players: candidate.players.map((p) => toRecommendedPlayer(p, now, fixedSet.has(p.id))),
+        });
+      }
+      if (cards.length === 0) break; // 후보를 다 썼다
+      batches.push(cards);
+    }
+    return batches[page % batches.length];
   }
 
   // 지정 인원 검증 — 이 모임의 출석자(퇴장·콕 미확인 제외)여야 하고, 휴식 중이 아니며, 종목 성별에 맞아야 한다

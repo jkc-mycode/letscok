@@ -44,6 +44,13 @@ export class RecommendGamesQueryDto {
   @IsOptional()
   @IsString({ message: '올바르지 않은 지정 인원입니다.' })
   fixed?: string;
+
+  // [다시 추천]을 누른 횟수 — 후보가 끝나면 서비스가 처음으로 돌린다
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: '올바르지 않은 추천 순서입니다.' })
+  @Min(0, { message: '올바르지 않은 추천 순서입니다.' })
+  page?: number;
 }
 
 // 코트 배정 요청 — 대기 조합을 올릴 코트 id
