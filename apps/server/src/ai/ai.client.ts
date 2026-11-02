@@ -13,9 +13,12 @@ import type {
   ChatCompletionCreateParamsNonStreaming,
 } from 'openai/resources/chat/completions';
 import { z } from 'zod';
+import { toDateString, todayKst } from '../common/utils/date.util';
 
 // OpenRouter — OpenAI 호환 API로 여러 회사 모델을 키 하나로 호출 (마크헙 OpenRouterLlmProvider와 같은 구성)
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
+// 하루 호출 상한 — 운영진 토큰이 새도 비용이 계속 나가지 않게. 메모리에 둔다(서버 한 대, 재시작하면 풀리는 정도는 감수)
+export const AI_DAILY_LIMIT = 100;
 
 // AI는 "읽기"만 한다 — 응답을 스키마로 고정(구조화 출력)하고 서버가 zod로 다시 검증해
 // 자유 문장이 나올 길을 막는다. 화면에 보이는 문장은 전부 서버가 조립한다
@@ -24,6 +27,7 @@ export class AiClient {
   private readonly logger = new Logger(AiClient.name);
   private readonly client: OpenAI | null = null;
   private readonly model: string | null = null;
+  private usage = { day: '', count: 0 };
 
   constructor() {
     const apiKey = process.env.OPENROUTER_API_KEY;
@@ -54,6 +58,7 @@ export class AiClient {
     if (!this.client || !this.model) {
       throw new ServiceUnavailableException('AI 기능이 꺼져 있어요.');
     }
+    this.countDailyUsage(fallback);
     // $schema 키는 일부 제공자가 거부해서 뺀다 (z.strictObject → additionalProperties:false, 필드 전부 required)
     const { $schema: _ignored, ...jsonSchema } = z.toJSONSchema(schema) as Record<string, unknown>;
 
@@ -97,6 +102,17 @@ export class AiClient {
     const result = schema.safeParse(parsed);
     if (!result.success) throw this.unreadable(schemaName, result.error.message, fallback);
     return result.data;
+  }
+
+  // 호출 전에 센다 — 실패해도 비용이 들 수 있는 호출이라 성공만 세면 상한이 새어 나간다
+  private countDailyUsage(fallback: string) {
+    const day = toDateString(todayKst());
+    if (this.usage.day !== day) this.usage = { day, count: 0 };
+    if (this.usage.count >= AI_DAILY_LIMIT) {
+      this.logger.warn(`AI 하루 상한(${AI_DAILY_LIMIT}회)에 닿았습니다.`);
+      throw new HttpException(`오늘 AI 사용 횟수를 다 썼어요. ${fallback}`, HttpStatus.TOO_MANY_REQUESTS);
+    }
+    this.usage.count += 1;
   }
 
   private unreadable(schemaName: string, reason: string, fallback: string) {

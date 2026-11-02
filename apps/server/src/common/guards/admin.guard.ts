@@ -26,13 +26,19 @@ const MAX_FAILS = 10;
 const WINDOW_MS = 15 * 60 * 1000;
 const LOCK_MS = 15 * 60 * 1000;
 const MAX_TRACKED = 1000; // 접속 주소를 바꿔 가며 기록을 불리는 경우의 상한
+// 전체 잠금 — 접속 주소를 바꿔 가며 맞혀 보면 위 잠금에 안 걸린다. 10분에 20번 틀리면 15분 동안 누구도 패스코드로 못 들어온다
+// 이미 로그인한 기기는 토큰으로 다니므로 이 잠금과 상관없다
+const GLOBAL_MAX_FAILS = 20;
+const GLOBAL_WINDOW_MS = 10 * 60 * 1000;
 
 export const LOCKED_MESSAGE = '패스코드를 여러 번 틀려 15분 동안 잠겼어요. 잠시 후 다시 시도해 주세요.';
 
 class PasscodeLockout {
   private readonly records = new Map<string, { fails: number; firstAt: number; lockedUntil: number }>();
+  private global = { fails: 0, firstAt: 0, lockedUntil: 0 };
 
   isLocked(ip: string, now = Date.now()): boolean {
+    if (this.global.lockedUntil > now) return true;
     const record = this.records.get(ip);
     if (!record) return false;
     if (record.lockedUntil > now) return true;
@@ -42,6 +48,9 @@ class PasscodeLockout {
 
   // 실패를 세고, 이번 실패로 잠겼으면 true
   fail(ip: string, now = Date.now()): boolean {
+    if (now - this.global.firstAt > GLOBAL_WINDOW_MS) this.global = { fails: 0, firstAt: now, lockedUntil: 0 };
+    this.global.fails += 1;
+    if (this.global.fails >= GLOBAL_MAX_FAILS) this.global.lockedUntil = now + LOCK_MS;
     let record = this.records.get(ip);
     if (!record || now - record.firstAt > WINDOW_MS) {
       if (!record && this.records.size >= MAX_TRACKED) this.prune(now);
@@ -50,7 +59,7 @@ class PasscodeLockout {
     }
     record.fails += 1;
     if (record.fails >= MAX_FAILS) record.lockedUntil = now + LOCK_MS;
-    return record.lockedUntil > now;
+    return record.lockedUntil > now || this.global.lockedUntil > now;
   }
 
   succeed(ip: string): void {
@@ -59,6 +68,7 @@ class PasscodeLockout {
 
   reset(): void {
     this.records.clear();
+    this.global = { fails: 0, firstAt: 0, lockedUntil: 0 };
   }
 
   private prune(now: number): void {

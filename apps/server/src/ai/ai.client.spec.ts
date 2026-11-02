@@ -1,7 +1,7 @@
 import { HttpException, ServiceUnavailableException, UnprocessableEntityException } from '@nestjs/common';
 import OpenAI from 'openai';
 import { z } from 'zod';
-import { AiClient } from './ai.client';
+import { AI_DAILY_LIMIT, AiClient } from './ai.client';
 
 // OpenRouter 클라이언트 — 실제 호출 대신 chat.completions.create를 바꿔 끼워 응답 검증 경로만 본다
 
@@ -31,6 +31,28 @@ const reply = (content: string) => ({
 afterAll(() => {
   delete process.env.OPENROUTER_API_KEY;
   delete process.env.OPENROUTER_MODEL;
+});
+
+describe('AiClient 하루 상한', () => {
+  it('상한까지는 호출하고, 넘으면 AI를 부르지 않고 429로 대안을 안내한다', async () => {
+    const { client, create } = createClient();
+    create.mockResolvedValue(reply('{"names":[]}'));
+    for (let i = 0; i < AI_DAILY_LIMIT; i++) await client.extract(schema, 'names', 'system', 'hi', '직접 입력해주세요.');
+
+    await expect(client.extract(schema, 'names', 'system', 'hi', '직접 입력해주세요.')).rejects.toMatchObject({
+      status: 429,
+      message: '오늘 AI 사용 횟수를 다 썼어요. 직접 입력해주세요.',
+    });
+    expect(create).toHaveBeenCalledTimes(AI_DAILY_LIMIT);
+  });
+
+  it('날짜가 바뀌면 다시 쓸 수 있다', async () => {
+    const { client, create } = createClient();
+    create.mockResolvedValue(reply('{"names":[]}'));
+    (client as unknown as { usage: { day: string; count: number } }).usage = { day: '2000-01-01', count: AI_DAILY_LIMIT };
+
+    await expect(client.extract(schema, 'names', 'system', 'hi', '직접 입력해주세요.')).resolves.toEqual({ names: [] });
+  });
 });
 
 describe('AiClient', () => {

@@ -31,6 +31,43 @@ describe('AdminGuard 연속 실패 잠금', () => {
     passcodeLockout.reset();
   });
 
+  it('접속 주소를 바꿔 가며 20번 틀리면 전체가 잠기고, 15분 뒤 풀린다', () => {
+    jest.useFakeTimers({ now: Date.parse('2026-11-02T00:00:00Z') });
+    for (let i = 0; i < 20; i++) {
+      try {
+        guard.canActivate(contextFor('wrong', `10.0.0.${i}`));
+      } catch {
+        // 틀린 패스코드 — 실패가 쌓이는지만 본다
+      }
+    }
+
+    // 맞는 패스코드도 다른 주소도 막힌다(맞혔는지 알 수 없게)
+    expect(() => guard.canActivate(contextFor(PASSCODE, '10.9.9.9'))).toThrow(HttpException);
+
+    jest.setSystemTime(Date.parse('2026-11-02T00:15:01Z'));
+    expect(guard.canActivate(contextFor(PASSCODE, '10.9.9.9'))).toBe(true);
+    jest.useRealTimers();
+  });
+
+  it('10분이 지난 실패는 전체 잠금에 세지 않는다', () => {
+    jest.useFakeTimers({ now: Date.parse('2026-11-02T00:00:00Z') });
+    const failFrom = (from: number, count: number) => {
+      for (let i = from; i < from + count; i++) {
+        try {
+          guard.canActivate(contextFor('wrong', `10.1.0.${i}`));
+        } catch {
+          // 위와 같다
+        }
+      }
+    };
+    failFrom(0, 15);
+    jest.setSystemTime(Date.parse('2026-11-02T00:10:01Z'));
+    failFrom(100, 15);
+
+    expect(guard.canActivate(contextFor(PASSCODE, '10.9.9.9'))).toBe(true);
+    jest.useRealTimers();
+  });
+
   it('맞으면 통과, 틀리면 401', () => {
     expect(guard.canActivate(contextFor(PASSCODE))).toBe(true);
     expect(() => guard.canActivate(contextFor('wrong'))).toThrow(UnauthorizedException);
@@ -90,6 +127,19 @@ describe('운영진 출입증(토큰)', () => {
     expect(issued).not.toBeNull();
     expect(guard.canActivate(contextFor(undefined, '1.1.1.1', `Bearer ${issued!.token}`))).toBe(true);
     expect(isAdminRequest({ authorization: `Bearer ${issued!.token}` }, '1.1.1.1')).toBe(true);
+  });
+
+  it('전체 잠금 중에도 이미 로그인한 기기(토큰)는 그대로 들어온다', () => {
+    const issued = issueAdminToken()!;
+    for (let i = 0; i < 20; i++) {
+      try {
+        guard.canActivate(contextFor('wrong', `10.2.0.${i}`));
+      } catch {
+        // 전체 잠금을 건다
+      }
+    }
+    expect(() => guard.canActivate(contextFor(PASSCODE, '10.9.9.9'))).toThrow(HttpException);
+    expect(guard.canActivate(contextFor(undefined, '10.9.9.9', `Bearer ${issued.token}`))).toBe(true);
   });
 
   it('30일이 지나면 무효', () => {
