@@ -15,19 +15,17 @@ type Pooled = Attendance & { member: Member };
 
 // 점수 가중치 — 초기값, 파일럿에서 체감 튜닝 예정
 const W_WAIT = 1; // 대기 1분당 가점 (공정성 기본 축)
-const W_GAMES = 15; // "온 시간에 비해 더 친" 게임 1회당 감점 (덜 친 사람 우선) — 단순 게임 수가 아니라 기대치 대비
+const W_GAMES = 15; // "온 시간에 비해 더 칠" 게임 1회당 감점 (덜 칠 사람 우선) — 대기 조합에 잡힌 게임까지 센다
 const W_REPEAT = 20; // 오늘 함께 뛴 쌍 1회당 감점 (다양성)
 const W_GRADE = 30; // 급수 간격이 3을 초과하는 만큼 감점 (극단 조합만 회피)
-const W_BORROW = 25; // 차용 인원 1명당 감점 (미배정 대기 인원이 항상 우선)
-const W_GENDER = 30; // 표준 복식(남복·여복·혼복)으로 안 떨어지는 성별 구성 감점 (금지 아닌 선호)
+const W_BORROW = 25; // 조합·게임에 이미 든 사람 1명당 감점 (같은 조건이면 미배정 대기 인원 우선)
 const W_PARTNER = 40; // 대회 연습 파트너 두 사람이 같은 게임에 든 쌍당 가점 — 대기 40분어치. 한 명만 든 조합은 가점·감점 없음(강제 아님)
 
 const GRADE_ORDER = ['A', 'B', 'C', 'D', 'E', 'F'];
 const POOL_CAP = 30; // 전수 탐색 상한 — C(30,4)=27,405 조합
-const BORROW_CAP = 12; // 잔여 모드 차용 풀 상한
-// 잔여 모드에서 대기 조합에 든 사람을 빌려도 되는 최소 간격 — 새 조합은 대기 줄 맨 끝이라, 2면 바로 앞(맨 끝) 조합만 피한다.
-// 바로 붙은 조합끼리 겹치면 앞 조합이 코트에 들어가는 순간 뒤 조합이 막혀 순서가 꼬인다. 멀리 떨어진 겹침(조합 1·4)은
-// 미리 짜 두는 운영에서 흔하고 괜찮다(10/10 사용자)
+// 줄(게임 중 → 대기 조합)에서 새 조합과 이만큼 가까운 게임의 사람은 넣지 않는다 — 같은 시간에 두 코트에 있게 된다.
+// 코트 수만큼 동시에 돌아가므로 코트 2개면 조합 1번 사람을 3번에 넣을 수 있다.
+// 코트가 1개여도 2칸은 띄운다 — 바로 붙은 조합끼리 겹치면 앞 조합이 코트에 들어가는 순간 뒤 조합이 막혀 순서가 꼬인다
 const MIN_QUEUE_GAP = 2;
 
 const CATEGORY_LABEL: Record<RecommendationCategory, string> = {
@@ -52,8 +50,9 @@ export class RecommendationsService {
     private readonly sessionsService: SessionsService,
   ) {}
 
-  // 다음 1게임에 대한 후보 조합 최대 3개 (공정성/새 조합/믹스) — 저장 없이 계산만
-  // category = 종목 탭 필터. ALL이면 기존 동작, 종목이면 성별 확정자 풀 + 구성 강제
+  // 줄 맨 끝에 넣을 1게임의 후보 조합 최대 3개 (공정성/새 조합/믹스) — 저장 없이 계산만
+  // 미리 짜는 운영이 기본이라 미배정 대기뿐 아니라 조합·게임에 든 사람도 후보다(휴식·콕 미확인 제외)
+  // category = 종목 탭 필터. ALL은 표준 복식(남복·여복·혼복)만, 종목이면 성별 확정자 풀 + 구성 강제
   // fixedIds = "이 사람은 꼭 넣어"(AI 명령 등) — 모든 후보에 포함하고 나머지 자리만 점수로 채운다.
   //   지정이 있으면 못 만드는 이유를 409로 알려 준다(지정 없는 기존 추천은 빈 배열 그대로)
   async recommend(
@@ -63,7 +62,7 @@ export class RecommendationsService {
   ): Promise<IGameRecommendation[]> {
     await this.sessionsService.findOpenSessionOrThrow(sessionId);
 
-    const [allAttendances, playedGames, queuedGames] = await Promise.all([
+    const [allAttendances, playedGames, queuedGames, courts] = await Promise.all([
       this.prisma.attendance.findMany({
         // 콕 미확인은 추천 후보에서 아예 제외 — 고른 뒤 서버가 거부하면 운영진이 헛수고한다
         where: {
@@ -78,25 +77,37 @@ export class RecommendationsService {
         where: { sessionId, status: { in: ['FINISHED', 'PLAYING'] } },
         select: { status: true, startedAt: true, players: { select: { attendanceId: true } } },
       }),
-      // 대기 조합 순서 — 잔여 모드에서 빌릴 사람이 새 조합(맨 끝)과 얼마나 떨어져 있는지 본다
+      // 대기 조합 순서 — 사람이 새 조합과 시간이 겹치는지 본다
       this.prisma.game.findMany({
         where: { sessionId, status: 'QUEUED' },
         orderBy: [{ queueOrder: 'asc' }, { queuedAt: 'asc' }],
         select: { players: { select: { attendanceId: true } } },
       }),
+      this.prisma.court.findMany({
+        where: { sessionId, deletedAt: null },
+        select: { isShared: true, ourTurn: true },
+      }),
     ]);
-    // 사람마다 새 조합까지의 간격 — 든 조합 중 가장 뒤의 것 기준. 대기 조합에 없으면 무한대
-    const gapToNew = new Map<string, number>();
-    queuedGames.forEach((game, index) => {
-      for (const p of game.players) gapToNew.set(p.attendanceId, queuedGames.length - index);
+    // 앞으로의 줄 — 게임 중(먼저 시작한 순) 뒤에 대기 조합. 새 조합은 맨 끝, 빈자리 채우기면 그 조합 자리
+    const lineup = [
+      ...playedGames
+        .filter((g) => g.status === 'PLAYING')
+        .sort((a, b) => (a.startedAt?.getTime() ?? 0) - (b.startedAt?.getTime() ?? 0)),
+      ...queuedGames,
+    ].map((g) => g.players.map((p) => p.attendanceId));
+    const fillIndex = fixedIds.length > 0 ? lineup.findIndex((ids) => ids.length < 4 && fixedIds.every((id) => ids.includes(id))) : -1;
+    const targetIndex = fillIndex >= 0 ? fillIndex : lineup.length;
+    // 지금 우리가 쓸 수 있는 코트 수 — 다른 모임 차례인 공유 코트는 뺀다
+    const span = Math.max(courts.filter((c) => !c.isShared || c.ourTurn).length, MIN_QUEUE_GAP);
+    const overlapping = new Set<string>();
+    const committed = new Map<string, number>(); // 사람마다 지금 뛰거나 잡혀 있는 게임 수
+    lineup.forEach((ids, index) => {
+      for (const id of ids) {
+        committed.set(id, (committed.get(id) ?? 0) + 1);
+        if (index !== targetIndex && Math.abs(targetIndex - index) < span) overlapping.add(id);
+      }
     });
-    const gapOf = (id: string) => gapToNew.get(id) ?? Infinity;
-    // 게임 중인 사람의 게임 시작 시각 — 먼저 시작한(곧 끝날) 게임의 사람을 먼저 빌린다
-    const playingSince = new Map<string, number>();
-    for (const game of playedGames) {
-      if (game.status !== 'PLAYING' || !game.startedAt) continue;
-      for (const p of game.players) playingSince.set(p.attendanceId, game.startedAt.getTime());
-    }
+    const projectedGames = (a: Pooled) => a.gamesPlayed + (committed.get(a.id) ?? 0);
 
     const attendances = allAttendances.filter((a) => inCategory(a, category));
     const fixed = this.resolveFixed(allAttendances, fixedIds, category);
@@ -114,42 +125,27 @@ export class RecommendationsService {
       }
     }
 
-    // 선발 풀: 미배정 대기(오래 기다린 순) / 차용 풀: 조합·게임에 묶인 인원(적게 뛴 순) — 지정 인원은 빼고
+    // 선발 풀: 시간이 겹치지 않는 사람 — 미배정 대기(오래 기다린 순) 다음 조합·게임에 든 사람(덜 칠 순). 지정 인원은 빼고
     const rest = attendances.filter((a) => !fixedSet.has(a.id));
-    const free = rest
-      .filter((a) => a.status === 'CHECKED_IN')
-      .sort((a, b) => a.waitingSince.getTime() - b.waitingSince.getTime())
+    const pool = rest
+      .filter((a) => ['CHECKED_IN', 'MATCHED', 'PLAYING'].includes(a.status) && !overlapping.has(a.id))
+      .sort(
+        (a, b) =>
+          Number(a.status !== 'CHECKED_IN') - Number(b.status !== 'CHECKED_IN') ||
+          (a.status === 'CHECKED_IN' ? a.waitingSince.getTime() - b.waitingSince.getTime() : projectedGames(a) - projectedGames(b)),
+      )
       .slice(0, POOL_CAP);
     const need = 4 - fixed.length;
-    if (fixed.length === 0 && free.length === 0) return []; // 미배정 대기가 아예 없으면 추천할 것이 없다
-
-    let combos: Pooled[][];
-    if (need === 0) {
-      combos = [fixed]; // 4명을 다 지정 — 추천 없이 그대로
-    } else if (free.length >= need) {
-      combos = choose(free, need).map((chosen) => [...fixed, ...chosen]);
-    } else {
-      // 잔여 모드: 미배정 전원 고정 + 부족분은 조합·게임 중 인원에서 차용(중복 대기)
-      // 맨 끝 조합(새 조합 바로 앞)에 든 사람은 빼고, 새 조합에서 멀리 떨어진 사람부터 — 조합에 없는 게임 중 인원이 가장 먼저.
-      // 같은 간격이면 먼저 시작한(곧 끝날) 게임의 사람, 그다음 게임을 적게 한 사람
-      const borrowPool = rest
-        .filter((a) => (a.status === 'MATCHED' || a.status === 'PLAYING') && gapOf(a.id) >= MIN_QUEUE_GAP)
-        .sort(
-          (a, b) =>
-            gapOf(b.id) - gapOf(a.id) ||
-            (playingSince.get(a.id) ?? Infinity) - (playingSince.get(b.id) ?? Infinity) ||
-            a.gamesPlayed - b.gamesPlayed,
-        )
-        .slice(0, BORROW_CAP);
-      const lack = need - free.length;
-      if (borrowPool.length < lack) {
-        // 체크인 인원 자체가 4명 미만
-        if (fixed.length > 0) throw new ConflictException('남은 인원으로 4명을 채울 수 없어요.');
-        return [];
-      }
-      combos = choose(borrowPool, lack).map((borrowed) => [...fixed, ...free, ...borrowed]);
+    if (pool.length < need) {
+      if (fixed.length > 0) throw new ConflictException('남은 인원으로 4명을 채울 수 없어요.');
+      return [];
     }
+    let combos = need === 0 ? [fixed] : choose(pool, need).map((chosen) => [...fixed, ...chosen]);
 
+    // 전체 탭도 3:1은 추천하지 않는다 — 운영진이 3:1로 지정한 사람은 그대로 둔다
+    if (category === 'ALL' && isCleanGenderComposition(fixed)) {
+      combos = combos.filter(isCleanGenderComposition);
+    }
     // 혼복은 남녀 혼합 풀에서 나온 조합 중 2:2만 (남복/여복은 풀 필터로 이미 보장)
     if (category === 'MIXED') {
       combos = combos.filter(isMixedDoubles);
@@ -163,14 +159,15 @@ export class RecommendationsService {
 
     const now = Date.now();
     // 온 시간 대비 게임 수 — 늦게 온 사람이 총 게임 수를 따라잡으려 연속 추천되지 않게.
-    // 오늘 평균 속도(전체 게임 ÷ 전체 참여 분)로 "참여한 만큼 쳤어야 할 게임 수"를 구하고, 그보다 더 친 만큼만 감점한다.
+    // 오늘 평균 속도(전체 게임 ÷ 전체 참여 분)로 "참여한 만큼 쳤어야 할 게임 수"를 구하고, 그보다 더 칠 만큼만 감점한다.
+    // 대기 조합에 잡힌 게임까지 세야 미리 짤 때 같은 사람이 반복되지 않는다.
     // 참여 시작 = 콕 확인 시각(체크인 시각 아님). 휴식 시간도 참여에 들어가는 근사다
     const participation = (a: Pooled) =>
       a.shuttleConfirmedAt ? Math.max(0, (now - a.shuttleConfirmedAt.getTime()) / 60_000) : 0;
     const totalMinutes = allAttendances.reduce((sum, a) => sum + participation(a), 0);
-    const totalGames = allAttendances.reduce((sum, a) => sum + a.gamesPlayed, 0);
+    const totalGames = allAttendances.reduce((sum, a) => sum + projectedGames(a), 0);
     const gamesPerMinute = totalMinutes > 0 ? totalGames / totalMinutes : 0;
-    const excessGames = (a: Pooled) => a.gamesPlayed - participation(a) * gamesPerMinute;
+    const excessGames = (a: Pooled) => projectedGames(a) - participation(a) * gamesPerMinute;
 
     const scored = combos.map((players) => {
       let waitSum = 0;
@@ -178,9 +175,10 @@ export class RecommendationsService {
       let borrowed = 0;
       const grades = players.map((p) => GRADE_ORDER.indexOf(p.member.grade));
       for (const p of players) {
-        waitSum += waitingMinutes(p.waitingSince, now);
+        // 대기 시간은 지금 기다리는 사람만 — 조합에 든 사람은 이미 차례를 받았다
+        if (p.status === 'CHECKED_IN') waitSum += waitingMinutes(p.waitingSince, now);
+        else borrowed++;
         excessSum += excessGames(p);
-        if (p.status !== 'CHECKED_IN') borrowed++;
       }
       let repeatOccur = 0; // 등장 횟수 합 (감점용)
       let repeatPairs = 0; // 만난 적 있는 쌍의 수 (표시용)
@@ -201,16 +199,12 @@ export class RecommendationsService {
         }
       }
       const gradeExcess = Math.max(0, Math.max(...grades) - Math.min(...grades) - 3);
-      // 종목 탭은 구성이 강제라 성별 선호 감점이 무의미 — ALL에서만 적용
-      const genderPenalty =
-        category === 'ALL' && !isCleanGenderComposition(players) ? W_GENDER : 0;
       const base =
         partnerPairs * W_PARTNER +
         waitSum * W_WAIT -
         excessSum * W_GAMES -
         gradeExcess * W_GRADE -
-        borrowed * W_BORROW -
-        genderPenalty;
+        borrowed * W_BORROW;
       return {
         players,
         repeatPairs,
@@ -334,10 +328,10 @@ function genderLabel(players: Pooled[]): string {
   if (m === 4) return '남복';
   if (f === 4) return '여복';
   if (m === 2 && f === 2) return '혼복';
-  return `혼성 ${m}:${f}`; // 3:1 등 어정쩡한 구성
+  return `혼성 ${m}:${f}`; // 운영진이 직접 지정한 3:1만 여기까지 온다
 }
 
-// 출석 → 추천 카드에 뿌릴 인원 정보. borrowedFrom으로 미배정 선발/차용을 구분해
+// 출석 → 추천 카드에 뿌릴 인원 정보. borrowedFrom으로 미배정 대기/이미 잡힌 사람을 구분해
 // 프론트가 "게임 중"·"대기 조합" 배지를 붙인다 (CHECKED_IN이면 순수 대기 = null)
 function toRecommendedPlayer(attendance: Pooled, now: number, pinned: boolean): IRecommendedPlayer {
   return {
