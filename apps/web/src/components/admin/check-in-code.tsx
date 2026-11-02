@@ -4,20 +4,15 @@ import { ICheckInCodeResponse } from '@letscok/shared-types';
 import { useEffect, useState } from 'react';
 import { Sheet } from '@/components/sheet';
 import { api, ApiError } from '@/lib/api';
+import { useApiQuery } from '@/lib/use-api-query';
 
 // 입장 코드 보기·바꾸기
 
 // 모임원이 /checkin에서 입력하는 코드 — 소모임 공지사항의 작성월일(MMDD)에 맞춰 운영진이 관리
 // 코드는 운영진 전용 엔드포인트에서 취득(공개 스냅샷엔 없음)
 export function CheckInCodeModal({ onClose }: { onClose: () => void }) {
-  const [code, setCode] = useState<string | null | undefined>(undefined); // undefined=로딩, null=코드없음
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    api<ICheckInCodeResponse>('/sessions/current/checkin-code', { admin: true })
-      .then((d) => setCode(d.code))
-      .catch((e) => setError(e instanceof ApiError ? e.message : '코드를 불러오지 못했습니다.'));
-  }, []);
+  const { data, error, setData } = useApiQuery<ICheckInCodeResponse>('/sessions/current/checkin-code', '코드를 불러오지 못했습니다.');
+  const code = data ? data.code : undefined; // undefined=로딩, null=코드없음
 
   return (
     <Sheet
@@ -42,7 +37,7 @@ export function CheckInCodeModal({ onClose }: { onClose: () => void }) {
             </p>
             <p className="mt-1 text-xs text-faint">공지를 새로 올렸다면 코드도 함께 바꿔주세요</p>
           </div>
-          <CodeEditor current={code} onChanged={setCode} />
+          <CodeEditor current={code} onChanged={(next) => setData({ code: next })} />
         </>
       )}
     </Sheet>

@@ -1,28 +1,21 @@
 'use client';
 
 import { IHistorySessionDetail } from '@letscok/shared-types';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Sheet } from '@/components/sheet';
 import { ClearableTextarea } from '@/components/clearable-input';
-import { api, ApiError } from '@/lib/api';
 import { sessionReportText, sessionTag } from '@/lib/session-report';
+import { useApiQuery } from '@/lib/use-api-query';
 import { useCopy } from '@/lib/use-copy';
 
 const DEFAULT_CLOSING = '오늘도 수고 많으셨어요! 다음 모임에서 만나요 😊';
 
 // 모임 마무리 문구 — 항목을 켜고 끄며 미리보기를 보고 카톡용으로 복사한다(저장하지 않음)
 export function SessionReportModal({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
-  const [detail, setDetail] = useState<IHistorySessionDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { data: detail, error } = useApiQuery<IHistorySessionDetail>(`/history/sessions/${sessionId}`, '기록을 불러오지 못했어요.');
   const [showSummary, setShowSummary] = useState(true);
   const [showTop, setShowTop] = useState(true);
   const [closing, setClosing] = useState(DEFAULT_CLOSING);
-
-  useEffect(() => {
-    api<IHistorySessionDetail>(`/history/sessions/${sessionId}`, { admin: true })
-      .then(setDetail)
-      .catch((e) => setError(e instanceof ApiError ? e.message : '기록을 불러오지 못했어요.'));
-  }, [sessionId]);
 
   const text = detail
     ? sessionReportText({

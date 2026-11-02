@@ -7,7 +7,7 @@ import { AdminGate } from '@/components/admin-gate';
 import { PersonName } from '@/components/badges';
 import { HistoryTabs, historyHref } from '@/components/history-tabs';
 import { InstallPrompt } from '@/components/install-prompt';
-import { api, ApiError } from '@/lib/api';
+import { useApiQuery } from '@/lib/use-api-query';
 
 // 기간 필터 — months 값이 null이면 전체 누적
 const PERIODS = [
@@ -27,8 +27,6 @@ export default function RankingPage() {
 }
 
 function Ranking() {
-  const [entries, setEntries] = useState<IHistoryRankingEntry[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   // 기간·정렬은 주소(?months=&sort=)에 적는다 — 사람 전적에서 뒤로 왔을 때 보던 그대로 (게이트 통과 뒤에만 그려져 window를 바로 읽는다)
   const [months, setMonths] = useState<number | null>(() => {
     const value = Number(new URLSearchParams(window.location.search).get('months'));
@@ -45,16 +43,10 @@ function Ranking() {
     window.history.replaceState(window.history.state, '', `/admin/history/ranking${query ? `?${query}` : ''}`);
   }, [months, sortKey]);
 
-  useEffect(() => {
-    setEntries(null);
-    setError(null);
-    api<IHistoryRankingEntry[]>(
-      `/history/ranking${months ? `?months=${months}` : ''}`,
-      { admin: true },
-    )
-      .then(setEntries)
-      .catch((e) => setError(e instanceof ApiError ? e.message : '랭킹을 불러오지 못했습니다.'));
-  }, [months]);
+  const { data: entries, error } = useApiQuery<IHistoryRankingEntry[]>(
+    `/history/ranking${months ? `?months=${months}` : ''}`,
+    '랭킹을 불러오지 못했습니다.',
+  );
 
   // 정렬 전환은 데이터가 통째로 와 있으므로 재요청 없이 클라이언트에서
   const sorted = useMemo(() => {

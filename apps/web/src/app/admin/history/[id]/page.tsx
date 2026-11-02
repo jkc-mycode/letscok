@@ -3,14 +3,14 @@
 import { IHistorySessionDetail } from '@letscok/shared-types';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
 import { GradeBadge, PersonName } from '@/components/badges';
 import { HistoryBackLink, historyHref } from '@/components/history-tabs';
 import { EntryFeeSheet } from '@/components/entry-fee-sheet';
 import { SessionReportModal } from '@/components/session-report-modal';
 import { InstallPrompt } from '@/components/install-prompt';
-import { api, ApiError } from '@/lib/api';
+import { useApiQuery } from '@/lib/use-api-query';
 import { sessionTag } from '@/lib/session-report';
 import { timeLabel } from '@/lib/session-report';
 
@@ -24,16 +24,9 @@ export default function HistoryDetailPage() {
 
 function HistoryDetail() {
   const { id } = useParams<{ id: string }>();
-  const [detail, setDetail] = useState<IHistorySessionDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { data: detail, error } = useApiQuery<IHistorySessionDetail>(`/history/sessions/${id}`, '기록을 불러오지 못했습니다.');
   const [reportOpen, setReportOpen] = useState(false); // 마무리 문구 — 모임 종료 직후에 못 만들었을 때 여기서 다시
   const [entryFeeOpen, setEntryFeeOpen] = useState(false); // 입장비 — 모임이 끝난 뒤 늦게 보낸 사람 체크
-
-  useEffect(() => {
-    api<IHistorySessionDetail>(`/history/sessions/${id}`, { admin: true })
-      .then(setDetail)
-      .catch((e) => setError(e instanceof ApiError ? e.message : '기록을 불러오지 못했습니다.'));
-  }, [id]);
 
   return (
     <main className="fade-in mx-auto flex min-h-dvh w-full max-w-lg flex-col gap-5 p-6">

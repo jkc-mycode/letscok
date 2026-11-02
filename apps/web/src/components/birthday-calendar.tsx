@@ -2,10 +2,10 @@
 
 import { IMemberSummary } from '@letscok/shared-types';
 import { motion } from 'motion/react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { PersonName } from '@/components/badges';
 import { Sheet } from '@/components/sheet';
-import { api } from '@/lib/api';
+import { useApiQuery } from '@/lib/use-api-query';
 
 // 모임원 생일 캘린더 — 운영진 전용 명단(GET /members)의 생년월일로 그린다 (서버 변경 없음)
 // 게스트는 생년월일을 받지 않는 정책이라 모임원만 나온다
@@ -53,18 +53,11 @@ function MemberLine({ member, note }: { member: IMemberSummary; note?: string })
 
 export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
   const today = useMemo(startOfToday, []);
-  const [members, setMembers] = useState<IMemberSummary[] | null>(null); // null = 로딩
-  const [failed, setFailed] = useState(false);
+  const { data: members, error } = useApiQuery<IMemberSummary[]>('/members', '명단을 불러오지 못했어요');
   const [view, setView] = useState({ year: today.getFullYear(), month: today.getMonth() + 1 });
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [slide, setSlide] = useState(0); // 마지막으로 넘긴 방향(1=다음 달, -1=이전 달) — 새 달이 그쪽에서 들어온다
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
-
-  useEffect(() => {
-    api<IMemberSummary[]>('/members', { admin: true })
-      .then(setMembers)
-      .catch(() => setFailed(true));
-  }, []);
 
   // 삭제·게스트·생년월일 없는 회원은 제외 (birthDate는 "YYYY-MM-DD")
   const birthdays = useMemo<Birthday[]>(
@@ -133,8 +126,8 @@ export function BirthdayCalendarModal({ onClose }: { onClose: () => void }) {
       }
     >
       <div className="flex min-h-0 flex-1 flex-col gap-3">
-        {failed && <p className="py-6 text-center text-sm text-coral">명단을 불러오지 못했어요</p>}
-        {!failed && members === null && <p className="py-6 text-center text-sm text-dim">불러오는 중...</p>}
+        {error && <p className="py-6 text-center text-sm text-coral">{error}</p>}
+        {!error && members === null && <p className="py-6 text-center text-sm text-dim">불러오는 중...</p>}
 
         {members !== null && (
           <>

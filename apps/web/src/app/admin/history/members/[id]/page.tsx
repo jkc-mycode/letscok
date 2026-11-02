@@ -3,12 +3,11 @@
 import { IHistoryMemberStats } from '@letscok/shared-types';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
 import { GenderMarker, GradeBadge, GuestMark } from '@/components/badges';
 import { HistoryBackLink, historyHref } from '@/components/history-tabs';
 import { InstallPrompt } from '@/components/install-prompt';
-import { api, ApiError } from '@/lib/api';
+import { useApiQuery } from '@/lib/use-api-query';
 import { sessionTag } from '@/lib/session-report';
 
 export default function MemberStatsPage() {
@@ -21,14 +20,7 @@ export default function MemberStatsPage() {
 
 function MemberStats() {
   const { id } = useParams<{ id: string }>();
-  const [stats, setStats] = useState<IHistoryMemberStats | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    api<IHistoryMemberStats>(`/history/members/${id}`, { admin: true })
-      .then(setStats)
-      .catch((e) => setError(e instanceof ApiError ? e.message : '전적을 불러오지 못했습니다.'));
-  }, [id]);
+  const { data: stats, error } = useApiQuery<IHistoryMemberStats>(`/history/members/${id}`, '전적을 불러오지 못했습니다.');
 
   return (
     <main className="fade-in mx-auto flex min-h-dvh w-full max-w-lg flex-col gap-5 p-6">
