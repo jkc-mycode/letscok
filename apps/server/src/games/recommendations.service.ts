@@ -346,6 +346,7 @@ function toRecommendedPlayer(attendance: Pooled, now: number, pinned: boolean): 
     name: attendance.member.name,
     grade: attendance.member.grade,
     gender: attendance.member.gender,
+    role: attendance.member.role,
     isGuest: attendance.member.isGuest,
     gamesPlayed: attendance.gamesPlayed,
     waitingMinutes: waitingMinutes(attendance.waitingSince, now),

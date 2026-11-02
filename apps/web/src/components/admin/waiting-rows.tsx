@@ -119,6 +119,7 @@ export function WaitingRow({
       name: member?.name ?? '',
       grade: member?.grade ?? 'C',
       gender: member?.gender ?? null,
+      role: member?.role,
       fromGameId: null,
       playing: attendance.status === 'PLAYING',
     },

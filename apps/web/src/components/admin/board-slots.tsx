@@ -180,6 +180,7 @@ function SlotPerson({
       name: member.name,
       grade: member.grade,
       gender: member.gender,
+      role: member.role,
       fromGameId: game.id,
       playing: player.attendance?.status === 'PLAYING',
     },
@@ -201,7 +202,7 @@ function SlotPerson({
       } ${drag.dragCls} ${drop.overCls}`}
       style={{ WebkitTouchCallout: 'none' }}
     >
-      <PersonName person={member} nameClassName="shrink-0 whitespace-nowrap font-medium" guest="short" />
+      <PersonName person={member} nameClassName="shrink-0 whitespace-nowrap font-medium" crown guest="short" />
       {busyElsewhere && (
         <span className="min-w-0 truncate rounded bg-coral/15 px-1 py-0.5 text-caption font-medium text-coral">게임 중</span>
       )}

@@ -158,7 +158,7 @@ export function RecommendModal({
                   {rec.players.map((player) => (
                     <div key={player.attendanceId} className="flex items-center gap-1.5 text-sm">
                       {/* 이름이 핵심 정보 — 뱃지·통계에 밀려도 최소 한글 4자는 보장 */}
-                      <PersonName person={player} nameClassName="min-w-[4em] truncate font-medium" guest="short" />
+                      <PersonName person={player} nameClassName="min-w-[4em] truncate font-medium" crown guest="short" />
                       {fixedIds.includes(player.attendanceId) && (
                         <span className="shrink-0 rounded bg-panel px-1 py-0.5 text-caption text-faint">이미 넣음</span>
                       )}

@@ -348,6 +348,7 @@ export interface IRecommendedPlayer {
   grade: Grade;
   gender: Gender | null; // 모달 마커 표시용
   isGuest: boolean;
+  role: MemberRole; // 왕관 표시용
   gamesPlayed: number;
   waitingMinutes: number; // 요청 시점 기준 대기 분
   borrowedFrom: 'QUEUED' | 'PLAYING' | null; // null = 미배정 대기에서 선발, 그 외 = 차용 인원

@@ -21,7 +21,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { Gender, Grade } from '@letscok/shared-types';
+import { Gender, Grade, MemberRole } from '@letscok/shared-types';
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PersonName } from '@/components/badges';
@@ -33,6 +33,7 @@ export type DragPerson = {
   name: string;
   grade: Grade;
   gender: Gender | null;
+  role?: MemberRole;
   fromGameId: string | null;
   playing: boolean; // 지금 다른 코트에서 게임 중 — 게임 중인 코트엔 넣을 수 없다(동시에 한 곳만)
 };
@@ -180,7 +181,7 @@ export function BoardDnd({
           <DragOverlay dropAnimation={null} zIndex={60}>
             {active?.kind === 'person' && (
               <div className="flex h-10 items-center gap-1.5 rounded-xl border border-amber bg-panel px-3 text-sm shadow-xl">
-                <PersonName person={active} nameClassName="font-bold" />
+                <PersonName person={active} nameClassName="font-bold" crown />
               </div>
             )}
             {active?.kind === 'game' && (
