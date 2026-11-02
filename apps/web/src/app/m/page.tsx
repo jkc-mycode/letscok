@@ -18,6 +18,7 @@ import {
   Toast,
 } from '@/components/badges';
 import { CodeBoxes } from '@/components/code-boxes';
+import { ElapsedText, WaitingMinutesText } from '@/components/admin/board-ui';
 import { ConfirmButton } from '@/components/confirm-button';
 import { ConnectionError } from '@/components/connection-error';
 import { HomeLink } from '@/components/home-link';
@@ -32,18 +33,12 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { api, ApiError } from '@/lib/api';
 import { clearMemberId, clearMemberToken, fetchMemberToken, getMemberId, getMemberToken } from '@/lib/member';
 import { disablePush } from '@/lib/push';
-import {
-  formatElapsed,
-  formatWaitingMinutes,
-  useNow,
-  useSnapshot,
-} from '@/lib/use-snapshot';
+import { useSnapshot } from '@/lib/use-snapshot';
 import { useToast } from '@/lib/use-toast';
 
 export default function MyStatusPage() {
   // 여복·남복처럼 동시에 연 모임이 있으면 내가 출석한 모임을 받는다
   const { snapshot, noSession, failed, loading, refetch } = useSnapshot({ byMember: true });
-  const now = useNow();
 
   // localStorage는 클라이언트 전용 — hydration 불일치 방지를 위해 마운트 후 판독
   const [memberId, setMemberId] = useState<string | null>(null);
@@ -194,7 +189,7 @@ export default function MyStatusPage() {
             </span>
           )}
         </div>
-        <MyStatus me={me} myGame={myGame} waiting={waiting} queuedGames={queuedGames} courts={courts} now={now} />
+        <MyStatus me={me} myGame={myGame} waiting={waiting} queuedGames={queuedGames} courts={courts} />
 
         {myGame && <MyGameCard game={myGame} playing={myGame.status === 'PLAYING'} memberId={memberId} />}
 
@@ -253,7 +248,7 @@ export default function MyStatusPage() {
                     right={
                       game?.startedAt ? (
                         <span className="tabular font-mono text-body font-semibold text-court">
-                          {formatElapsed(game.startedAt, now)}
+                          <ElapsedText since={game.startedAt} />
                         </span>
                       ) : null
                     }
@@ -300,7 +295,7 @@ export default function MyStatusPage() {
                     key={attendance.id}
                     attendance={attendance}
                     isMe={attendance.memberId === memberId}
-                    right={`${attendance.gamesPlayed}게임 · ${formatWaitingMinutes(attendance.waitingSince, now)}`}
+                    right={<>{attendance.gamesPlayed}게임 · <WaitingMinutesText since={attendance.waitingSince} /></>}
                   />
                 ))}
                 {resting.map((attendance) => (
@@ -309,7 +304,7 @@ export default function MyStatusPage() {
                     attendance={attendance}
                     isMe={attendance.memberId === memberId}
                     resting
-                    right={`${attendance.gamesPlayed}게임 · ${formatWaitingMinutes(attendance.waitingSince, now)}`}
+                    right={<>{attendance.gamesPlayed}게임 · <WaitingMinutesText since={attendance.waitingSince} /></>}
                   />
                 ))}
               </AnimatePresence>
@@ -343,14 +338,12 @@ function MyStatus({
   waiting,
   queuedGames,
   courts,
-  now,
 }: {
   me: IAttendance;
   myGame: IGame | null;
   waiting: IAttendance[];
   queuedGames: IGame[]; // queueOrder 순(서버 정렬)
   courts: ICourt[];
-  now: number;
 }) {
   const name = me.member?.name ?? '';
   const greeting = `${name}님, 오늘 ${me.gamesPlayed}게임 했어요`;
@@ -371,7 +364,7 @@ function MyStatus({
         )}
         {myGame?.startedAt && (
           <p className="tabular font-mono text-body font-semibold opacity-80">
-            시작한 지 {formatElapsed(myGame.startedAt, now)}
+            시작한 지 <ElapsedText since={myGame.startedAt} />
           </p>
         )}
       </header>
@@ -379,7 +372,7 @@ function MyStatus({
   }
 
   let title: string;
-  let sub: string;
+  let sub: React.ReactNode;
   let tone = 'text-ink';
   if (me.status === 'LEFT') {
     title = '퇴장했어요';
@@ -393,7 +386,7 @@ function MyStatus({
   } else if (me.status === 'RESTING') {
     title = '쉬는 중이에요';
     // 휴식도 대기 시간에 들어간다(잠깐 쉬는 것이지 나갔다 오는 게 아님) — 복귀하면 이어서
-    sub = `기다린 지 ${formatWaitingMinutes(me.waitingSince, now)} · 다시 뛰려면 아래 버튼을 눌러 주세요`;
+    sub = <>기다린 지 <WaitingMinutesText since={me.waitingSince} /> · 다시 뛰려면 아래 버튼을 눌러 주세요</>;
     tone = 'text-sky';
   } else {
     // 겹쳐 들어간 조합이 여럿이면 가장 앞의 것 기준. 빈칸 조합에만 든 경우(order 0)는 아직 대기로
@@ -408,7 +401,7 @@ function MyStatus({
       tone = 'text-amber';
     } else {
       title = `대기 ${waiting.findIndex((a) => a.id === me.id) + 1}번째예요`;
-      sub = `기다린 지 ${formatWaitingMinutes(me.waitingSince, now)} · 조합을 기다리는 중`;
+      sub = <>기다린 지 <WaitingMinutesText since={me.waitingSince} /> · 조합을 기다리는 중</>;
     }
   }
 
@@ -536,7 +529,7 @@ function PersonRow({
   attendance: IAttendance;
   isMe: boolean;
   resting?: boolean;
-  right: string;
+  right: React.ReactNode;
 }) {
   const member = attendance.member;
   if (!member) return null;

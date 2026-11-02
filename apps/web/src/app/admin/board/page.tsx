@@ -9,11 +9,12 @@ import { GAME_SIZE, IGame, IGamePlayer } from '@letscok/shared-types';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { buildSameNameTags, PersonName, SameNameTagsProvider } from '@/components/badges';
+import { ElapsedText } from '@/components/admin/board-ui';
 import { ConnectionError } from '@/components/connection-error';
 import { useStandalone } from '@/components/home-link';
 import { LogoLoader } from '@/components/logo-loader';
 import { SessionSwitcher } from '@/components/session-switcher';
-import { formatElapsed, useNow, useSnapshot } from '@/lib/use-snapshot';
+import { useSnapshot } from '@/lib/use-snapshot';
 
 // 좁은 화면에서 고른 탭 — 기기마다 기억(띄워 두는 기기는 늘 같은 구역을 보는 경우가 많다)
 type BoardTab = 'courts' | 'queue';
@@ -53,7 +54,6 @@ function useWakeLock() {
 
 export default function BoardDisplayPage() {
   const { snapshot, noSession, failed, loading, refetch, selectSession } = useSnapshot();
-  const now = useNow();
   useWakeLock();
   const standalone = useStandalone();
   const router = useRouter();
@@ -159,7 +159,7 @@ export default function BoardDisplayPage() {
                       side={
                         game?.startedAt && (
                           <span className="tabular font-mono text-heading font-semibold text-court">
-                            {formatElapsed(game.startedAt, now)}
+                            <ElapsedText since={game.startedAt} />
                           </span>
                         )
                       }
