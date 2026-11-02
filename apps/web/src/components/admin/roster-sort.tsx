@@ -1,7 +1,7 @@
 'use client';
 
 import { IAttendance } from '@letscok/shared-types';
-import { GRADES } from '@/components/multi-member-form';
+import { GRADES } from '@/components/grade-gender-picker';
 
 // 사람 목록 정렬(대기 명단·빈칸 채우기·선수 교체 공용) — 모임장·운영진 고정, 그 아래는 고른 기준 하나로만
 // (상태로 묶지 않는다 — 이름순이면 그냥 가나다순. 같으면 오래 기다린 순)

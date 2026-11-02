@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '@/lib/api';
 import { GenderMarker, GradeBadge } from '@/components/badges';
 import { ClearableInput } from '@/components/clearable-input';
+import { GenderPicker, GradePicker } from '@/components/grade-gender-picker';
 import { AlertIcon } from '@/components/icons';
 import { formatBirthInput, parseBirthDate } from '@/lib/birth-input';
 import { useMemberSearch } from '@/lib/use-member-search';
@@ -12,7 +13,6 @@ import { useMemberSearch } from '@/lib/use-member-search';
 // 여러 명 신규 등록 폼 — 한 사람씩 카드, [+ 한 명 더]로 카드를 늘려 한 번에 등록한다
 // 수동 체크인(등록+체크인, 기본 게스트)과 모임원 관리(등록만, 기본 모임원)가 같이 쓴다
 
-export const GRADES: Grade[] = ['A', 'B', 'C', 'D', 'E', 'F'];
 
 export interface NewMemberBody {
   name: string;
@@ -299,40 +299,14 @@ function RowCard({
       <div className="flex flex-col gap-1.5">
         <span className="text-caption font-bold text-dim">급수와 성별</span>
         <div className="flex gap-1.5">
-          <div className="grid flex-1 grid-cols-6 gap-1">
-            {GRADES.map((g) => (
-              <button
-                key={g}
-                onClick={() => update({ grade: g })}
-                aria-pressed={row.grade === g}
-                className={`h-10 rounded-lg text-body-sm font-bold ${
-                  row.grade === g ? 'bg-court/15 text-court' : 'bg-panel text-dim'
-                }`}
-              >
-                {g}
-              </button>
-            ))}
-          </div>
-          <div className="grid shrink-0 grid-cols-2 gap-1">
-            <button
-              onClick={() => update({ gender: 'MALE' })}
-              aria-pressed={row.gender === 'MALE'}
-              className={`h-10 w-11 rounded-lg text-body-sm font-bold ${
-                row.gender === 'MALE' ? 'bg-sky/15 text-sky' : 'bg-panel text-dim'
-              }`}
-            >
-              남
-            </button>
-            <button
-              onClick={() => update({ gender: 'FEMALE' })}
-              aria-pressed={row.gender === 'FEMALE'}
-              className={`h-10 w-11 rounded-lg text-body-sm font-bold ${
-                row.gender === 'FEMALE' ? 'bg-pink/15 text-pink' : 'bg-panel text-dim'
-              }`}
-            >
-              여
-            </button>
-          </div>
+          <GradePicker value={row.grade} onChange={(grade) => update({ grade })} surface="panel" className="grid flex-1 grid-cols-6 gap-1" />
+          <GenderPicker
+            value={row.gender}
+            onChange={(gender) => update({ gender })}
+            surface="panel"
+            className="grid shrink-0 grid-cols-2 gap-1"
+            buttonClassName="w-11"
+          />
         </div>
       </div>
 

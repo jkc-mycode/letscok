@@ -6,7 +6,7 @@ import { GuestMark } from '@/components/badges';
 import { ConfirmButton } from '@/components/confirm-button';
 import { Sheet } from '@/components/sheet';
 import { ClearableInput } from '@/components/clearable-input';
-import { GRADES } from '@/components/multi-member-form';
+import { GenderPicker, GradePicker } from '@/components/grade-gender-picker';
 import { api, ApiError } from '@/lib/api';
 import { formatBirthInput, parseBirthDate } from '@/lib/birth-input';
 
@@ -172,37 +172,8 @@ export function MemberEditSheet({
             </div>
           )}
 
-          <div className="grid grid-cols-6 gap-1.5">
-            {GRADES.map((g) => (
-              <button
-                key={g}
-                onClick={() => setGrade(g)}
-                className={`h-10 rounded-lg border text-sm font-bold ${
-                  grade === g ? 'border-court bg-court/15 text-court' : 'border-line bg-panel2 text-dim'
-                }`}
-              >
-                {g}
-              </button>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-1.5">
-            <button
-              onClick={() => setGender('MALE')}
-              className={`h-10 rounded-lg border text-sm font-bold ${
-                gender === 'MALE' ? 'border-sky bg-sky/15 text-sky' : 'border-line bg-panel2 text-dim'
-              }`}
-            >
-              ♂ 남
-            </button>
-            <button
-              onClick={() => setGender('FEMALE')}
-              className={`h-10 rounded-lg border text-sm font-bold ${
-                gender === 'FEMALE' ? 'border-pink bg-pink/15 text-pink' : 'border-line bg-panel2 text-dim'
-              }`}
-            >
-              ♀ 여
-            </button>
-          </div>
+          <GradePicker value={grade} onChange={setGrade} surface="panel2" />
+          <GenderPicker value={gender} onChange={setGender} surface="panel2" />
 
           {/* 역할 — 표시·명단 구분용. 권한은 단일 패스코드 그대로라 접근이 달라지진 않는다 */}
           {asRegular && (

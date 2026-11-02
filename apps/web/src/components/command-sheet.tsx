@@ -21,7 +21,7 @@ import { GradeBadge, PartnerNote } from '@/components/badges';
 import { ClearableInput } from '@/components/clearable-input';
 import { AlertIcon, MicIcon, StopIcon } from '@/components/icons';
 import { AiThinking } from '@/components/logo-loader';
-import { GRADES } from '@/components/multi-member-form';
+import { GenderPicker, GradePicker } from '@/components/grade-gender-picker';
 import { Sheet } from '@/components/sheet';
 import { api, ApiError } from '@/lib/api';
 import { fixSpeech } from '@/lib/speech-fix';
@@ -692,8 +692,6 @@ function GuestPreview({ guests, onConfirm }: { guests: IAiGuestDraft[]; onConfir
   const ready = todo.length > 0 && todo.every((g) => g.gender && g.grade);
   const set = (index: number, patch: Partial<{ gender: Gender; grade: Grade }>) =>
     setPicks((prev) => prev.map((p, i) => (i === index ? { ...p, ...patch } : p)));
-  const chip = (on: boolean) =>
-    `h-9 min-w-9 rounded-lg border px-2 text-sm font-medium ${on ? 'border-court bg-court/15 text-court' : 'border-line text-dim'}`;
 
   return (
     <div className="flex flex-col gap-3 rounded-xl bg-amber/5 p-4">
@@ -709,20 +707,18 @@ function GuestPreview({ guests, onConfirm }: { guests: IAiGuestDraft[]; onConfir
           {guest.note && <p className="text-xs text-amber whitespace-normal">{guest.note}</p>}
           {!guest.alreadyCheckedIn && !guest.existingMemberId && (
             <>
-              <div className="flex gap-1.5">
-                {(['MALE', 'FEMALE'] as const).map((g) => (
-                  <button key={g} onClick={() => set(i, { gender: g })} className={chip(picks[i].gender === g)}>
-                    {g === 'MALE' ? '남' : '여'}
-                  </button>
-                ))}
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {GRADES.map((grade) => (
-                  <button key={grade} onClick={() => set(i, { grade })} className={chip(picks[i].grade === grade)}>
-                    {grade}
-                  </button>
-                ))}
-              </div>
+              <GenderPicker
+                value={picks[i].gender}
+                onChange={(gender) => set(i, { gender })}
+                surface="panel"
+                className="flex gap-1.5"
+                buttonClassName="min-w-11 px-3"
+              />
+              <GradePicker
+                value={picks[i].grade}
+                onChange={(grade) => set(i, { grade })}
+                surface="panel"
+              />
             </>
           )}
           {guest.existingMemberId && !guest.alreadyCheckedIn && guest.grade && (
