@@ -1,6 +1,7 @@
 import { ExecutionContext, HttpException, UnauthorizedException } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { issueAdminToken, verifyAdminToken } from '../auth/admin-token';
+import { issueDeviceToken, verifyDeviceToken } from '../auth/device-token';
 import { AdminGuard, isAdminRequest, passcodeLockout } from './admin.guard';
 
 jest.mock('@sentry/nestjs', () => ({ captureMessage: jest.fn() }));
@@ -125,6 +126,78 @@ describe('AdminGuard 연속 실패 잠금', () => {
     for (let i = 0; i < 10; i++) expect(isAdminRequest({ passcode: 'wrong' }, '3.3.3.3')).toBe(false);
     expect(isAdminRequest({ passcode: PASSCODE }, '3.3.3.3')).toBe(false); // 잠겨서 맞아도 운영진으로 안 봄
     expect(() => guard.canActivate(contextFor(PASSCODE, '3.3.3.3'))).toThrow(HttpException);
+  });
+});
+
+describe('신뢰 기기 표시', () => {
+  const guard = new AdminGuard();
+  const original = { passcode: process.env.ADMIN_PASSCODE, secret: process.env.ADMIN_TOKEN_SECRET };
+
+  const lockAll = () => {
+    for (let i = 0; i < 20; i++) {
+      try {
+        guard.canActivate(contextFor('wrong', `10.3.0.${i}`));
+      } catch {
+        // 전체 잠금을 건다
+      }
+    }
+  };
+  const withDevice = (passcode: string, ip: string, deviceToken: string) => {
+    const context = contextFor(passcode, ip);
+    const request = context.switchToHttp().getRequest<{ headers: Record<string, string> }>();
+    return {
+      switchToHttp: () => ({ getRequest: () => ({ ...request, headers: { ...request.headers, 'x-admin-device': deviceToken } }) }),
+    } as unknown as ExecutionContext;
+  };
+
+  beforeEach(() => {
+    process.env.ADMIN_PASSCODE = PASSCODE;
+    process.env.ADMIN_TOKEN_SECRET = 'test-secret';
+    passcodeLockout.reset();
+    jest.useRealTimers();
+  });
+  afterAll(() => {
+    process.env.ADMIN_PASSCODE = original.passcode;
+    process.env.ADMIN_TOKEN_SECRET = original.secret;
+    passcodeLockout.reset();
+  });
+
+  it('전체 잠금 중에도 맞는 패스코드로 들어오고, 표시 없는 기기는 막힌다', () => {
+    const device = issueDeviceToken()!;
+    lockAll();
+    expect(guard.canActivate(withDevice(PASSCODE, '10.9.9.9', device))).toBe(true);
+    expect(() => guard.canActivate(contextFor(PASSCODE, '10.9.9.9'))).toThrow(HttpException);
+  });
+
+  it('패스코드는 여전히 필요하고, 틀려도 전체 잠금을 지우지 않는다', () => {
+    jest.useFakeTimers({ now: Date.parse('2026-11-02T00:00:00Z') });
+    const device = issueDeviceToken()!;
+    lockAll();
+    jest.setSystemTime(Date.parse('2026-11-02T00:11:00Z')); // 전체 실패 창(10분)은 지났고 잠금은 남은 때
+    expect(() => guard.canActivate(withDevice('wrong', '10.9.9.9', device))).toThrow(UnauthorizedException);
+    expect(() => guard.canActivate(contextFor(PASSCODE, '10.9.9.8'))).toThrow(HttpException);
+  });
+
+  it('신뢰 기기도 한 접속에서 10번 틀리면 잠긴다', () => {
+    const device = issueDeviceToken()!;
+    for (let i = 0; i < 10; i++) expect(() => guard.canActivate(withDevice('wrong', '5.5.5.5', device))).toThrow();
+    expect(() => guard.canActivate(withDevice(PASSCODE, '5.5.5.5', device))).toThrow(HttpException);
+  });
+
+  it('위조, 만료된 표시는 인정하지 않고, 패스코드를 바꿔도 유효하다', () => {
+    const device = issueDeviceToken(Date.parse('2026-11-02T00:00:00Z'))!;
+    const [exp] = device.split('.');
+    expect(verifyDeviceToken(`${exp}.forged`, Date.parse('2026-11-02T00:00:00Z'))).toBe(false);
+    expect(verifyDeviceToken(`${Number(exp) + 1}.${device.split('.')[1]}`, Date.parse('2026-11-02T00:00:00Z'))).toBe(false);
+    expect(verifyDeviceToken(device, Date.parse('2027-06-01T00:00:00Z'))).toBe(false);
+    expect(verifyDeviceToken(undefined)).toBe(false);
+    process.env.ADMIN_PASSCODE = 'new-passcode';
+    expect(verifyDeviceToken(device, Date.parse('2026-11-03T00:00:00Z'))).toBe(true);
+  });
+
+  it('비밀값이 없으면 표시를 만들지 않는다', () => {
+    delete process.env.ADMIN_TOKEN_SECRET;
+    expect(issueDeviceToken()).toBeNull();
   });
 });
 

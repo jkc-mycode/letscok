@@ -2,6 +2,7 @@ import { Controller, Post, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { IAdminTokenResponse, IApiResponse } from '@letscok/shared-types';
 import { issueAdminToken } from '../common/auth/admin-token';
+import { issueDeviceToken } from '../common/auth/device-token';
 import { AdminGuard } from '../common/guards/admin.guard';
 
 @Controller('auth')
@@ -23,6 +24,9 @@ export class AuthController {
   @UseGuards(AdminGuard)
   token(): IApiResponse<IAdminTokenResponse> {
     const issued = issueAdminToken();
-    return { success: true, data: { token: issued?.token ?? null, expiresAt: issued?.expiresAt ?? null } };
+    return {
+      success: true,
+      data: { token: issued?.token ?? null, expiresAt: issued?.expiresAt ?? null, deviceToken: issueDeviceToken() },
+    };
   }
 }

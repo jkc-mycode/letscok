@@ -7,6 +7,7 @@ export const API_URL =
 
 const PASSCODE_KEY = 'letscok:admin-passcode'; // 예전 방식(패스코드 원문 저장) — 토큰으로 바꾸면 지운다
 const TOKEN_KEY = 'letscok:admin-token'; // 운영진 출입증(30일) — 패스코드 대신 이것만 저장
+const DEVICE_KEY = 'letscok:admin-device'; // 신뢰 기기 표시 — 잠금 공격 중에도 패스코드를 넣게 해 줄 뿐이라 로그아웃해도 지우지 않는다
 
 // 저장된 패스코드가 서버에서 거부됐을 때 게이트들이 듣는 이벤트
 export const ADMIN_UNAUTHORIZED_EVENT = 'letscok:admin-unauthorized';
@@ -65,8 +66,11 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   const isForm = options.body instanceof FormData;
   const headers: Record<string, string> = {};
   if (options.body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
-  if (options.passcode !== undefined) headers['x-admin-passcode'] = options.passcode;
-  else if (options.admin) {
+  if (options.passcode !== undefined) {
+    headers['x-admin-passcode'] = options.passcode;
+    const deviceToken = localStorage.getItem(DEVICE_KEY);
+    if (deviceToken) headers['x-admin-device'] = deviceToken;
+  } else if (options.admin) {
     const token = getAdminToken();
     if (token) headers.Authorization = `Bearer ${token}`;
     else headers['x-admin-passcode'] = getPasscode() ?? '';
@@ -110,6 +114,7 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
 export async function loginWithPasscode(passcode: string): Promise<string | null> {
   try {
     const res = await api<IAdminTokenResponse>('/auth/admin/token', { method: 'POST', passcode });
+    if (res.deviceToken) localStorage.setItem(DEVICE_KEY, res.deviceToken);
     return res.token;
   } catch (e) {
     if (!(e instanceof ApiError) || e.status !== 404) throw e;

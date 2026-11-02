@@ -204,6 +204,7 @@ export interface IGamePlayer {
 export interface IAdminTokenResponse {
   token: string | null;
   expiresAt: string | null; // ISO
+  deviceToken: string | null; // 신뢰 기기 표시 — 로그아웃해도 남겨 두고 로그인할 때 보낸다
 }
 
 export interface ICreateMemberDto {

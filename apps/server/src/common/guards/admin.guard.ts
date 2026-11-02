@@ -10,6 +10,7 @@ import * as Sentry from '@sentry/nestjs';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
 import { verifyAdminToken } from '../auth/admin-token';
+import { verifyDeviceToken } from '../auth/device-token';
 
 // 두 문자열을 길이 정보 노출 없이 상수 시간에 비교 —
 // 단순 !== 비교는 일치 길이에 따라 응답 시간이 미세하게 달라져 타이밍 공격 여지가 있다
@@ -28,7 +29,7 @@ const WINDOW_MS = 5 * 60 * 1000;
 const LOCK_MS = 20 * 60 * 1000;
 const MAX_TRACKED = 1000; // 접속 주소를 바꿔 가며 기록을 불리는 경우의 상한
 // 전체 잠금 — 접속 주소를 바꿔 가며 맞혀 보면 위 잠금에 안 걸린다. 10분에 20번 틀리면 20분 동안 누구도 패스코드로 못 들어온다
-// 이미 로그인한 기기는 토큰으로 다니므로 이 잠금과 상관없다
+// 이미 로그인한 기기는 토큰으로 다니므로 이 잠금과 상관없다. 신뢰 기기는 잠금 중에도 패스코드를 입력할 수 있다(접속별 잠금은 그대로)
 const GLOBAL_MAX_FAILS = 20;
 const GLOBAL_WINDOW_MS = 10 * 60 * 1000;
 
@@ -38,8 +39,8 @@ class PasscodeLockout {
   private readonly records = new Map<string, { fails: number; firstAt: number; lockedUntil: number }>();
   private global = { fails: 0, firstAt: 0, lockedUntil: 0 };
 
-  isLocked(ip: string, now = Date.now()): boolean {
-    if (this.global.lockedUntil > now) return true;
+  isLocked(ip: string, trusted = false, now = Date.now()): boolean {
+    if (!trusted && this.global.lockedUntil > now) return true;
     const record = this.records.get(ip);
     if (!record) return false;
     if (record.lockedUntil > now) return true;
@@ -48,14 +49,9 @@ class PasscodeLockout {
   }
 
   // 실패를 세고, 이번 실패로 잠겼으면 true
-  fail(ip: string, now = Date.now()): boolean {
-    if (now - this.global.firstAt > GLOBAL_WINDOW_MS) this.global = { fails: 0, firstAt: now, lockedUntil: 0 };
-    this.global.fails += 1;
-    if (this.global.fails >= GLOBAL_MAX_FAILS) {
-      this.global.lockedUntil = now + LOCK_MS;
-      // 패스코드가 숫자 4자리라 잠금은 시간을 벌 뿐이다 — 평소엔 이만큼 틀릴 일이 없으니 경고를 보고 패스코드를 바꾼다
-      Sentry.captureMessage('운영진 패스코드 전체 잠금 — 맞혀 보는 시도일 수 있어요. 패스코드를 바꿔 주세요.', 'warning');
-    }
+  fail(ip: string, trusted = false, now = Date.now()): boolean {
+    // 잠긴 동안에는 신뢰 기기만 여기에 온다 — 세면 창 초기화가 잠금까지 지워 버린다
+    if (this.global.lockedUntil <= now) this.countGlobalFail(now);
     let record = this.records.get(ip);
     if (!record || now - record.firstAt > WINDOW_MS) {
       if (!record && this.records.size >= MAX_TRACKED) this.prune(now);
@@ -64,7 +60,7 @@ class PasscodeLockout {
     }
     record.fails += 1;
     if (record.fails >= MAX_FAILS) record.lockedUntil = now + LOCK_MS;
-    return record.lockedUntil > now || this.global.lockedUntil > now;
+    return record.lockedUntil > now || (!trusted && this.global.lockedUntil > now);
   }
 
   succeed(ip: string): void {
@@ -74,6 +70,15 @@ class PasscodeLockout {
   reset(): void {
     this.records.clear();
     this.global = { fails: 0, firstAt: 0, lockedUntil: 0 };
+  }
+
+  private countGlobalFail(now: number): void {
+    if (now - this.global.firstAt > GLOBAL_WINDOW_MS) this.global = { fails: 0, firstAt: now, lockedUntil: 0 };
+    this.global.fails += 1;
+    if (this.global.fails < GLOBAL_MAX_FAILS) return;
+    this.global.lockedUntil = now + LOCK_MS;
+    // 패스코드가 숫자 4자리라 잠금은 시간을 벌 뿐이다 — 평소엔 이만큼 틀릴 일이 없으니 경고를 보고 패스코드를 바꾼다
+    Sentry.captureMessage('운영진 패스코드 전체 잠금 — 맞혀 보는 시도일 수 있어요. 패스코드를 바꿔 주세요.', 'warning');
   }
 
   private prune(now: number): void {
@@ -94,14 +99,14 @@ export const passcodeLockout = new PasscodeLockout();
 type PasscodeResult = 'ok' | 'wrong' | 'locked';
 
 // 패스코드 확인의 단일 지점 — 가드와 공개 API 둘 다 여기를 거쳐 실패가 함께 세진다
-function checkPasscode(passcode: unknown, ip: string): PasscodeResult {
-  if (passcodeLockout.isLocked(ip)) return 'locked';
+function checkPasscode(passcode: unknown, ip: string, trusted = false): PasscodeResult {
+  if (passcodeLockout.isLocked(ip, trusted)) return 'locked';
   const expected = process.env.ADMIN_PASSCODE as string;
   if (typeof passcode === 'string' && safeCompare(passcode, expected)) {
     passcodeLockout.succeed(ip);
     return 'ok';
   }
-  return passcodeLockout.fail(ip) ? 'locked' : 'wrong';
+  return passcodeLockout.fail(ip, trusted) ? 'locked' : 'wrong';
 }
 
 // Authorization: Bearer <토큰> 에서 토큰만
@@ -139,7 +144,8 @@ export class AdminGuard implements CanActivate {
       if (!verifyAdminToken(token)) throw new UnauthorizedException('로그인이 만료됐어요. 패스코드를 다시 입력해 주세요.');
       return true;
     }
-    const result = checkPasscode(passcode, request.ip ?? 'unknown');
+    const trusted = verifyDeviceToken(request.headers['x-admin-device']);
+    const result = checkPasscode(passcode, request.ip ?? 'unknown', trusted);
     if (result === 'locked') throw new HttpException(LOCKED_MESSAGE, HttpStatus.TOO_MANY_REQUESTS);
     if (result === 'wrong') throw new UnauthorizedException('운영진 패스코드가 올바르지 않습니다.');
     return true;
