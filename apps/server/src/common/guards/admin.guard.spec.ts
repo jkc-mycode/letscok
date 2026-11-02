@@ -1,6 +1,9 @@
 import { ExecutionContext, HttpException, UnauthorizedException } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { issueAdminToken, verifyAdminToken } from '../auth/admin-token';
 import { AdminGuard, isAdminRequest, passcodeLockout } from './admin.guard';
+
+jest.mock('@sentry/nestjs', () => ({ captureMessage: jest.fn() }));
 
 const PASSCODE = 'correct-passcode';
 
@@ -17,6 +20,8 @@ const contextFor = (passcode: string | undefined, ip = '1.1.1.1', authorization?
     }),
   }) as unknown as ExecutionContext;
 
+const captureMessage = Sentry.captureMessage as jest.Mock;
+
 describe('AdminGuard 연속 실패 잠금', () => {
   const guard = new AdminGuard();
   const original = process.env.ADMIN_PASSCODE;
@@ -24,6 +29,7 @@ describe('AdminGuard 연속 실패 잠금', () => {
   beforeEach(() => {
     process.env.ADMIN_PASSCODE = PASSCODE;
     passcodeLockout.reset();
+    captureMessage.mockClear();
     jest.useRealTimers();
   });
   afterAll(() => {
@@ -41,6 +47,7 @@ describe('AdminGuard 연속 실패 잠금', () => {
       }
     }
 
+    expect(captureMessage).toHaveBeenCalledTimes(1); // 잠길 때 한 번 경고 — 패스코드를 바꾸라는 신호
     // 맞는 패스코드도 다른 주소도 막힌다(맞혔는지 알 수 없게)
     expect(() => guard.canActivate(contextFor(PASSCODE, '10.9.9.9'))).toThrow(HttpException);
 

@@ -6,6 +6,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
 import { verifyAdminToken } from '../auth/admin-token';
@@ -50,7 +51,11 @@ class PasscodeLockout {
   fail(ip: string, now = Date.now()): boolean {
     if (now - this.global.firstAt > GLOBAL_WINDOW_MS) this.global = { fails: 0, firstAt: now, lockedUntil: 0 };
     this.global.fails += 1;
-    if (this.global.fails >= GLOBAL_MAX_FAILS) this.global.lockedUntil = now + LOCK_MS;
+    if (this.global.fails >= GLOBAL_MAX_FAILS) {
+      this.global.lockedUntil = now + LOCK_MS;
+      // 패스코드가 숫자 4자리라 잠금은 시간을 벌 뿐이다 — 평소엔 이만큼 틀릴 일이 없으니 경고를 보고 패스코드를 바꾼다
+      Sentry.captureMessage('운영진 패스코드 전체 잠금 — 맞혀 보는 시도일 수 있어요. 패스코드를 바꿔 주세요.', 'warning');
+    }
     let record = this.records.get(ip);
     if (!record || now - record.firstAt > WINDOW_MS) {
       if (!record && this.records.size >= MAX_TRACKED) this.prune(now);
