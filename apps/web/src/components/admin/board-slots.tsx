@@ -1,10 +1,11 @@
 'use client';
 
-import { GAME_SIZE, ICourt, IGame } from '@letscok/shared-types';
+import { ICourt, IGame } from '@letscok/shared-types';
 import { useEffect, useState } from 'react';
 import { mergeRefs, TEMP_GAME_PREFIX, useDropTarget, usePersonDrag, type GameRef } from '@/components/board-dnd';
 import { gamePartnerPeople, PartnerNote, PersonName } from '@/components/badges';
 import { useLongPress } from '@/components/admin/board-ui';
+import { isFullGame } from '@/lib/game-view';
 
 // 조합·코트 카드 안의 4자리(윗줄 팀 대 아랫줄 팀)와 끌어 놓기 자리
 
@@ -21,11 +22,6 @@ export function gameRef(game?: IGame): GameRef {
     memberIds: (game?.players ?? []).map((p) => p.attendanceId),
     playing: game?.status === 'PLAYING',
   };
-}
-
-// 4명이 다 찬 조합 — 코트 배정·모임원 앱 노출·빈 코트 채우기는 이것만(서버와 같은 기준)
-export function isFullGame(game: IGame): boolean {
-  return (game.players?.length ?? 0) >= GAME_SIZE;
 }
 
 // 사람마다 지금 있는 곳 — 대기 조합 순번들("조합 2, 3") 또는 코트("1번 코트")

@@ -16,6 +16,7 @@ import { buildSameNameTags, SameNameTagsProvider, Toast } from '@/components/bad
 import { InstallPrompt } from '@/components/install-prompt';
 import { LogoLoader } from '@/components/logo-loader';
 import { api, ApiError } from '@/lib/api';
+import { isFullGame, overlappingAttendanceIds } from '@/lib/game-view';
 import { useSnapshot } from '@/lib/use-snapshot';
 import { ToastState, useToast } from '@/lib/use-toast';
 import { MembersManagerModal } from '@/components/admin/members-manager';
@@ -37,7 +38,7 @@ import {
   readRosterSort,
   sortRoster,
 } from '@/components/admin/roster-sort';
-import { RosterDrop, buildPlaceLabels, isFullGame } from '@/components/admin/board-slots';
+import { RosterDrop, buildPlaceLabels } from '@/components/admin/board-slots';
 import {
   GameActionSheet,
   ReplacePlayerModal,
@@ -389,16 +390,7 @@ function BoardBody({
     () => buildPlaceLabels(queuedGames, playingByCourt, courts),
     [queuedGames, playingByCourt, courts],
   );
-  // 중복 대기 허용 — 두 개 이상의 대기 조합에 들어간 인원 (카드에 "겹침" 표시)
-  const overlapIds = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const game of queuedGames) {
-      for (const player of game.players ?? []) {
-        counts.set(player.attendanceId, (counts.get(player.attendanceId) ?? 0) + 1);
-      }
-    }
-    return new Set([...counts].filter(([, count]) => count >= 2).map(([id]) => id));
-  }, [queuedGames]);
+  const overlapIds = useMemo(() => overlappingAttendanceIds(queuedGames), [queuedGames]);
   // 모달이 열린 동안에도 실시간 스냅샷을 따라가도록 id로 파생 — 게임이 끝나/해체되면 자동으로 닫힘
   // 코트 고르기 대상 — 실시간 스냅샷 기준, 이미 배정·해체됐으면 시트가 저절로 닫힌다
   const assignTarget = useMemo(

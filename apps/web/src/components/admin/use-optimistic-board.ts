@@ -3,11 +3,11 @@
 import { GAME_SIZE, IFillCourtsResult, IGame, IGameRecommendation, IReplaceGamePlayerDto, ISessionSnapshot } from '@letscok/shared-types';
 import { arrayMove } from '@dnd-kit/sortable';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { isFullGame } from '@/components/admin/board-slots';
 import { sortCandidates } from '@/components/admin/roster-sort';
 import type { AttendanceChange } from '@/components/admin/action-sheets';
 import { TEMP_GAME_PREFIX, type DragItem, type DropTarget } from '@/components/board-dnd';
 import { api } from '@/lib/api';
+import { isFullGame, playingGamesByCourt } from '@/lib/game-view';
 import { useOptimisticMap } from '@/lib/use-optimistic-map';
 import type { useToast } from '@/lib/use-toast';
 
@@ -683,13 +683,7 @@ export function useOptimisticBoard({
     [moveOpt, runParallel, serverIdOf, waitForEnds],
   );
 
-  const playingByCourt = useMemo(() => {
-    const map = new Map<string, IGame>();
-    for (const game of games) {
-      if (game.status === 'PLAYING' && game.courtId) map.set(game.courtId, game);
-    }
-    return map;
-  }, [games]);
+  const playingByCourt = useMemo(() => playingGamesByCourt(games), [games]);
   // 끌어서 바꾼 순서 — 다음 실시간 화면이 오면 버린다(그때는 서버 순서가 같아져 있다)
   const [pendingOrder, setPendingOrder] = useState<string[] | null>(null);
   // 순서 요청은 누른 순서대로 한 줄로 보낸다(늦게 보낸 게 먼저 닿아 순서가 뒤집히지 않게). 보내는 중엔 보여 주던 순서를 유지

@@ -4,7 +4,7 @@
 // 위에 내 상태 한 문장(게임 중이면 초록 코트 카드) + 내 게임 4명, 아래 지금 코트·다음 게임·대기 인원 목록
 // 디자인 시스템 규칙: 카드 구분은 테두리 대신 면(panel·panel2), 글자 크기는 text-display~text-caption 6단계
 
-import { GAME_SIZE, IAttendance, ICourt, IGame } from '@letscok/shared-types';
+import { IAttendance, ICourt, IGame } from '@letscok/shared-types';
 import { AnimatePresence } from 'motion/react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
@@ -32,6 +32,7 @@ import { Sheet } from '@/components/sheet';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { api, ApiError } from '@/lib/api';
 import { clearMemberId, clearMemberToken, fetchMemberToken, getMemberId, getMemberToken } from '@/lib/member';
+import { isFullGame, overlappingAttendanceIds, playingGamesByCourt } from '@/lib/game-view';
 import { disablePush } from '@/lib/push';
 import { useSnapshot } from '@/lib/use-snapshot';
 import { useToast } from '@/lib/use-toast';
@@ -145,11 +146,9 @@ export default function MyStatusPage() {
   }
 
   const { courts, attendances, games } = view ?? snapshot;
-  const playingByCourt = new Map(
-    games.filter((g) => g.status === 'PLAYING' && g.courtId).map((g) => [g.courtId as string, g]),
-  );
+  const playingByCourt = playingGamesByCourt(games);
   // 빈칸 있는 조합은 운영진이 아직 짜는 중 — 4명이 다 찬 조합만 보여 주고 순번도 그것만 센다
-  const queuedGames = games.filter((g) => g.status === 'QUEUED' && (g.players?.length ?? 0) >= GAME_SIZE);
+  const queuedGames = games.filter((g) => g.status === 'QUEUED' && isFullGame(g));
   // 콕 미확인은 아직 배정 대상이 아니라 대기 인원에서 뺀다 (관제판과 같은 기준)
   // 빈칸 조합에만 든 사람(MATCHED)도 모임원 눈에는 아직 대기 — 보이는 조합에 없으면 대기 인원에 둔다
   const inVisibleGame = new Set(queuedGames.flatMap((g) => (g.players ?? []).map((p) => p.attendanceId)));
@@ -159,16 +158,7 @@ export default function MyStatusPage() {
       (a.status === 'CHECKED_IN' || (a.status === 'MATCHED' && !inVisibleGame.has(a.id))),
   );
   const resting = attendances.filter((a) => a.status === 'RESTING'); // 대기 인원 뒤에 흐리게 표시
-  // 여러 대기 조합에 겹쳐 들어간 인원 표시 (관제판과 동일 기준)
-  const overlapCounts = new Map<string, number>();
-  for (const game of queuedGames) {
-    for (const player of game.players ?? []) {
-      overlapCounts.set(player.attendanceId, (overlapCounts.get(player.attendanceId) ?? 0) + 1);
-    }
-  }
-  const overlapIds = new Set(
-    [...overlapCounts].filter(([, count]) => count >= 2).map(([id]) => id),
-  );
+  const overlapIds = overlappingAttendanceIds(queuedGames); // 여러 대기 조합에 겹쳐 들어간 인원 표시 (관제판과 동일 기준)
 
   // 내 게임 — 게임 중이면 그 코트, 조합에 들었으면 가장 앞의 조합(겹쳐 들어간 경우)
   const includesMe = (game: IGame) => (game.players ?? []).some((p) => p.attendanceId === me.id);

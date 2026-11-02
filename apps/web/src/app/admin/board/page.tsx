@@ -5,7 +5,7 @@
 // 모임원 화면과 같은 공개 현황(실시간)을 크게: 왼쪽 코트별 게임 중(팀으로 나눠), 오른쪽 다음 게임 순서
 // 좁은 화면(폰·세로 태블릿)은 두 구역을 반씩 나누면 카드가 한 장씩만 보여서, 탭으로 한 구역씩 보여 준다
 
-import { GAME_SIZE, IGame, IGamePlayer } from '@letscok/shared-types';
+import { IGame, IGamePlayer } from '@letscok/shared-types';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { buildSameNameTags, PersonName, SameNameTagsProvider } from '@/components/badges';
@@ -14,6 +14,7 @@ import { ConnectionError } from '@/components/connection-error';
 import { useStandalone } from '@/components/home-link';
 import { LogoLoader } from '@/components/logo-loader';
 import { SessionSwitcher } from '@/components/session-switcher';
+import { isFullGame, playingGamesByCourt } from '@/lib/game-view';
 import { useSnapshot } from '@/lib/use-snapshot';
 
 // 좁은 화면에서 고른 탭 — 기기마다 기억(띄워 두는 기기는 늘 같은 구역을 보는 경우가 많다)
@@ -95,9 +96,7 @@ export default function BoardDisplayPage() {
   }
 
   const { courts, attendances, games } = snapshot;
-  const playingByCourt = new Map(
-    games.filter((g) => g.status === 'PLAYING' && g.courtId).map((g) => [g.courtId as string, g]),
-  );
+  const playingByCourt = playingGamesByCourt(games);
   const queuedGames = games.filter((g) => g.status === 'QUEUED'); // 서버가 대기 순서로 준다
   const waitingCount = attendances.filter((a) => a.shuttleConfirmedAt && a.status === 'CHECKED_IN').length;
 
@@ -188,7 +187,7 @@ export default function BoardDisplayPage() {
               // 코트 카드와 같은 틀·그리드 — 양쪽 카드 크기가 맞게
               <div className="grid gap-3 sm:grid-cols-2">
                 {queuedGames.map((game, index) => {
-                  const draft = (game.players?.length ?? 0) < GAME_SIZE;
+                  const draft = !isFullGame(game);
                   return (
                     <BoardCard
                       key={game.id}
