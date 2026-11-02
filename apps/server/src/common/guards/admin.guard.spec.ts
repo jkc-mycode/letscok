@@ -37,7 +37,7 @@ describe('AdminGuard 연속 실패 잠금', () => {
     passcodeLockout.reset();
   });
 
-  it('접속 주소를 바꿔 가며 20번 틀리면 전체가 잠기고, 15분 뒤 풀린다', () => {
+  it('접속 주소를 바꿔 가며 20번 틀리면 전체가 잠기고, 20분 뒤 풀린다', () => {
     jest.useFakeTimers({ now: Date.parse('2026-11-02T00:00:00Z') });
     for (let i = 0; i < 20; i++) {
       try {
@@ -51,7 +51,10 @@ describe('AdminGuard 연속 실패 잠금', () => {
     // 맞는 패스코드도 다른 주소도 막힌다(맞혔는지 알 수 없게)
     expect(() => guard.canActivate(contextFor(PASSCODE, '10.9.9.9'))).toThrow(HttpException);
 
-    jest.setSystemTime(Date.parse('2026-11-02T00:15:01Z'));
+    jest.setSystemTime(Date.parse('2026-11-02T00:19:59Z'));
+    expect(() => guard.canActivate(contextFor(PASSCODE, '10.9.9.9'))).toThrow(HttpException);
+
+    jest.setSystemTime(Date.parse('2026-11-02T00:20:01Z'));
     expect(guard.canActivate(contextFor(PASSCODE, '10.9.9.9'))).toBe(true);
     jest.useRealTimers();
   });
@@ -93,10 +96,20 @@ describe('AdminGuard 연속 실패 잠금', () => {
     expect(guard.canActivate(contextFor(PASSCODE, '2.2.2.2'))).toBe(true);
   });
 
-  it('15분이 지나면 풀린다', () => {
+  it('20분이 지나면 풀린다', () => {
     jest.useFakeTimers({ now: new Date('2026-10-08T10:00:00Z') });
     for (let i = 0; i < 10; i++) expect(() => guard.canActivate(contextFor('wrong'))).toThrow();
-    jest.setSystemTime(new Date('2026-10-08T10:16:00Z'));
+    jest.setSystemTime(new Date('2026-10-08T10:19:59Z'));
+    expect(() => guard.canActivate(contextFor(PASSCODE))).toThrow(HttpException);
+    jest.setSystemTime(new Date('2026-10-08T10:20:01Z'));
+    expect(guard.canActivate(contextFor(PASSCODE))).toBe(true);
+  });
+
+  it('5분이 지난 실패는 한 접속 잠금에 세지 않는다', () => {
+    jest.useFakeTimers({ now: new Date('2026-11-02T00:00:00Z') });
+    for (let i = 0; i < 9; i++) expect(() => guard.canActivate(contextFor('wrong'))).toThrow(UnauthorizedException);
+    jest.setSystemTime(new Date('2026-11-02T00:05:01Z'));
+    expect(() => guard.canActivate(contextFor('wrong'))).toThrow(UnauthorizedException); // 잠겼다면 429
     expect(guard.canActivate(contextFor(PASSCODE))).toBe(true);
   });
 

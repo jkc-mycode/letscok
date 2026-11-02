@@ -21,18 +21,18 @@ function safeCompare(a: string, b: string): boolean {
 }
 
 // 패스코드 연속 실패 잠금 — 요청 제한(분당 60회)만으로는 하루 수만 번 맞혀 볼 수 있다
-// 같은 접속(IP)에서 15분 안에 10번 틀리면 15분 동안 맞는 패스코드도 거부한다(맞혔는지 알 수 없게)
+// 같은 접속(IP)에서 5분 안에 10번 틀리면 20분 동안 맞는 패스코드도 거부한다(맞혔는지 알 수 없게)
 // 메모리에 둔다 — 서버 한 대(Render)라 충분하고, 재시작되면 풀리는 정도는 감수
 const MAX_FAILS = 10;
-const WINDOW_MS = 15 * 60 * 1000;
-const LOCK_MS = 15 * 60 * 1000;
+const WINDOW_MS = 5 * 60 * 1000;
+const LOCK_MS = 20 * 60 * 1000;
 const MAX_TRACKED = 1000; // 접속 주소를 바꿔 가며 기록을 불리는 경우의 상한
-// 전체 잠금 — 접속 주소를 바꿔 가며 맞혀 보면 위 잠금에 안 걸린다. 10분에 20번 틀리면 15분 동안 누구도 패스코드로 못 들어온다
+// 전체 잠금 — 접속 주소를 바꿔 가며 맞혀 보면 위 잠금에 안 걸린다. 10분에 20번 틀리면 20분 동안 누구도 패스코드로 못 들어온다
 // 이미 로그인한 기기는 토큰으로 다니므로 이 잠금과 상관없다
 const GLOBAL_MAX_FAILS = 20;
 const GLOBAL_WINDOW_MS = 10 * 60 * 1000;
 
-export const LOCKED_MESSAGE = '패스코드를 여러 번 틀려 15분 동안 잠겼어요. 잠시 후 다시 시도해 주세요.';
+export const LOCKED_MESSAGE = '패스코드를 여러 번 틀려 20분 동안 잠겼어요. 잠시 후 다시 시도해 주세요.';
 
 class PasscodeLockout {
   private readonly records = new Map<string, { fails: number; firstAt: number; lockedUntil: number }>();
