@@ -7,6 +7,7 @@ import {
   IReopenGameDto,
   IMoveGameSlotDto,
   IReplaceGamePlayerDto,
+  IReplaceGamePlayersDto,
   RecommendationCategory,
 } from '@letscok/shared-types';
 import {
@@ -20,7 +21,9 @@ import {
   IsString,
   Max,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 // 조합 생성 요청 — 정확히 4명(중복은 서비스에서 별도 검증). 회원 id가 아니라 출석 id
 export class CreateGameDto implements ICreateGameDto {
@@ -100,4 +103,14 @@ export class ReplaceGamePlayerDto implements IReplaceGamePlayerDto {
 
   @IsString({ message: '들어올 모임원을 선택해주세요.' })
   inAttendanceId: string;
+}
+
+// 여러 명 교체 — 한 게임은 4명이라 최대 4쌍
+export class ReplaceGamePlayersDto implements IReplaceGamePlayersDto {
+  @IsArray()
+  @ArrayMinSize(1, { message: '교체할 모임원을 선택해주세요.' })
+  @ArrayMaxSize(4, { message: '한 게임에서 4명까지 교체할 수 있습니다.' })
+  @ValidateNested({ each: true })
+  @Type(() => ReplaceGamePlayerDto)
+  replacements: ReplaceGamePlayerDto[];
 }

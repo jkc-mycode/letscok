@@ -320,6 +320,11 @@ export interface IReplaceGamePlayerDto {
   inAttendanceId: string; // 들어오는 사람
 }
 
+// 여러 명 교체 — 전부 되거나 전부 안 된다(일부만 바뀌지 않게). 들어온 사람은 짝인 나간 사람의 자리를 잇는다
+export interface IReplaceGamePlayersDto {
+  replacements: IReplaceGamePlayerDto[];
+}
+
 // ===== 게임 추천 (GET /sessions/:id/game-recommendations) =====
 
 // 후보 성격 — 클라이언트가 한국어 라벨로 표시 (공정성/새 조합/믹스)

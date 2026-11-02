@@ -206,60 +206,64 @@ export class GameRosterService {
     return toGameResponse(updated);
   }
 
-  // 선수 교체: 부상·급한 일로 게임 중(PLAYING)이나 대기 조합(QUEUED)에서 한 명만 바꾼다
+  // 선수 교체: 부상·급한 일로 게임 중(PLAYING)이나 대기 조합(QUEUED)에서 사람을 바꾼다
   // 게임을 갈아엎지 않으므로 타이머·큐 순서가 유지된다. 빠진 사람은 대기 복귀(대기 시간 보존)
   async replacePlayer(id: string, dto: ReplaceGamePlayerDto): Promise<IGame> {
+    return this.replacePlayers(id, [dto]);
+  }
+
+  // 여러 명을 한 번에 — 먼저 전부 검사하고 한 트랜잭션으로 바꿔 일부만 바뀌지 않는다
+  async replacePlayers(id: string, pairs: ReplaceGamePlayerDto[]): Promise<IGame> {
     const game = await findGameOrThrow(this.prisma, id);
     if (game.status !== 'QUEUED' && game.status !== 'PLAYING') {
       throw new ConflictException('이미 종료되었거나 해체된 게임입니다.');
     }
-    if (dto.outAttendanceId === dto.inAttendanceId) {
+    const outIds = pairs.map((pair) => pair.outAttendanceId);
+    const inIds = pairs.map((pair) => pair.inAttendanceId);
+    if (new Set(outIds).size !== outIds.length || new Set(inIds).size !== inIds.length) {
+      throw new BadRequestException('같은 모임원을 두 번 고를 수 없습니다.');
+    }
+    if (pairs.some((pair) => pair.outAttendanceId === pair.inAttendanceId)) {
       throw new BadRequestException('같은 모임원으로는 교체할 수 없습니다.');
     }
-    if (!game.players.some((player) => player.attendanceId === dto.outAttendanceId)) {
+    if (outIds.some((outId) => !game.players.some((player) => player.attendanceId === outId))) {
       throw new ConflictException('빠질 모임원이 이 게임에 없습니다.');
     }
-    if (game.players.some((player) => player.attendanceId === dto.inAttendanceId)) {
+    if (inIds.some((inId) => game.players.some((player) => player.attendanceId === inId))) {
       throw new ConflictException('이미 이 게임에 있는 모임원입니다.');
     }
 
-    const incoming = await findPlayableAttendance(this.prisma, game.sessionId, dto.inAttendanceId);
+    const incoming = await Promise.all(inIds.map((inId) => findPlayableAttendance(this.prisma, game.sessionId, inId)));
     // PLAYING은 동시에 한 곳만 — 게임 중인 게임엔 다른 코트에서 뛰는 중인 사람 투입 불가
     // (QUEUED 조합엔 중복 대기 정책상 게임 중인 사람도 미리 넣을 수 있다)
-    if (game.status === 'PLAYING' && incoming.status === 'PLAYING') {
+    if (game.status === 'PLAYING' && incoming.some((attendance) => attendance.status === 'PLAYING')) {
       throw new ConflictException('이미 다른 코트에서 게임 중인 모임원입니다.');
     }
 
     const replaced = await this.prisma.$transaction(async (tx) => {
-      // 들어오는 사람은 나간 사람 자리에 — 팀이 바뀌지 않게
-      const outSlot = withSlots(game.players).find((p) => p.attendanceId === dto.outAttendanceId)?.slot ?? null;
-      await tx.gamePlayer.deleteMany({
-        where: { gameId: id, attendanceId: dto.outAttendanceId },
-      });
-      await tx.gamePlayer.create({
-        data: { gameId: id, attendanceId: dto.inAttendanceId, slot: outSlot },
-      });
+      // 들어오는 사람은 짝인 나간 사람 자리에 — 팀이 바뀌지 않게
+      const slotted = withSlots(game.players);
+      await tx.gamePlayer.deleteMany({ where: { gameId: id, attendanceId: { in: outIds } } });
+      for (const pair of pairs) {
+        const slot = slotted.find((p) => p.attendanceId === pair.outAttendanceId)?.slot ?? null;
+        await tx.gamePlayer.create({ data: { gameId: id, attendanceId: pair.inAttendanceId, slot } });
+      }
 
       // 들어오는 사람: 게임 중 게임이면 즉시 PLAYING, 대기 조합이면 미배정자만 MATCHED 승격
       if (game.status === 'PLAYING') {
-        await tx.attendance.update({
-          where: { id: dto.inAttendanceId },
-          data: { status: 'PLAYING' },
-        });
-      } else if (incoming.status === 'CHECKED_IN') {
-        await tx.attendance.update({
-          where: { id: dto.inAttendanceId },
-          data: { status: 'MATCHED' },
-        });
+        await tx.attendance.updateMany({ where: { id: { in: inIds } }, data: { status: 'PLAYING' } });
+      } else {
+        const waiting = incoming.filter((attendance) => attendance.status === 'CHECKED_IN').map((attendance) => attendance.id);
+        await tx.attendance.updateMany({ where: { id: { in: waiting } }, data: { status: 'MATCHED' } });
       }
 
       // 빠지는 사람 (대기 시간은 보존 — 오래 기다린 이력 유지)
-      await releaseFromGame(tx, [dto.outAttendanceId], id);
+      await releaseFromGame(tx, outIds, id);
 
       return tx.game.findUniqueOrThrow({ where: { id }, include: GAME_INCLUDE });
     });
     this.realtime.broadcastSnapshot(game.sessionId);
-    this.push.notifyGame(id, dto.inAttendanceId); // 새로 들어온 1명에게만 — 게임 상태에 맞는 문구
+    for (const inId of inIds) this.push.notifyGame(id, inId); // 새로 들어온 사람에게만 — 게임 상태에 맞는 문구
     return toGameResponse(replaced);
   }
 

@@ -27,6 +27,7 @@ import {
   ReopenGameDto,
   RecommendGamesQueryDto,
   ReplaceGamePlayerDto,
+  ReplaceGamePlayersDto,
 } from './dto/game.dtos';
 import { GameRosterService } from './game-roster.service';
 import { GamesService } from './games.service';
@@ -134,13 +135,22 @@ export class GamesController {
     return { success: true, data: await this.gamesService.renotify(id) };
   }
 
-  // 선수 교체 — 게임 중·대기 조합에서 한 명만 바꿈 (타이머·큐 순서 유지)
+  // 선수 교체 — 게임 중·대기 조합에서 사람을 바꿈 (타이머·큐 순서 유지)
   @Patch('games/:id/players')
   async replacePlayer(
     @Param('id') id: string,
     @Body() dto: ReplaceGamePlayerDto,
   ): Promise<IApiResponse<IGame>> {
     return { success: true, data: await this.rosterService.replacePlayer(id, dto) };
+  }
+
+  // 여러 명 교체 — 전부 되거나 전부 안 된다
+  @Patch('games/:id/players/batch')
+  async replacePlayers(
+    @Param('id') id: string,
+    @Body() dto: ReplaceGamePlayersDto,
+  ): Promise<IApiResponse<IGame>> {
+    return { success: true, data: await this.rosterService.replacePlayers(id, dto.replacements) };
   }
 
   // 대기 조합 빈칸에 한 명 넣기 — 4명이 차면 일반 조합(4명에게 알림)

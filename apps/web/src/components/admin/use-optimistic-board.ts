@@ -1,6 +1,6 @@
 'use client';
 
-import { GAME_SIZE, IFillCourtsResult, IGame, IGameRecommendation, ISessionSnapshot } from '@letscok/shared-types';
+import { GAME_SIZE, IFillCourtsResult, IGame, IGameRecommendation, IReplaceGamePlayerDto, ISessionSnapshot } from '@letscok/shared-types';
 import { arrayMove } from '@dnd-kit/sortable';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { isFullGame } from '@/components/admin/board-slots';
@@ -550,27 +550,27 @@ export function useOptimisticBoard({
       void patchGames([[gameId, change]], request),
     [patchGames],
   );
-  // 선수 교체 — 나간 사람 자리에 들어온 사람을 바로 보여 준다(서버 replacePlayer와 같은 자리 규칙, 끌어서 교체와 같은 API)
-  const replacePlayer = useCallback(
-    (gameId: string, outAttendanceId: string, inAttendanceId: string) => {
-      const attendance = snapshot.attendances.find((a) => a.id === inAttendanceId);
+  // 선수 교체 — 나간 사람 자리에 들어온 사람을 바로 보여 준다(서버 replacePlayers와 같은 자리 규칙). 여러 명도 한 요청으로
+  const replacePlayers = useCallback(
+    (gameId: string, pairs: IReplaceGamePlayerDto[]) => {
       void patchGames(
         [
           [
             gameId,
             (players) =>
-              players.map((p) =>
-                p.attendanceId === outAttendanceId
-                  ? { ...p, id: `${TEMP_GAME_PREFIX}${inAttendanceId}`, attendanceId: inAttendanceId, attendance }
-                  : p,
-              ),
+              players.map((p) => {
+                const pair = pairs.find((item) => item.outAttendanceId === p.attendanceId);
+                if (!pair) return p;
+                const attendance = snapshot.attendances.find((a) => a.id === pair.inAttendanceId);
+                return { ...p, id: `${TEMP_GAME_PREFIX}${pair.inAttendanceId}`, attendanceId: pair.inAttendanceId, attendance };
+              }),
           ],
         ],
         async () =>
-          api(`/games/${await serverIdOf(gameId)}/players`, {
+          api(`/games/${await serverIdOf(gameId)}/players/batch`, {
             method: 'PATCH',
             admin: true,
-            body: { outAttendanceId, inAttendanceId },
+            body: { replacements: pairs },
           }),
       );
     },
@@ -1121,7 +1121,7 @@ export function useOptimisticBoard({
     setCourtTurn,
     endGame,
     patchGames,
-    replacePlayer,
+    replacePlayers,
     cancelGame,
     slotActions,
     assignToCourt,

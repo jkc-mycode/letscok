@@ -340,7 +340,7 @@ function BoardBody({
     setCourtTurn,
     endGame,
     patchGames,
-    replacePlayer,
+    replacePlayers,
     cancelGame,
     slotActions,
     assignToCourt,
@@ -838,7 +838,7 @@ function BoardBody({
             sort={rosterSort}
             onSort={setRosterSort}
             placeLabels={placeLabels}
-            onReplace={(outId, inId) => replacePlayer(replaceTarget.id, outId, inId)}
+            onReplace={(pairs) => replacePlayers(replaceTarget.id, pairs)}
             onClose={() => setReplaceGameId(null)}
           />
         )}

@@ -778,6 +778,67 @@ describe('cancel', () => {
 
 // ===== replacePlayer (선수 교체) =====
 
+describe('replacePlayers (여러 명 교체)', () => {
+  it('두 쌍을 한 번에 — 들어온 사람은 짝의 자리를 잇고, 나간 사람은 대기로, 타이머 유지', async () => {
+    const session = await seedSession();
+    const court = await seedCourt(session.id);
+    const [a, b, c, d] = await seedFour(session.id);
+    const game = await roster.create(session.id, { attendanceIds: [a.id, b.id, c.id, d.id] });
+    const assigned = await service.assign(game.id, { courtId: court.id });
+    const slotOf = (id: string) => assigned.players?.find((p) => p.attendanceId === id)?.slot;
+    const [inA, inC] = [await seedAttendance(session.id), await seedAttendance(session.id)];
+
+    const replaced = await roster.replacePlayers(game.id, [
+      { outAttendanceId: a.id, inAttendanceId: inA.id },
+      { outAttendanceId: c.id, inAttendanceId: inC.id },
+    ]);
+
+    expect(replaced.startedAt).toEqual(assigned.startedAt);
+    expect(replaced.players?.find((p) => p.attendanceId === inA.id)?.slot).toBe(slotOf(a.id));
+    expect(replaced.players?.find((p) => p.attendanceId === inC.id)?.slot).toBe(slotOf(c.id));
+    const statuses = await prisma.attendance.findMany({ where: { id: { in: [a.id, c.id, inA.id, inC.id] } } });
+    expect(statuses.find((s) => s.id === a.id)?.status).toBe('CHECKED_IN');
+    expect(statuses.find((s) => s.id === c.id)?.status).toBe('CHECKED_IN');
+    expect(statuses.find((s) => s.id === inA.id)?.status).toBe('PLAYING');
+    expect(statuses.find((s) => s.id === inC.id)?.status).toBe('PLAYING');
+  });
+
+  it('한 쌍이라도 안 되면 아무도 바뀌지 않는다', async () => {
+    const session = await seedSession();
+    const court = await seedCourt(session.id);
+    const [a, b, c, d] = await seedFour(session.id);
+    const game = await roster.create(session.id, { attendanceIds: [a.id, b.id, c.id, d.id] });
+    await service.assign(game.id, { courtId: court.id });
+    const ok = await seedAttendance(session.id);
+    const left = await seedAttendance(session.id, { status: 'LEFT' });
+
+    await expect(
+      roster.replacePlayers(game.id, [
+        { outAttendanceId: a.id, inAttendanceId: ok.id },
+        { outAttendanceId: b.id, inAttendanceId: left.id },
+      ]),
+    ).rejects.toThrow(ConflictException);
+
+    const players = await prisma.gamePlayer.findMany({ where: { gameId: game.id } });
+    expect(players.map((p) => p.attendanceId).sort()).toEqual([a.id, b.id, c.id, d.id].sort());
+    expect((await prisma.attendance.findUniqueOrThrow({ where: { id: ok.id } })).status).toBe('CHECKED_IN');
+  });
+
+  it('같은 사람을 두 번 고르면 400', async () => {
+    const session = await seedSession();
+    const [a, b, c, d] = await seedFour(session.id);
+    const game = await roster.create(session.id, { attendanceIds: [a.id, b.id, c.id, d.id] });
+    const incoming = await seedAttendance(session.id);
+
+    await expect(
+      roster.replacePlayers(game.id, [
+        { outAttendanceId: a.id, inAttendanceId: incoming.id },
+        { outAttendanceId: b.id, inAttendanceId: incoming.id },
+      ]),
+    ).rejects.toThrow(BadRequestException);
+  });
+});
+
 describe('replacePlayer', () => {
   it('PLAYING 게임 교체 — out은 CHECKED_IN 복귀(대기시간 보존), in은 PLAYING, 타이머 유지', async () => {
     const session = await seedSession();

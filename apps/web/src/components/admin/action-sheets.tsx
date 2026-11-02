@@ -1,6 +1,6 @@
 'use client';
 
-import { GAME_SIZE, IAttendance, IGame } from '@letscok/shared-types';
+import { GAME_SIZE, IAttendance, IGame, IReplaceGamePlayerDto } from '@letscok/shared-types';
 import { useState } from 'react';
 import { Sheet } from '@/components/sheet';
 import { GradeBadge, PersonName } from '@/components/badges';
@@ -28,7 +28,7 @@ export function ReplacePlayerModal({
   placeLabels: Map<string, string>; // 명단과 같은 위치 칩("조합 2, 3"·"1번 코트")
   sort: RosterSort; // 명단과 같은 정렬
   onSort: (sort: RosterSort) => void;
-  onReplace: (outAttendanceId: string, inAttendanceId: string) => void; // 누르자마자 반영(보드가 맡음)
+  onReplace: (pairs: IReplaceGamePlayerDto[]) => void; // 누르자마자 반영(보드가 맡음). 여러 쌍을 한 요청으로
   onClose: () => void;
 }) {
   // 번호는 짝이 사라져도 다른 짝에서 바뀌지 않는다 — 취소할 때마다 번호가 당겨지면 누가 누구 자리인지 헷갈린다
@@ -67,7 +67,7 @@ export function ReplacePlayerModal({
 
   const submit = () => {
     if (!ready) return;
-    for (const pair of pairs) onReplace(pair.outId, pair.inId as string);
+    onReplace(pairs.map((p) => ({ outAttendanceId: p.outId, inAttendanceId: p.inId as string })));
     onClose();
   };
 
