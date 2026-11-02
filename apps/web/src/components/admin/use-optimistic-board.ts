@@ -1069,10 +1069,11 @@ export function useOptimisticBoard({
   // 빈칸 채우기 대상 — 시트에서 만든 새 조합은 서버 조합이 생기기 전까지 임시 카드로 보이므로 서버 id로도 그 임시 카드를 찾는다
   const slotTempOf = (id: string) => optCreated.find((t) => t.game.id === id || t.realId === id);
   // 추천 [대기에 추가]·[빈자리에 넣기] — 누르자마자 대기 조합에 보이게(조합 만들기·빈칸 채우기와 같은 길)
-  const addRecommended = (rec: IGameRecommendation, fillGame?: IGame) => {
+  // onDone: 서버에 들어간 뒤(실패 포함) — 추천 시트가 이어서 다음 추천을 받는다
+  const addRecommended = (rec: IGameRecommendation, fillGame?: IGame, onDone?: (ok: boolean) => void) => {
     const ids = rec.players.map((p) => p.attendanceId);
     if (!fillGame) {
-      startGame(ids);
+      startGame(ids, undefined, onDone);
       return;
     }
     const missing = ids.filter((id) => !(fillGame.players ?? []).some((p) => p.attendanceId === id));

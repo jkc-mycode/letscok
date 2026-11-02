@@ -7,7 +7,7 @@ import {
   RecommendationCategory,
   RecommendationKind,
 } from '@letscok/shared-types';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Sheet } from '@/components/sheet';
 import { PartnerNote, PersonName } from '@/components/badges';
 import { api, ApiError } from '@/lib/api';
@@ -33,41 +33,49 @@ const CATEGORY_TABS: { value: RecommendationCategory; label: string }[] = [
 
 // 탭별 빈 결과 사유 — 스냅샷 출석 성별을 세어 구체적으로 안내 (추가 API 없음)
 function emptyMessage(category: RecommendationCategory, attendances: IAttendance[]): string {
-  const active = attendances.filter((a) => a.status !== 'LEFT' && a.status !== 'RESTING'); // 휴식은 추천 풀 밖
+  // 휴식·콕 미확인은 추천 풀 밖
+  const active = attendances.filter((a) => a.status !== 'LEFT' && a.status !== 'RESTING' && a.shuttleConfirmedAt);
   const m = active.filter((a) => a.member?.gender === 'MALE').length;
   const f = active.filter((a) => a.member?.gender === 'FEMALE').length;
+  if (category === 'ALL' && active.length < 4) return `콕 확인된 인원이 ${active.length}명이라 조합을 만들 수 없어요`;
   if (category === 'MENS' && m < 4) return `남성 인원이 ${m}명이라 남복 조합을 만들 수 없어요`;
   if (category === 'WOMENS' && f < 4) return `여성 인원이 ${f}명이라 여복 조합을 만들 수 없어요`;
   if (category === 'MIXED' && (m < 2 || f < 2))
     return `혼복은 남녀 2명씩 필요해요 (현재 남 ${m} · 여 ${f})`;
-  // 성별 인원은 충분한데 후보가 없는 경우 = 미배정 대기 부족 (성별 미지정은 종목 탭 제외)
+  // 인원은 충분한데 후보가 없는 경우 = 앞 조합과 시간이 겹치거나 3:1밖에 안 되는 경우
   return category === 'ALL'
-    ? '추천할 미배정 대기 인원이 없어요'
-    : '조건에 맞는 대기 인원이 부족해요 (성별 미지정은 종목 탭에서 빠져요)';
+    ? '지금 순서로는 겹치지 않게 남복·여복·혼복을 만들 수 없어요. 게임이 끝나면 다시 눌러 주세요'
+    : '지금 순서로는 겹치지 않는 사람이 부족해요 (성별 미지정은 종목 탭에서 빠져요)';
 }
 
 export function RecommendModal({
   sessionId,
   attendances,
+  placeLabels,
   fillGame,
   onAdd,
   onClose,
 }: {
   sessionId: string;
   attendances: IAttendance[];
+  placeLabels: Map<string, string>; // 명단과 같은 위치 표시("조합 2, 3"·"1번 코트")
   fillGame?: IGame; // 있으면 이 짜는 중 조합의 사람을 고정하고 빈자리만 추천
-  onAdd: (rec: IGameRecommendation) => void; // 화면에 먼저 넣고 서버로 보낸다(보드가 맡음)
+  onAdd: (rec: IGameRecommendation, onDone?: (ok: boolean) => void) => void; // 화면에 먼저 넣고 서버로 보낸다(보드가 맡음)
   onClose: () => void;
 }) {
   const [category, setCategory] = useState<RecommendationCategory>('ALL');
   const [candidates, setCandidates] = useState<IGameRecommendation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0); // [다시 추천] 횟수 — 누를 때마다 다음 순위
+  const [adding, setAdding] = useState(false);
+  const [addedCount, setAddedCount] = useState(0); // 이 시트에서 넣은 조합 수
+  const keepCards = useRef(false); // 조합을 넣은 뒤 다시 받을 때는 카드를 비우지 않는다(깜빡이지 않게)
   const fixedIds = (fillGame?.players ?? []).map((p) => p.attendanceId);
   const fixedKey = fixedIds.join(','); // 조합 사람이 바뀌면 다시 추천
 
   const load = useCallback(async () => {
-    setCandidates(null);
+    if (!keepCards.current) setCandidates(null);
+    keepCards.current = false;
     setError(null);
     try {
       setCandidates(
@@ -85,9 +93,22 @@ export function RecommendModal({
   }, [load]);
 
   // 추천은 참고용 초안 — 넣는 길은 [조합 만들기]·[빈칸 채우기]와 같다
+  // 미리 여러 개를 짜는 일이 많아 시트를 닫지 않고, 서버에 들어간 뒤 그 조합까지 반영한 1순위 추천을 다시 받는다
   const addToQueue = (rec: IGameRecommendation) => {
-    onAdd(rec);
-    onClose();
+    if (fillGame) {
+      onAdd(rec);
+      onClose();
+      return;
+    }
+    setAdding(true);
+    onAdd(rec, (ok) => {
+      setAdding(false);
+      if (!ok) return; // 실패 안내는 보드가 띄운다 — 지금 카드를 그대로 둔다
+      setAddedCount((n) => n + 1);
+      keepCards.current = true;
+      if (page === 0) void load();
+      else setPage(0);
+    });
   };
 
   return (
@@ -101,7 +122,9 @@ export function RecommendModal({
           <h2 className="shrink-0 text-lg font-bold whitespace-nowrap text-court">
             {fillGame ? '빈자리 추천' : '게임 추천'}
           </h2>
-          <p className="min-w-0 text-xs text-faint">참고용이에요 — 넣을지는 운영진 마음!</p>
+          <p className="min-w-0 text-xs text-faint">
+            {addedCount > 0 ? `이번에 ${addedCount}개 넣었어요` : '참고용이에요 — 넣을지는 운영진 마음!'}
+          </p>
           <button
             onClick={() => setPage((n) => n + 1)}
             className="ml-auto h-9 shrink-0 rounded-lg bg-panel2 px-3 text-sm text-dim"
@@ -171,11 +194,12 @@ export function RecommendModal({
                             player.borrowedFrom === 'PLAYING' ? 'bg-coral/15 text-coral' : 'bg-amber/15 text-amber'
                           }`}
                         >
-                          {player.borrowedFrom === 'PLAYING' ? '게임 중' : '대기 조합'}
+                          {placeLabels.get(player.attendanceId) ?? (player.borrowedFrom === 'PLAYING' ? '게임 중' : '대기 조합')}
                         </span>
                       )}
+                      {/* 이미 조합·게임에 든 사람의 대기 시간은 점수에 안 들어가 게임 수만 보여 준다 */}
                       <span className="tabular ml-auto shrink-0 font-mono text-caption text-dim">
-                        {player.gamesPlayed}게임 · {player.borrowedFrom === 'PLAYING' ? 0 : player.waitingMinutes}분
+                        {player.gamesPlayed}게임{player.borrowedFrom ? '' : ` · ${player.waitingMinutes}분`}
                       </span>
                     </div>
                   ))}
@@ -194,7 +218,8 @@ export function RecommendModal({
                 )}
                 <button
                   onClick={() => addToQueue(rec)}
-                  className="mt-3 h-11 rounded-lg bg-court text-sm font-bold text-bg"
+                  disabled={adding}
+                  className="mt-3 h-11 rounded-lg bg-court text-sm font-bold text-bg disabled:bg-panel disabled:text-faint"
                 >
                   {fillGame ? '빈자리에 넣기' : '대기에 추가'}
                 </button>

@@ -685,7 +685,8 @@ function BoardBody({
           <RecommendModal
             sessionId={session.id}
             attendances={attendances}
-            onAdd={(rec) => addRecommended(rec)}
+            placeLabels={placeLabels}
+            onAdd={(rec, onDone) => addRecommended(rec, undefined, onDone)}
             onClose={() => setRecommendOpen(false)}
           />
         )}
@@ -698,6 +699,7 @@ function BoardBody({
               <RecommendModal
                 sessionId={session.id}
                 attendances={attendances}
+                placeLabels={placeLabels}
                 fillGame={fillGame}
                 onAdd={(rec) => addRecommended(rec, fillGame)}
                 onClose={() => setRecommendFillId(null)}
