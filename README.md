@@ -123,4 +123,4 @@ pnpm dev:web      # http://localhost:3001
 | Frontend | Vercel (루트 디렉터리 `apps/web`) |
 | Backend | Render Free Web Service (레포 루트 · 모노레포 설치) |
 | DB | Neon Free (Postgres, 런타임=Pooled / 마이그레이션=Direct) |
-| 웜업 | cron-job.org — 매일 07~23시 KST 10분 간격 `GET /health` (Render 슬립 방지) |
+| 웜업 | cron-job.org — 매일 07시~다음 날 02시 KST 10분 간격 `GET /health` (Render 슬립 방지) |

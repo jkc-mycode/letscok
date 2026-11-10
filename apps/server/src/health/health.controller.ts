@@ -12,7 +12,7 @@ export class HealthController {
     throw new Error('Sentry 연동 테스트 — 이 이벤트가 보이면 정상');
   }
 
-  // 웜업 핑 대상 — DB 미접근으로 가볍게 유지 (cron-job.org가 매일 07~23시 KST 10분 간격 호출)
+  // 웜업 핑 대상 — DB 미접근으로 가볍게 유지 (cron-job.org가 매일 07시~다음 날 02시 KST 10분 간격 호출)
   @Get()
   check(): IApiResponse<{ status: string }> {
     return { success: true, data: { status: 'ok' } };
