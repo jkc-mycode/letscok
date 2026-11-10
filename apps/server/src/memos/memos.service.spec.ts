@@ -53,11 +53,13 @@ describe('memos', () => {
     expect(await service.list()).toHaveLength(1);
   });
 
-  it('개별 삭제 = 완료 처리, 없는 id는 404', async () => {
+  it('개별 삭제 = 완료 처리, 목록에서 빠지지만 기록은 남는다. 이미 지운 id는 404', async () => {
     const memo = await service.create('처리할 일');
     await service.remove(memo.id);
 
     expect(await service.list()).toEqual([]);
+    const row = await prisma.adminMemo.findUnique({ where: { id: memo.id } });
+    expect(row?.deletedAt).toBeInstanceOf(Date);
     await expect(service.remove(memo.id)).rejects.toThrow(NotFoundException);
   });
 
@@ -69,5 +71,7 @@ describe('memos', () => {
 
     expect(result.deleted).toBe(2);
     expect(await service.list()).toEqual([]);
+    expect(await prisma.adminMemo.count({ where: { deletedAt: { not: null } } })).toBe(2);
+    expect((await service.clear()).deleted).toBe(0); // 이미 지운 메모는 다시 세지 않는다
   });
 });

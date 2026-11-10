@@ -447,7 +447,7 @@ export class AiCommandService {
   // 운영 메모 읽어 주기 — 메모 글은 AI로 보내지 않고 서버가 그대로 읽어 준다(건강 정보 등이 적히는 곳이라)
   // 이름을 말하면 그 이름(또는 성 뺀 이름)이 들어간 메모만
   private async memoAnswer(people: string[]): Promise<IAiCommandStep> {
-    const memos = await this.prisma.adminMemo.findMany({ orderBy: { createdAt: 'asc' } });
+    const memos = await this.prisma.adminMemo.findMany({ where: { deletedAt: null }, orderBy: { createdAt: 'asc' } });
     const names = people.map((p) => p.trim()).filter(Boolean);
     if (names.length === 0) {
       return {

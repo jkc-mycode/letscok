@@ -4,7 +4,7 @@ import { AdminMemo } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 
-// 관제판 운영 메모 — 세션 무관 전역(처리 전 요청·건강 메모는 다음 모임으로 이어진다), 삭제 = 완료 처리.
+// 관제판 운영 메모 — 세션 무관 전역(처리 전 요청·건강 메모는 다음 모임으로 이어진다), 삭제 = 완료 처리(soft-delete로 기록은 남김).
 // 이름·건강 정보가 적히므로 공개 응답에 절대 안 싣고 admin 경로로만 노출.
 // 변경 시 다른 운영진 기기에 '메모 바뀜' 신호만 보낸다(받은 기기가 /memos를 다시 읽는다)
 @Injectable()
@@ -17,6 +17,7 @@ export class MemosService {
   // 오래된 순 — 적은 순서대로 읽힌다
   async list(): Promise<IAdminMemo[]> {
     const memos = await this.prisma.adminMemo.findMany({
+      where: { deletedAt: null },
       orderBy: { createdAt: 'asc' },
     });
     return memos.map(toMemoResponse);
@@ -31,19 +32,21 @@ export class MemosService {
   }
 
   async remove(id: string): Promise<IAdminMemo> {
-    const memo = await this.prisma.adminMemo.findUnique({ where: { id } });
+    const memo = await this.prisma.adminMemo.findFirst({ where: { id, deletedAt: null } });
     if (!memo) {
       throw new NotFoundException('메모를 찾을 수 없습니다.');
     }
-    // 운영 메모라 soft-delete 불필요 — 하드 삭제
-    await this.prisma.adminMemo.delete({ where: { id } });
+    await this.prisma.adminMemo.update({ where: { id }, data: { deletedAt: new Date() } });
     await this.broadcastIfSessionOpen();
     return toMemoResponse(memo);
   }
 
   // 전체 초기화 — 프론트에서 2탭 확인 후 호출
   async clear(): Promise<{ deleted: number }> {
-    const { count } = await this.prisma.adminMemo.deleteMany({});
+    const { count } = await this.prisma.adminMemo.updateMany({
+      where: { deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
     await this.broadcastIfSessionOpen();
     return { deleted: count };
   }
