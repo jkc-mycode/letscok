@@ -55,6 +55,30 @@ enum MemberRole {
   MEMBER // 모임원
 }
 
+// 자체 대회(청백전) — 평소 모임(Session)과 따로 연다. 평소 게임 기록·게임 횟수와 섞지 않는다
+enum TournamentStatus {
+  DRAFT // 준비 중 — 대진표를 넣고 고치는 단계. 모임원 화면은 아직 평소 화면
+  OPEN // 진행 중 — 모임원 링크가 대회 현황으로 바뀐다
+  CLOSED
+}
+
+enum TournamentTeam {
+  BLUE // 청팀
+  WHITE // 백팀
+}
+
+enum TournamentMatchType {
+  MENS // 남복
+  WOMENS // 여복
+  MIXED // 혼복
+}
+
+enum TournamentMatchStatus {
+  QUEUED // 대기 경기
+  PLAYING
+  FINISHED // 점수 입력 완료
+}
+
 // 회원 원장 — 세션과 무관하게 누적되는 기본 정보
 model Member {
   id        String    @id @default(cuid())
@@ -73,6 +97,8 @@ model Member {
   attendances       Attendance[]
   pushSubscriptions PushSubscription[]
   aliases           MemberAlias[]
+  tournamentParticipants TournamentParticipant[]
+  tournamentProxyPlays   TournamentMatchPlayer[]
 
   @@index([name])
   @@map("members")
@@ -226,4 +252,83 @@ model GamePlayer {
   @@unique([gameId, attendanceId]) // 같은 게임에 같은 사람 중복 투입 방지
   @@index([attendanceId]) // "이 사람이 참여한 게임" 역방향 조회용
   @@map("game_players")
+}
+
+// 자체 대회 1회 — 항상 최대 1개만 DRAFT 또는 OPEN (대회 만들기 API에서 보장)
+model Tournament {
+  id         String           @id @default(cuid())
+  name       String
+  date       DateTime         @db.Date
+  status     TournamentStatus @default(DRAFT)
+  entryCode  String // 폰 연결용 입장 코드 — 대회를 만들 때 발급. 공개 응답엔 절대 미노출(운영진 전용 조회)
+  courtCount Int              @default(6) // 대관한 장소의 코트 수 — 코트 번호는 1부터 이 수까지
+  createdAt  DateTime         @default(now())
+  openedAt   DateTime?
+  closedAt   DateTime?
+
+  participants TournamentParticipant[]
+  matches      TournamentMatch[]
+
+  @@index([status])
+  @@map("tournaments")
+}
+
+// 대회 참가자 — 회원 명단과 연결. 팀은 대진표의 청팀 칸·백팀 칸에서 정해진다
+model TournamentParticipant {
+  id           String         @id @default(cuid())
+  tournamentId String
+  memberId     String
+  team         TournamentTeam
+  enteredAt    DateTime? // 입구 체크인 시각 — 입장과 웰컴 키트·타월·추첨권 지급을 한 번에 기록. null = 아직 안 옴
+  createdAt    DateTime       @default(now())
+
+  tournament   Tournament              @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  member       Member                  @relation(fields: [memberId], references: [id])
+  matchPlayers TournamentMatchPlayer[]
+
+  @@unique([tournamentId, memberId]) // 한 대회에 한 사람은 한 팀
+  @@index([memberId])
+  @@map("tournament_participants")
+}
+
+// 대진 경기 1건 — 21점 단판, 듀스 없음
+model TournamentMatch {
+  id           String                @id @default(cuid())
+  tournamentId String
+  matchNo      Int // 시트의 번호 — 시트용 복사가 이 순서로 점수를 낸다
+  round        Int
+  courtNo      Int // 치를 코트 — 대진표의 코트로 시작하고, 운영진이 다른 코트에 올리면 그 번호로 바뀐다
+  type         TournamentMatchType
+  status       TournamentMatchStatus @default(QUEUED)
+  queueOrder   Int // 대기 경기 순서 — 처음엔 matchNo와 같고 운영진이 바꾼다
+  blueScore    Int? // 실제 점수 — 대리 경기도 실제 점수를 남기고, 집계할 때 결원 팀 0:21로 본다
+  whiteScore   Int?
+  startedAt    DateTime?
+  endedAt      DateTime?
+
+  tournament Tournament              @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  players    TournamentMatchPlayer[]
+
+  @@unique([tournamentId, matchNo])
+  @@index([tournamentId, status])
+  @@map("tournament_matches")
+}
+
+// 대진 경기 선수 (경기당 4행) — slot 0·1이 청팀, 2·3이 백팀
+model TournamentMatchPlayer {
+  id            String  @id @default(cuid())
+  matchId       String
+  participantId String // 이 자리의 선수 — 불참·부상으로 바꾸면 같은 팀의 다른 참가자로 교체
+  slot          Int
+  // 지각 대리 — 이 자리를 대신 뛴 운영진. 값이 있으면 이 경기는 대리 경기이고 이 자리의 팀이 결원 팀(패배)
+  proxyMemberId String?
+
+  match       TournamentMatch       @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  participant TournamentParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  proxyMember Member?               @relation(fields: [proxyMemberId], references: [id])
+
+  @@unique([matchId, slot])
+  @@index([participantId]) // "이 사람의 경기" 조회 — 내 경기 카드·개인 승수
+  @@index([proxyMemberId])
+  @@map("tournament_match_players")
 }
