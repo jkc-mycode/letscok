@@ -8,12 +8,14 @@ import {
   TournamentMatchStatus,
   TournamentTeam,
 } from '@letscok/shared-types';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { TournamentPlayerEditor } from '@/components/admin/tournament-player-editor';
 import { ConfirmButton } from '@/components/confirm-button';
 import { TOURNAMENT_TYPE_LABEL } from '@/components/tournament-live';
 import { api, ApiError } from '@/lib/api';
 
 // 대회 경기 진행 — 코트마다 지금 경기와 다음 경기를 보여 주고, 대기 경기를 빈 코트에 올리고, 점수를 넣고 고친다
+// 대기 경기는 순서를 바꾸고, 대기·진행 중 경기는 선수를 바꾼다
 
 export { TOURNAMENT_TYPE_LABEL };
 const SMALL_BTN = 'h-9 rounded-lg px-3 text-sm font-bold transition-opacity disabled:opacity-40';
@@ -21,24 +23,31 @@ const SMALL_BTN = 'h-9 rounded-lg px-3 text-sm font-bold transition-opacity disa
 const blueOf = (match: ITournamentMatch) => match.players.filter((p) => p.slot < 2).map((p) => p.name);
 const whiteOf = (match: ITournamentMatch) => match.players.filter((p) => p.slot >= 2).map((p) => p.name);
 
+// 겹침 경고 — 서버가 알린 내용을 보여 주고, 그래도 하겠다고 하면 force로 다시 보낸다
 interface BusyAsk {
-  matchId: string;
-  courtNo: number;
   message: string;
+  label: string;
+  retry: () => void;
 }
 
 export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetail; onChange: (next: ITournamentDetail) => void }) {
   const { tournament, matches } = detail;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [ask, setAsk] = useState<BusyAsk | null>(null); // 선수가 아직 경기 중일 때 — 그래도 시작할지 묻는다
+  const [ask, setAsk] = useState<BusyAsk | null>(null);
+  const [editingFor, setEditingFor] = useState<string | null>(null); // 선수를 바꾸는 중인 경기
+  // 경고와 오류는 화면 위쪽에 뜬다 — 긴 대기 목록 아래에서 눌렀어도 보이게 그쪽으로 올린다
+  const noticeRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (ask || error) noticeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [ask, error]);
   const [pickingFor, setPickingFor] = useState<string | null>(null); // 코트를 고르는 중인 대기 경기
   const [scoringFor, setScoringFor] = useState<string | null>(null); // 점수를 넣거나 고치는 중인 경기
 
   const playing = matches.filter((m) => m.status === TournamentMatchStatus.PLAYING);
   const queued = matches
     .filter((m) => m.status === TournamentMatchStatus.QUEUED)
-    .sort((a, b) => a.queueOrder - b.queueOrder);
+    .sort((a, b) => a.queueOrder - b.queueOrder || a.matchNo - b.matchNo); // 점수를 지워 돌아온 경기는 순서 번호가 겹칠 수 있다
   // 방금 끝난 경기가 위로
   const finished = matches
     .filter((m) => m.status === TournamentMatchStatus.FINISHED)
@@ -55,6 +64,7 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
       setAsk(null);
       setPickingFor(null);
       setScoringFor(null);
+      setEditingFor(null);
     } catch (e) {
       if (onBusy && e instanceof ApiError && e.code === TOURNAMENT_PLAYER_BUSY) onBusy(e.message);
       else setError(e instanceof ApiError ? e.message : '요청에 실패했습니다.');
@@ -63,10 +73,41 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
     }
   };
 
-  const start = (matchId: string, courtNo: number, force = false) =>
+  const start = (matchId: string, courtNo: number, force = false): Promise<void> =>
     run(
       () => api<ITournamentDetail>(`${base}/${matchId}/start`, { method: 'POST', admin: true, body: { courtNo, force } }),
-      (message) => setAsk({ matchId, courtNo, message }),
+      (message) => setAsk({ message, label: `그래도 ${courtNo}코트에 올리기`, retry: () => void start(matchId, courtNo, true) }),
+    );
+  const replacePlayer = (matchId: string, slot: number, participantId: string, swapMatchId?: string, force = false): Promise<void> =>
+    run(
+      () =>
+        api<ITournamentDetail>(`${base}/${matchId}/players/${slot}`, {
+          method: 'PUT',
+          admin: true,
+          body: { participantId, swapMatchId, force },
+        }),
+      (message) => setAsk({ message, label: '그래도 바꾸기', retry: () => void replacePlayer(matchId, slot, participantId, swapMatchId, true) }),
+    );
+  // 대기 목록에서 한 칸 위·아래로 — 대기 경기 전부의 새 순서를 보낸다
+  const move = (index: number, delta: -1 | 1) => {
+    const ids = queued.map((m) => m.id);
+    [ids[index], ids[index + delta]] = [ids[index + delta], ids[index]];
+    return run(() => api<ITournamentDetail>(`${base}/order`, { method: 'PUT', admin: true, body: { matchIds: ids } }));
+  };
+  const toggleEditing = (matchId: string) => {
+    setEditingFor(editingFor === matchId ? null : matchId);
+    setScoringFor(null);
+    setPickingFor(null);
+  };
+  const playerEditor = (match: ITournamentMatch) =>
+    editingFor === match.id && (
+      <TournamentPlayerEditor
+        detail={detail}
+        match={match}
+        busy={busy}
+        onReplace={(slot, participantId, swapMatchId) => void replacePlayer(match.id, slot, participantId, swapMatchId)}
+        onCancel={() => setEditingFor(null)}
+      />
     );
   const cancelStart = (matchId: string) =>
     run(() => api<ITournamentDetail>(`${base}/${matchId}/cancel-start`, { method: 'POST', admin: true }));
@@ -77,6 +118,7 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
   const toggleScoring = (matchId: string) => {
     setScoringFor(scoringFor === matchId ? null : matchId);
     setPickingFor(null);
+    setEditingFor(null);
   };
   const scoreForm = (match: ITournamentMatch) =>
     scoringFor === match.id && (
@@ -90,6 +132,7 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
 
   return (
     <section className="flex flex-col gap-4">
+      <div ref={noticeRef} />
       {error && <p className="rounded-xl bg-coral/10 p-3 text-sm text-coral">{error}</p>}
       {ask && (
         <div className="flex flex-col gap-2 rounded-xl border border-amber/50 bg-amber/10 p-3 text-sm text-amber">
@@ -97,12 +140,8 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
             <span className="font-bold">확인해 주세요</span> {ask.message}
           </p>
           <div className="flex gap-2">
-            <button
-              onClick={() => void start(ask.matchId, ask.courtNo, true)}
-              disabled={busy}
-              className={`${SMALL_BTN} bg-amber text-bg`}
-            >
-              그래도 {ask.courtNo}코트에 올리기
+            <button onClick={ask.retry} disabled={busy} className={`${SMALL_BTN} bg-amber text-bg`}>
+              {ask.label}
             </button>
             <button onClick={() => setAsk(null)} className={`${SMALL_BTN} border border-line text-dim`}>
               취소
@@ -138,8 +177,12 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
                       disabled={busy}
                       onConfirm={() => void cancelStart(current.id)}
                     />
+                    <button onClick={() => toggleEditing(current.id)} disabled={busy} className={`${SMALL_BTN} border border-line text-dim`}>
+                      선수 바꾸기
+                    </button>
                   </div>
                   {scoreForm(current)}
+                  {playerEditor(current)}
                 </>
               ) : next ? (
                 <>
@@ -161,20 +204,35 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
         <h2 className="text-body-sm font-bold text-dim">대기 경기 {queued.length}건</h2>
         {queued.length === 0 && <p className="text-sm text-faint">대기 중인 경기가 없어요</p>}
         <ul className="flex flex-col gap-2">
-          {queued.map((match) => (
+          {queued.map((match, index) => (
             <li key={match.id} className="flex flex-col gap-2 rounded-xl bg-panel p-3">
-              <div className="flex items-center gap-3">
-                <div className="min-w-0 flex-1">
-                  <MatchNames match={match} showCourt />
-                </div>
+              <MatchNames match={match} showCourt />
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => void move(index, -1)}
+                  disabled={busy || index === 0}
+                  aria-label="순서 위로"
+                  className={`${SMALL_BTN} border border-line text-dim`}
+                >
+                  ▲
+                </button>
+                <button
+                  onClick={() => void move(index, 1)}
+                  disabled={busy || index === queued.length - 1}
+                  aria-label="순서 아래로"
+                  className={`${SMALL_BTN} border border-line text-dim`}
+                >
+                  ▼
+                </button>
                 <button
                   onClick={() => {
                     setPickingFor(pickingFor === match.id ? null : match.id);
                     setScoringFor(null);
+                    setEditingFor(null);
                   }}
                   disabled={busy || emptyCourts.length === 0}
                   title={emptyCourts.length === 0 ? '빈 코트가 없어요' : undefined}
-                  className={`${SMALL_BTN} shrink-0 border border-line text-dim`}
+                  className={`${SMALL_BTN} ml-auto shrink-0 border border-line text-dim`}
                 >
                   코트 고르기
                 </button>
@@ -182,8 +240,12 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
                 <button onClick={() => toggleScoring(match.id)} disabled={busy} className={`${SMALL_BTN} shrink-0 border border-line text-dim`}>
                   점수
                 </button>
+                <button onClick={() => toggleEditing(match.id)} disabled={busy} className={`${SMALL_BTN} shrink-0 border border-line text-dim`}>
+                  선수 바꾸기
+                </button>
               </div>
               {scoreForm(match)}
+              {playerEditor(match)}
               {pickingFor === match.id && (
                 <div className="flex flex-wrap gap-2">
                   {emptyCourts.map((courtNo) => (
