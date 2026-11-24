@@ -56,7 +56,8 @@ function TournamentHome() {
   const open = detail?.tournament.status === TournamentStatus.OPEN;
 
   return (
-    <main className="fade-in mx-auto flex min-h-dvh w-full max-w-2xl flex-col gap-5 p-6">
+    // 대회 중에는 노트북과 태블릿에서 코트 전체가 한 화면에 들어오게 넓게 쓴다
+    <main className={`fade-in mx-auto flex min-h-dvh w-full flex-col gap-5 p-6 ${open ? 'max-w-6xl' : 'max-w-2xl'}`}>
       <header>
         <Link href="/admin" className="text-sm text-dim transition-opacity hover:opacity-70">
           ← 운영 화면
@@ -92,11 +93,19 @@ function TournamentHome() {
             </nav>
           )}
           {view === 'entry' && detail.participants.length > 0 ? (
-            <TournamentEntry detail={detail} onChange={setDetail} />
+            <div className="mx-auto w-full max-w-2xl">
+              <TournamentEntry detail={detail} onChange={setDetail} />
+            </div>
           ) : open && standings && view !== 'main' ? (
             <>
               <TournamentScoreboard standings={standings} />
-              {view === 'bracket' ? <TournamentBracket detail={detail} /> : <TournamentRanking standings={standings} />}
+              {view === 'bracket' ? (
+                <TournamentBracket detail={detail} wide />
+              ) : (
+                <div className="mx-auto w-full max-w-2xl">
+                  <TournamentRanking standings={standings} />
+                </div>
+              )}
             </>
           ) : (
             <>

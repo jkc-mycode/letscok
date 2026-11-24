@@ -98,11 +98,11 @@ export function TournamentCourts({ detail }: { detail: ITournamentDetail }) {
   );
 }
 
-// 라운드별 대진표 — 끝난 경기는 점수, 아니면 상태
-export function TournamentBracket({ detail }: { detail: ITournamentDetail }) {
+// 라운드별 대진표 — 끝난 경기는 점수, 아니면 상태. wide: 운영 화면처럼 넓은 곳에서는 라운드를 두 줄로 나란히
+export function TournamentBracket({ detail, wide = false }: { detail: ITournamentDetail; wide?: boolean }) {
   const rounds = [...new Set(detail.matches.map((m) => m.round))].sort((a, b) => a - b);
   return (
-    <div className="flex flex-col gap-3">
+    <div className={`flex flex-col gap-3 ${wide ? 'lg:grid lg:grid-cols-2 lg:items-start' : ''}`}>
       {rounds.map((round) => (
         <div key={round} className="rounded-xl bg-panel p-3">
           <p className="text-caption font-bold text-dim">{round}라운드</p>

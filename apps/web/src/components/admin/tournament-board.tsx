@@ -156,7 +156,7 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {courts.map((courtNo) => {
           const current = playing.find((m) => m.courtNo === courtNo);
           const next = queued.find((m) => m.courtNo === courtNo);
@@ -206,6 +206,8 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
         })}
       </div>
 
+      {/* 넓은 화면에서는 대기 경기와 끝난 경기를 나란히 둔다 */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
       <div className="flex flex-col gap-2">
         <h2 className="text-body-sm font-bold text-dim">대기 경기 {queued.length}건</h2>
         {queued.length === 0 && <p className="text-sm text-faint">대기 중인 경기가 없어요</p>}
@@ -304,6 +306,7 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
             </li>
           ))}
         </ul>
+      </div>
       </div>
     </section>
   );
