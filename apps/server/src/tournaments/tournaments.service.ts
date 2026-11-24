@@ -141,6 +141,22 @@ export class TournamentsService {
     return this.changed();
   }
 
+  // 입구 체크인 — 대회를 시작하기 전(준비 중)에도 받는다. 처음 누른 시각을 남기고, 되돌리면 지운다
+  async setEntry(id: string, participantId: string, entered: boolean): Promise<ITournamentDetail> {
+    await this.findActive(id);
+    const participant = await this.prisma.tournamentParticipant.findFirst({ where: { id: participantId, tournamentId: id } });
+    if (!participant) {
+      throw new NotFoundException('참가자를 찾을 수 없습니다.');
+    }
+    if (entered !== (participant.enteredAt !== null)) {
+      await this.prisma.tournamentParticipant.update({
+        where: { id: participantId },
+        data: { enteredAt: entered ? new Date() : null },
+      });
+    }
+    return this.changed();
+  }
+
   // 대회 시작 — 이때부터 모임원 링크가 대회 현황으로 바뀐다
   async open(id: string): Promise<ITournamentDetail> {
     const tournament = await this.findActive(id);

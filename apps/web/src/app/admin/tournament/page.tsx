@@ -17,6 +17,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
 import { TOURNAMENT_TYPE_LABEL as TYPE_LABEL, TournamentBoard } from '@/components/admin/tournament-board';
+import { TournamentEntry } from '@/components/admin/tournament-entry';
 import { ConfirmButton } from '@/components/confirm-button';
 import { TournamentScoreboard } from '@/components/tournament-live';
 import { api, ApiError } from '@/lib/api';
@@ -50,6 +51,7 @@ function TournamentHome() {
   // 다른 운영진 기기에서 바꾼 내용도 신호를 받아 다시 읽는다
   const { detail, loading, failed, setDetail } = useTournamentLive({ admin: true });
   const standings = useMemo(() => (detail ? computeTournamentStandings(detail) : null), [detail]);
+  const [view, setView] = useState<'main' | 'entry'>('main'); // 입구 담당은 체크인 탭만 띄워 둔다
 
   return (
     <main className="fade-in mx-auto flex min-h-dvh w-full max-w-2xl flex-col gap-5 p-6">
@@ -66,26 +68,52 @@ function TournamentHome() {
       {detail && (
         <>
           <Summary detail={detail} onChange={setDetail} />
-          {detail.tournament.status === TournamentStatus.OPEN && standings && <TournamentScoreboard standings={standings} />}
-          {detail.tournament.status === TournamentStatus.OPEN && <TournamentBoard detail={detail} onChange={setDetail} />}
-          {/* 시작한 경기가 생기면 서버가 다시 넣기를 막는다 — 그때부터는 버튼도 숨긴다 */}
-          {detail.matches.every((match) => match.status === TournamentMatchStatus.QUEUED) && (
-            <BracketImport detail={detail} onImported={setDetail} />
+          {detail.participants.length > 0 && (
+            <nav className="flex gap-2">
+              {(
+                [
+                  ['main', detail.tournament.status === TournamentStatus.OPEN ? '경기 진행' : '대진표'],
+                  ['entry', `입구 체크인 ${detail.participants.filter((p) => p.enteredAt !== null).length}/${detail.participants.length}`],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => setView(key)}
+                  className={`h-10 flex-1 rounded-lg border text-sm font-bold ${
+                    view === key ? 'border-court bg-court/10 text-court' : 'border-line text-dim'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
           )}
-          {detail.tournament.status === TournamentStatus.DRAFT && detail.matches.length > 0 && (
-            <section className="flex flex-col gap-3">
-              <h2 className="text-body-sm font-bold text-dim">등록된 대진표</h2>
-              <MatchTable
-                lines={detail.matches.map((match) => ({
-                  matchNo: match.matchNo,
-                  round: match.round,
-                  courtNo: match.courtNo,
-                  type: match.type,
-                  blue: match.players.filter((p) => p.slot < 2).map((p) => p.name),
-                  white: match.players.filter((p) => p.slot >= 2).map((p) => p.name),
-                }))}
-              />
-            </section>
+          {view === 'entry' && detail.participants.length > 0 ? (
+            <TournamentEntry detail={detail} onChange={setDetail} />
+          ) : (
+            <>
+            {detail.tournament.status === TournamentStatus.OPEN && standings && <TournamentScoreboard standings={standings} />}
+            {detail.tournament.status === TournamentStatus.OPEN && <TournamentBoard detail={detail} onChange={setDetail} />}
+            {/* 시작한 경기가 생기면 서버가 다시 넣기를 막는다 — 그때부터는 버튼도 숨긴다 */}
+            {detail.matches.every((match) => match.status === TournamentMatchStatus.QUEUED) && (
+              <BracketImport detail={detail} onImported={setDetail} />
+            )}
+            {detail.tournament.status === TournamentStatus.DRAFT && detail.matches.length > 0 && (
+              <section className="flex flex-col gap-3">
+                <h2 className="text-body-sm font-bold text-dim">등록된 대진표</h2>
+                <MatchTable
+                  lines={detail.matches.map((match) => ({
+                    matchNo: match.matchNo,
+                    round: match.round,
+                    courtNo: match.courtNo,
+                    type: match.type,
+                    blue: match.players.filter((p) => p.slot < 2).map((p) => p.name),
+                    white: match.players.filter((p) => p.slot >= 2).map((p) => p.name),
+                  }))}
+                />
+              </section>
+            )}
+            </>
           )}
         </>
       )}

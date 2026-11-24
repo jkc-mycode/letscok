@@ -1,9 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
 import { IApiResponse, IBracketPreview, ITournament, ITournamentDetail } from '@letscok/shared-types';
 import { AdminGuard } from '../common/guards/admin.guard';
 import {
   CreateTournamentDto,
   ImportBracketDto,
+  SetTournamentEntryDto,
   SetTournamentScoreDto,
   StartTournamentMatchDto,
 } from './dto/tournament.dtos';
@@ -34,6 +35,16 @@ export class TournamentsController {
   @Put(':id/bracket')
   async importBracket(@Param('id') id: string, @Body() dto: ImportBracketDto): Promise<IApiResponse<ITournamentDetail>> {
     return { success: true, data: await this.tournamentsService.importBracket(id, dto) };
+  }
+
+  // 입구 체크인과 되돌리기
+  @Patch(':id/participants/:participantId/entry')
+  async setEntry(
+    @Param('id') id: string,
+    @Param('participantId') participantId: string,
+    @Body() dto: SetTournamentEntryDto,
+  ): Promise<IApiResponse<ITournamentDetail>> {
+    return { success: true, data: await this.tournamentsService.setEntry(id, participantId, dto.entered) };
   }
 
   @Post(':id/open')

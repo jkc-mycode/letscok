@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { BracketIssueCode, computeTournamentStandings } from '@letscok/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -401,5 +401,33 @@ describe('모임원이 보는 대회 현황과 점수판', () => {
     expect(standings.blue).toEqual({ wins: 1, pointsFor: 21, pointsAgainst: 0 });
     expect(standings.white).toEqual({ wins: 0, pointsFor: 0, pointsAgainst: 21 });
     expect(standings.players.every((p) => p.games === 0 && p.wins === 0)).toBe(true);
+  });
+});
+
+describe('입구 체크인', () => {
+  it('준비 중에도 체크인하고, 되돌릴 수 있고, 처음 누른 시각이 유지된다', async () => {
+    await seedMembers();
+    const { id } = await open();
+    const detail = await service.importBracket(id, { text: BRACKET });
+    const target = detail.participants.find((p) => p.name === '가')!;
+
+    const entered = await service.setEntry(id, target.id, true);
+    const firstAt = entered.participants.find((p) => p.id === target.id)!.enteredAt;
+    const again = await service.setEntry(id, target.id, true);
+
+    expect(firstAt).not.toBeNull();
+    expect(again.participants.find((p) => p.id === target.id)!.enteredAt).toBe(firstAt);
+    expect(again.participants.filter((p) => p.enteredAt !== null)).toHaveLength(1);
+
+    const undone = await service.setEntry(id, target.id, false);
+    expect(undone.participants.every((p) => p.enteredAt === null)).toBe(true);
+  });
+
+  it('다른 대회의 참가자나 없는 참가자는 404', async () => {
+    await seedMembers();
+    const { id } = await open();
+    await service.importBracket(id, { text: BRACKET });
+
+    await expect(service.setEntry(id, 'nope', true)).rejects.toBeInstanceOf(NotFoundException);
   });
 });

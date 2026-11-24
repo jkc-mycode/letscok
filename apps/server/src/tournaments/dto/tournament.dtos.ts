@@ -2,6 +2,7 @@ import {
   IBracketNamePick,
   ICreateTournamentDto,
   IImportBracketDto,
+  ISetTournamentEntryDto,
   ISetTournamentScoreDto,
   IStartTournamentMatchDto,
   TOURNAMENT_WIN_SCORE,
@@ -77,4 +78,9 @@ export class SetTournamentScoreDto implements ISetTournamentScoreDto {
   @Min(0, { message: SCORE_MESSAGE })
   @Max(TOURNAMENT_WIN_SCORE, { message: SCORE_MESSAGE })
   whiteScore: number;
+}
+
+export class SetTournamentEntryDto implements ISetTournamentEntryDto {
+  @IsBoolean({ message: '입장 여부를 보내 주세요.' })
+  entered: boolean;
 }

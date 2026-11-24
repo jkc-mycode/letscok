@@ -737,6 +737,11 @@ export interface IStartTournamentMatchDto {
 }
 export const TOURNAMENT_PLAYER_BUSY = 'PLAYER_BUSY';
 
+// 입구 체크인 — 입장과 웰컴 키트·타월·추첨권 지급을 한 번에 기록한다. false로 보내면 잘못 누른 것을 되돌린다
+export interface ISetTournamentEntryDto {
+  entered: boolean;
+}
+
 // 점수 입력·수정 — 21점 단판, 듀스 없음: 이긴 팀은 정확히 21점, 진 팀은 0~20점
 export const TOURNAMENT_WIN_SCORE = 21;
 export interface ISetTournamentScoreDto {
