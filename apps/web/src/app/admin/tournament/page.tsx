@@ -7,6 +7,7 @@ import {
   IBracketPreview,
   ITournament,
   ITournamentDetail,
+  TournamentMatchStatus,
   TournamentMatchType,
   TournamentStatus,
   TournamentTeam,
@@ -14,12 +15,12 @@ import {
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
+import { TOURNAMENT_TYPE_LABEL as TYPE_LABEL, TournamentBoard } from '@/components/admin/tournament-board';
 import { ConfirmButton } from '@/components/confirm-button';
 import { api, ApiError } from '@/lib/api';
 
-// 관제판 대회 화면 — 대회를 만들고 시트 대진표를 붙여 넣어 등록한다
+// 관제판 대회 화면 — 대회를 만들고 시트 대진표를 붙여 넣어 등록한 뒤, 시작하면 경기 진행 화면이 된다
 
-const TYPE_LABEL: Record<TournamentMatchType, string> = { MENS: '남복', WOMENS: '여복', MIXED: '혼복' };
 const STATUS_LABEL: Record<TournamentStatus, string> = { DRAFT: '준비 중', OPEN: '진행 중', CLOSED: '종료' };
 const INPUT_CLS = 'h-12 rounded-xl border border-line bg-panel px-4 text-body outline-none focus:border-court';
 const PRIMARY_CLS = 'h-12 rounded-xl bg-court px-5 font-bold text-bg transition-opacity disabled:opacity-40';
@@ -66,9 +67,13 @@ function TournamentHome() {
       {detail === null && <CreateForm onCreated={(tournament) => setDetail({ tournament, participants: [], matches: [] })} />}
       {detail && (
         <>
-          <Summary detail={detail} />
-          <BracketImport detail={detail} onImported={setDetail} />
-          {detail.matches.length > 0 && (
+          <Summary detail={detail} onChange={setDetail} />
+          {detail.tournament.status === TournamentStatus.OPEN && <TournamentBoard detail={detail} onChange={setDetail} />}
+          {/* 시작한 경기가 생기면 서버가 다시 넣기를 막는다 — 그때부터는 버튼도 숨긴다 */}
+          {detail.matches.every((match) => match.status === TournamentMatchStatus.QUEUED) && (
+            <BracketImport detail={detail} onImported={setDetail} />
+          )}
+          {detail.tournament.status === TournamentStatus.DRAFT && detail.matches.length > 0 && (
             <section className="flex flex-col gap-3">
               <h2 className="text-body-sm font-bold text-dim">등록된 대진표</h2>
               <MatchTable
@@ -127,9 +132,28 @@ function CreateForm({ onCreated }: { onCreated: (tournament: ITournament) => voi
   );
 }
 
-function Summary({ detail }: { detail: ITournamentDetail }) {
+function Summary({ detail, onChange }: { detail: ITournamentDetail; onChange: (next: ITournamentDetail | null) => void }) {
   const { tournament, participants, matches } = detail;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // 경기 상태가 바뀌면 앞서 띄운 안내("진행 중인 경기가 있어요")는 더 맞지 않는다
+  useEffect(() => setError(null), [detail]);
   const count = (team: TournamentTeam) => participants.filter((p) => p.team === team).length;
+  const done = matches.filter((m) => m.status === TournamentMatchStatus.FINISHED).length;
+
+  const run = async (request: () => Promise<ITournamentDetail | null>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      onChange(await request());
+    } catch (e) {
+      setError(failText(e, '요청에 실패했습니다.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const path = `/tournaments/${tournament.id}`;
+
   return (
     <section className="flex flex-col gap-1 rounded-2xl bg-panel p-5">
       <div className="flex items-center gap-2">
@@ -142,8 +166,34 @@ function Summary({ detail }: { detail: ITournamentDetail }) {
       <p className="mt-1 text-sm">
         {matches.length === 0
           ? '아직 대진표가 없어요'
-          : `경기 ${matches.length}건, 참가자 ${participants.length}명 (청팀 ${count(TournamentTeam.BLUE)}명, 백팀 ${count(TournamentTeam.WHITE)}명), 코트 ${tournament.courtCount}개`}
+          : `경기 ${matches.length}건${tournament.status === TournamentStatus.OPEN ? ` 중 ${done}건 끝남` : ''}, 참가자 ${participants.length}명 (청팀 ${count(TournamentTeam.BLUE)}명, 백팀 ${count(TournamentTeam.WHITE)}명), 코트 ${tournament.courtCount}개`}
       </p>
+      {error && <p className="mt-1 text-sm text-coral">{error}</p>}
+      {tournament.status === TournamentStatus.DRAFT && matches.length > 0 && (
+        <ConfirmButton
+          label="대회 시작"
+          confirmLabel="시작하면 모임원 링크가 대회 현황으로 바뀌어요. 한 번 더 누르면 시작"
+          className="mt-3 min-h-12 rounded-xl px-5 py-2 font-bold"
+          idleCls="bg-court text-bg"
+          disabled={busy}
+          onConfirm={() => void run(() => api<ITournamentDetail>(`${path}/open`, { method: 'POST', admin: true }))}
+        />
+      )}
+      {tournament.status === TournamentStatus.OPEN && (
+        <ConfirmButton
+          label="대회 종료"
+          confirmLabel="종료하면 되돌릴 수 없어요. 한 번 더 누르면 종료"
+          className="mt-3 h-10 self-start rounded-lg px-4 text-sm font-bold"
+          idleCls="border border-line text-dim"
+          disabled={busy}
+          onConfirm={() =>
+            void run(async () => {
+              await api<ITournament>(`${path}/close`, { method: 'POST', admin: true });
+              return null;
+            })
+          }
+        />
+      )}
     </section>
   );
 }
