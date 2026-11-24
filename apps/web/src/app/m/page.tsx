@@ -30,14 +30,32 @@ import { PushToggle } from '@/components/push-toggle';
 import { sessionName } from '@/components/session-switcher';
 import { Sheet } from '@/components/sheet';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { TournamentLiveView } from '@/components/tournament-live';
 import { api, ApiError } from '@/lib/api';
 import { clearMemberId, clearMemberToken, fetchMemberToken, getMemberId, getMemberToken } from '@/lib/member';
 import { isFullGame, overlappingAttendanceIds, playingGamesByCourt } from '@/lib/game-view';
 import { disablePush } from '@/lib/push';
 import { useSnapshot } from '@/lib/use-snapshot';
 import { useToast } from '@/lib/use-toast';
+import { useTournamentLive } from '@/lib/use-tournament-live';
 
+// 대회가 진행 중이면 대회 현황이 먼저 — 폰을 연결하지 않아도 보인다. 대회가 없거나 못 읽으면 평소 화면 그대로
 export default function MyStatusPage() {
+  const { detail, loading } = useTournamentLive();
+  if (loading) {
+    return <Shell><LogoLoader className="py-20" /></Shell>;
+  }
+  if (detail) {
+    return (
+      <Shell>
+        <TournamentLiveView detail={detail} />
+      </Shell>
+    );
+  }
+  return <MemberBoardPage />;
+}
+
+function MemberBoardPage() {
   // 여복·남복처럼 동시에 연 모임이 있으면 내가 출석한 모임을 받는다
   const { snapshot, noSession, failed, loading, refetch } = useSnapshot({ byMember: true });
 

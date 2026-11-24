@@ -6,16 +6,16 @@ import {
   TOURNAMENT_PLAYER_BUSY,
   TOURNAMENT_WIN_SCORE,
   TournamentMatchStatus,
-  TournamentMatchType,
   TournamentTeam,
 } from '@letscok/shared-types';
 import { useState } from 'react';
 import { ConfirmButton } from '@/components/confirm-button';
+import { TOURNAMENT_TYPE_LABEL } from '@/components/tournament-live';
 import { api, ApiError } from '@/lib/api';
 
 // 대회 경기 진행 — 코트마다 지금 경기와 다음 경기를 보여 주고, 대기 경기를 빈 코트에 올리고, 점수를 넣고 고친다
 
-export const TOURNAMENT_TYPE_LABEL: Record<TournamentMatchType, string> = { MENS: '남복', WOMENS: '여복', MIXED: '혼복' };
+export { TOURNAMENT_TYPE_LABEL };
 const SMALL_BTN = 'h-9 rounded-lg px-3 text-sm font-bold transition-opacity disabled:opacity-40';
 
 const blueOf = (match: ITournamentMatch) => match.players.filter((p) => p.slot < 2).map((p) => p.name);
