@@ -750,6 +750,11 @@ export interface IReplaceTournamentPlayerDto {
   force?: boolean;
 }
 
+// 지각 대리 경기 — 그 자리의 선수 대신 뛸 회원을 적는다. 대진표의 선수는 그대로 두고 대리 표시만 붙인다
+export interface ISetTournamentProxyDto {
+  memberId: string;
+}
+
 // 입구 체크인 — 입장과 웰컴 키트·타월·추첨권 지급을 한 번에 기록한다. false로 보내면 잘못 누른 것을 되돌린다
 export interface ISetTournamentEntryDto {
   entered: boolean;

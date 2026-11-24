@@ -329,6 +329,34 @@ export class TournamentsService {
     return this.changed();
   }
 
+  // 지각 대리 경기 — 대진표의 선수는 그대로 두고 대신 뛴 회원만 적는다. memberId가 null이면 대리 표시를 지운다
+  // 한 팀에만 대리가 있으면 집계에서 그 팀의 0:21 패배로 본다. 표시를 빠뜨린 채 점수를 넣었을 수 있어 끝난 경기에도 고칠 수 있다
+  async setProxy(id: string, matchId: string, slot: number, memberId: string | null): Promise<ITournamentDetail> {
+    await this.findActive(id);
+    const match = await this.prisma.tournamentMatch.findFirst({
+      where: { id: matchId, tournamentId: id },
+      include: { players: { include: { participant: true } } },
+    });
+    const current = match?.players.find((player) => player.slot === slot);
+    if (!match || !current) {
+      throw new NotFoundException('경기나 자리를 찾을 수 없습니다.');
+    }
+    if (memberId) {
+      const member = await this.prisma.member.findFirst({ where: { id: memberId, deletedAt: null, isGuest: false } });
+      if (!member) {
+        throw new NotFoundException('회원을 찾을 수 없습니다.');
+      }
+      const inMatch = match.players.some(
+        (player) => player.participant.memberId === memberId || (player.slot !== slot && player.proxyMemberId === memberId),
+      );
+      if (inMatch) {
+        throw new BadRequestException('이미 이 경기에 있는 사람입니다.');
+      }
+    }
+    await this.prisma.tournamentMatchPlayer.update({ where: { id: current.id }, data: { proxyMemberId: memberId } });
+    return this.changed();
+  }
+
   // 점수 입력과 수정 — 승리 팀은 저장하지 않고 점수에서 읽는다. 코트에 올리지 않고 치른 대기 경기에도 바로 넣을 수 있다
   async setScore(id: string, matchId: string, dto: ISetTournamentScoreDto): Promise<ITournamentDetail> {
     await this.findOpen(id);

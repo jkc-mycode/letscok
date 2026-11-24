@@ -543,3 +543,67 @@ describe('대기 경기 순서 바꾸기와 선수 바꾸기', () => {
     });
   });
 });
+
+describe('지각 대리 경기', () => {
+  async function ready() {
+    await seedMembers([...NAMES, '운영']);
+    const { id } = await open();
+    const detail = await service.importBracket(id, { text: BRACKET });
+    await service.open(id);
+    const matchId = (matchNo: number) => detail.matches.find((m) => m.matchNo === matchNo)!.id;
+    const memberId = async (name: string) => (await prisma.member.findFirstOrThrow({ where: { name } })).id;
+    return { id, matchId, memberId };
+  }
+  const proxiesOf = (detail: Awaited<ReturnType<typeof service.current>>, matchNo: number) =>
+    detail!.matches.find((m) => m.matchNo === matchNo)!.players.map((p) => p.proxyName);
+
+  it('대리를 넣으면 선수 이름은 그대로 두고 대신 뛴 사람만 적고, 지우면 사라진다', async () => {
+    const { id, matchId, memberId } = await ready();
+
+    const detail = await service.setProxy(id, matchId(1), 1, await memberId('운영'));
+
+    expect(detail.matches[0].players.map((p) => p.name)).toEqual(['가', '나', '다', '라']);
+    expect(proxiesOf(detail, 1)).toEqual([null, '운영', null, null]);
+    expect(proxiesOf(await service.setProxy(id, matchId(1), 1, null), 1)).toEqual([null, null, null, null]);
+  });
+
+  it('대리가 있는 팀은 실제 점수와 상관없이 0:21로 지고, 그 경기는 개인 순위에서 빠진다', async () => {
+    const { id, matchId, memberId } = await ready();
+    await service.setProxy(id, matchId(1), 1, await memberId('운영'));
+
+    const standings = computeTournamentStandings(await service.setScore(id, matchId(1), { blueScore: 21, whiteScore: 15 }));
+
+    expect(standings.blue).toMatchObject({ wins: 0, pointsFor: 0, pointsAgainst: 21 });
+    expect(standings.white).toMatchObject({ wins: 1, pointsFor: 21, pointsAgainst: 0 });
+    expect(standings.players.every((player) => player.games === 0)).toBe(true);
+  });
+
+  it('점수를 넣은 뒤에도 대리 표시를 고칠 수 있다', async () => {
+    const { id, matchId, memberId } = await ready();
+    await service.setScore(id, matchId(1), { blueScore: 21, whiteScore: 15 });
+
+    const standings = computeTournamentStandings(await service.setProxy(id, matchId(1), 0, await memberId('운영')));
+
+    expect(standings.white.wins).toBe(1);
+  });
+
+  it('그 경기에 이미 있는 사람이나 없는 회원, 게스트는 대리로 넣을 수 없다', async () => {
+    const { id, matchId, memberId } = await ready();
+    const guest = await prisma.member.create({ data: { name: '손님', grade: 'C', isGuest: true } });
+
+    await expect(service.setProxy(id, matchId(1), 1, await memberId('나'))).rejects.toThrow('이미 이 경기에 있는');
+    await expect(service.setProxy(id, matchId(1), 1, await memberId('다'))).rejects.toThrow('이미 이 경기에 있는');
+    await service.setProxy(id, matchId(1), 0, await memberId('운영'));
+    await expect(service.setProxy(id, matchId(1), 1, await memberId('운영'))).rejects.toThrow('이미 이 경기에 있는');
+    await expect(service.setProxy(id, matchId(1), 1, 'none')).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.setProxy(id, matchId(1), 1, guest.id)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('다른 경기에 나오는 참가자도 대리로 뛸 수 있다', async () => {
+    const { id, matchId, memberId } = await ready();
+
+    const detail = await service.setProxy(id, matchId(1), 1, await memberId('마'));
+
+    expect(proxiesOf(detail, 1)).toEqual([null, '마', null, null]);
+  });
+});

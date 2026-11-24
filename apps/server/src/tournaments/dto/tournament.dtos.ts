@@ -5,6 +5,7 @@ import {
   IReorderTournamentMatchesDto,
   IReplaceTournamentPlayerDto,
   ISetTournamentEntryDto,
+  ISetTournamentProxyDto,
   ISetTournamentScoreDto,
   IStartTournamentMatchDto,
   TOURNAMENT_WIN_SCORE,
@@ -109,4 +110,10 @@ export class ReplaceTournamentPlayerDto implements IReplaceTournamentPlayerDto {
   @IsOptional()
   @IsBoolean()
   force?: boolean;
+}
+
+export class SetTournamentProxyDto implements ISetTournamentProxyDto {
+  @IsString({ message: '대신 뛸 사람을 골라 주세요.' })
+  @Length(1, 40)
+  memberId: string;
 }

@@ -7,6 +7,7 @@ import {
   ReorderTournamentMatchesDto,
   ReplaceTournamentPlayerDto,
   SetTournamentEntryDto,
+  SetTournamentProxyDto,
   SetTournamentScoreDto,
   StartTournamentMatchDto,
 } from './dto/tournament.dtos';
@@ -89,6 +90,27 @@ export class TournamentsController {
     @Body() dto: ReplaceTournamentPlayerDto,
   ): Promise<IApiResponse<ITournamentDetail>> {
     return { success: true, data: await this.tournamentsService.replacePlayer(id, matchId, slot, dto) };
+  }
+
+  // 지각 대리 경기 — 그 자리에 대신 뛸 회원을 적는다
+  @Put(':id/matches/:matchId/players/:slot/proxy')
+  async setProxy(
+    @Param('id') id: string,
+    @Param('matchId') matchId: string,
+    @Param('slot', ParseIntPipe) slot: number,
+    @Body() dto: SetTournamentProxyDto,
+  ): Promise<IApiResponse<ITournamentDetail>> {
+    return { success: true, data: await this.tournamentsService.setProxy(id, matchId, slot, dto.memberId) };
+  }
+
+  // 대리 표시 지우기 — 지각자가 도착해 직접 뛸 때
+  @Delete(':id/matches/:matchId/players/:slot/proxy')
+  async clearProxy(
+    @Param('id') id: string,
+    @Param('matchId') matchId: string,
+    @Param('slot', ParseIntPipe) slot: number,
+  ): Promise<IApiResponse<ITournamentDetail>> {
+    return { success: true, data: await this.tournamentsService.setProxy(id, matchId, slot, null) };
   }
 
   // 점수 입력과 수정 — 같은 경로로 다시 보내면 고친다
