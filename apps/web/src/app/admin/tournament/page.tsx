@@ -19,7 +19,7 @@ import { AdminGate } from '@/components/admin-gate';
 import { TOURNAMENT_TYPE_LABEL as TYPE_LABEL, TournamentBoard } from '@/components/admin/tournament-board';
 import { TournamentEntry } from '@/components/admin/tournament-entry';
 import { ConfirmButton } from '@/components/confirm-button';
-import { TournamentScoreboard } from '@/components/tournament-live';
+import { TournamentBracket, TournamentRanking, TournamentScoreboard } from '@/components/tournament-live';
 import { api, ApiError } from '@/lib/api';
 import { useTournamentLive } from '@/lib/use-tournament-live';
 
@@ -51,7 +51,9 @@ function TournamentHome() {
   // 다른 운영진 기기에서 바꾼 내용도 신호를 받아 다시 읽는다
   const { detail, loading, failed, setDetail } = useTournamentLive({ admin: true });
   const standings = useMemo(() => (detail ? computeTournamentStandings(detail) : null), [detail]);
-  const [view, setView] = useState<'main' | 'entry'>('main'); // 입구 담당은 체크인 탭만 띄워 둔다
+  // 입구 담당은 체크인 탭만 띄워 둔다. 대진표와 개인 순위는 모임원이 보는 현황과 같은 부품이다
+  const [view, setView] = useState<'main' | 'bracket' | 'ranking' | 'entry'>('main');
+  const open = detail?.tournament.status === TournamentStatus.OPEN;
 
   return (
     <main className="fade-in mx-auto flex min-h-dvh w-full max-w-2xl flex-col gap-5 p-6">
@@ -72,7 +74,8 @@ function TournamentHome() {
             <nav className="flex gap-2">
               {(
                 [
-                  ['main', detail.tournament.status === TournamentStatus.OPEN ? '경기 진행' : '대진표'],
+                  ['main', open ? '경기 진행' : '대진표'],
+                  ...(open ? ([['bracket', '대진표'], ['ranking', '개인 순위']] as const) : []),
                   ['entry', `입구 체크인 ${detail.participants.filter((p) => p.enteredAt !== null).length}/${detail.participants.length}`],
                 ] as const
               ).map(([key, label]) => (
@@ -90,10 +93,15 @@ function TournamentHome() {
           )}
           {view === 'entry' && detail.participants.length > 0 ? (
             <TournamentEntry detail={detail} onChange={setDetail} />
+          ) : open && standings && view !== 'main' ? (
+            <>
+              <TournamentScoreboard standings={standings} />
+              {view === 'bracket' ? <TournamentBracket detail={detail} /> : <TournamentRanking standings={standings} />}
+            </>
           ) : (
             <>
-            {detail.tournament.status === TournamentStatus.OPEN && standings && <TournamentScoreboard standings={standings} />}
-            {detail.tournament.status === TournamentStatus.OPEN && <TournamentBoard detail={detail} onChange={setDetail} />}
+            {open && standings && <TournamentScoreboard standings={standings} />}
+            {open && <TournamentBoard detail={detail} onChange={setDetail} />}
             {/* 시작한 경기가 생기면 서버가 다시 넣기를 막는다 — 그때부터는 버튼도 숨긴다 */}
             {detail.matches.every((match) => match.status === TournamentMatchStatus.QUEUED) && (
               <BracketImport detail={detail} onImported={setDetail} />
