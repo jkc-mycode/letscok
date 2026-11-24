@@ -8,10 +8,12 @@ import {
   IBracketRow,
   ICreateTournamentDto,
   IImportBracketDto,
+  ISetTournamentScoreDto,
   IStartTournamentMatchDto,
   ITournament,
   ITournamentDetail,
   TOURNAMENT_PLAYER_BUSY,
+  TOURNAMENT_WIN_SCORE,
   TournamentTeam,
 } from '@letscok/shared-types';
 import { generateCheckInCode } from '../common/utils/code.util';
@@ -202,6 +204,41 @@ export class TournamentsService {
     });
     if (count === 0) {
       throw new ConflictException('진행 중인 경기만 대기로 돌릴 수 있습니다.');
+    }
+    return (await this.current())!;
+  }
+
+  // 점수 입력과 수정 — 승리 팀은 저장하지 않고 점수에서 읽는다. 코트에 올리지 않고 치른 대기 경기에도 바로 넣을 수 있다
+  async setScore(id: string, matchId: string, dto: ISetTournamentScoreDto): Promise<ITournamentDetail> {
+    await this.findOpen(id);
+    const { blueScore, whiteScore } = dto;
+    const winnerCount = [blueScore, whiteScore].filter((score) => score === TOURNAMENT_WIN_SCORE).length;
+    if (winnerCount !== 1) {
+      throw new BadRequestException(
+        `${TOURNAMENT_WIN_SCORE}점 단판이에요. 이긴 팀은 ${TOURNAMENT_WIN_SCORE}점, 진 팀은 0~${TOURNAMENT_WIN_SCORE - 1}점이어야 해요.`,
+      );
+    }
+    const match = await this.prisma.tournamentMatch.findFirst({ where: { id: matchId, tournamentId: id } });
+    if (!match) {
+      throw new NotFoundException('경기를 찾을 수 없습니다.');
+    }
+    await this.prisma.tournamentMatch.update({
+      where: { id: matchId },
+      // 고칠 때는 처음 끝난 시각을 그대로 둔다
+      data: { status: 'FINISHED', blueScore, whiteScore, endedAt: match.endedAt ?? new Date() },
+    });
+    return (await this.current())!;
+  }
+
+  // 점수 지우기 — 잘못된 경기에 넣었을 때. 그 경기는 대기로 돌아가고, 다시 치르려면 빈 코트에 올린다
+  async clearScore(id: string, matchId: string): Promise<ITournamentDetail> {
+    await this.findOpen(id);
+    const { count } = await this.prisma.tournamentMatch.updateMany({
+      where: { id: matchId, tournamentId: id, status: 'FINISHED' },
+      data: { status: 'QUEUED', blueScore: null, whiteScore: null, startedAt: null, endedAt: null },
+    });
+    if (count === 0) {
+      throw new ConflictException('점수가 들어간 경기만 지울 수 있습니다.');
     }
     return (await this.current())!;
   }

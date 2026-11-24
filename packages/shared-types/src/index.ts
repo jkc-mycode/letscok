@@ -737,6 +737,13 @@ export interface IStartTournamentMatchDto {
 }
 export const TOURNAMENT_PLAYER_BUSY = 'PLAYER_BUSY';
 
+// 점수 입력·수정 — 21점 단판, 듀스 없음: 이긴 팀은 정확히 21점, 진 팀은 0~20점
+export const TOURNAMENT_WIN_SCORE = 21;
+export interface ISetTournamentScoreDto {
+  blueScore: number;
+  whiteScore: number;
+}
+
 // 시트에서 번호~백팀 선수2(A~H열)를 복사해 붙여 넣은 글자 — 칸은 탭, 줄은 줄바꿈으로 나뉜다
 export interface IImportBracketDto {
   text: string;

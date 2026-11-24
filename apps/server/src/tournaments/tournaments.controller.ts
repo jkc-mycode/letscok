@@ -1,7 +1,12 @@
-import { Body, Controller, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
 import { IApiResponse, IBracketPreview, ITournament, ITournamentDetail } from '@letscok/shared-types';
 import { AdminGuard } from '../common/guards/admin.guard';
-import { CreateTournamentDto, ImportBracketDto, StartTournamentMatchDto } from './dto/tournament.dtos';
+import {
+  CreateTournamentDto,
+  ImportBracketDto,
+  SetTournamentScoreDto,
+  StartTournamentMatchDto,
+} from './dto/tournament.dtos';
 import { TournamentsService } from './tournaments.service';
 
 // 대회 준비와 진행은 전부 운영진 전용 — 모임원이 보는 대회 현황은 공개 경로를 따로 둔다
@@ -54,5 +59,21 @@ export class TournamentsController {
   @Post(':id/matches/:matchId/cancel-start')
   async cancelStart(@Param('id') id: string, @Param('matchId') matchId: string): Promise<IApiResponse<ITournamentDetail>> {
     return { success: true, data: await this.tournamentsService.cancelStart(id, matchId) };
+  }
+
+  // 점수 입력과 수정 — 같은 경로로 다시 보내면 고친다
+  @Put(':id/matches/:matchId/score')
+  async setScore(
+    @Param('id') id: string,
+    @Param('matchId') matchId: string,
+    @Body() dto: SetTournamentScoreDto,
+  ): Promise<IApiResponse<ITournamentDetail>> {
+    return { success: true, data: await this.tournamentsService.setScore(id, matchId, dto) };
+  }
+
+  // 점수 지우기 — 경기는 대기로 돌아간다
+  @Delete(':id/matches/:matchId/score')
+  async clearScore(@Param('id') id: string, @Param('matchId') matchId: string): Promise<IApiResponse<ITournamentDetail>> {
+    return { success: true, data: await this.tournamentsService.clearScore(id, matchId) };
   }
 }

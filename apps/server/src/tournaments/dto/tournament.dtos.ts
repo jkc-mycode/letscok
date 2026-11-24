@@ -2,7 +2,9 @@ import {
   IBracketNamePick,
   ICreateTournamentDto,
   IImportBracketDto,
+  ISetTournamentScoreDto,
   IStartTournamentMatchDto,
+  TOURNAMENT_WIN_SCORE,
 } from '@letscok/shared-types';
 import { Type } from 'class-transformer';
 import {
@@ -14,6 +16,7 @@ import {
   IsString,
   Length,
   Matches,
+  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -60,4 +63,18 @@ export class StartTournamentMatchDto implements IStartTournamentMatchDto {
   @IsOptional()
   @IsBoolean()
   force?: boolean;
+}
+
+const SCORE_MESSAGE = '점수는 0~21 사이의 숫자여야 합니다.';
+
+export class SetTournamentScoreDto implements ISetTournamentScoreDto {
+  @IsInt({ message: SCORE_MESSAGE })
+  @Min(0, { message: SCORE_MESSAGE })
+  @Max(TOURNAMENT_WIN_SCORE, { message: SCORE_MESSAGE })
+  blueScore: number;
+
+  @IsInt({ message: SCORE_MESSAGE })
+  @Min(0, { message: SCORE_MESSAGE })
+  @Max(TOURNAMENT_WIN_SCORE, { message: SCORE_MESSAGE })
+  whiteScore: number;
 }

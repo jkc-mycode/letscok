@@ -249,3 +249,71 @@ describe('대회 시작과 경기 진행', () => {
     expect(await service.current()).toBeNull();
   });
 });
+
+describe('점수 입력, 수정, 삭제', () => {
+  async function playing() {
+    await seedMembers();
+    const { id } = await open();
+    const detail = await service.importBracket(id, { text: BRACKET });
+    await service.open(id);
+    const matchId = (matchNo: number) => detail.matches.find((m) => m.matchNo === matchNo)!.id;
+    await service.startMatch(id, matchId(1), {});
+    return { id, matchId };
+  }
+  const scoreOf = (detail: Awaited<ReturnType<typeof service.current>>, matchNo: number) => {
+    const match = detail!.matches.find((m) => m.matchNo === matchNo)!;
+    return [match.status, match.blueScore, match.whiteScore];
+  };
+
+  it('점수를 넣으면 경기가 끝나고 코트가 빈다', async () => {
+    const { id, matchId } = await playing();
+
+    const detail = await service.setScore(id, matchId(1), { blueScore: 21, whiteScore: 15 });
+
+    expect(scoreOf(detail, 1)).toEqual(['FINISHED', 21, 15]);
+    expect(detail.matches.find((m) => m.matchNo === 1)!.endedAt).not.toBeNull();
+    expect(scoreOf(await service.startMatch(id, matchId(3), {}), 3)[0]).toBe('PLAYING');
+  });
+
+  it('21점 단판 규칙에 맞지 않는 점수는 받지 않는다', async () => {
+    const { id, matchId } = await playing();
+    const bad = [
+      [21, 21],
+      [20, 19],
+      [0, 0],
+    ];
+
+    for (const [blueScore, whiteScore] of bad) {
+      await expect(service.setScore(id, matchId(1), { blueScore, whiteScore })).rejects.toBeInstanceOf(BadRequestException);
+    }
+    expect(scoreOf(await service.current(), 1)).toEqual(['PLAYING', null, null]);
+  });
+
+  it('끝난 경기의 점수를 고치면 승패가 바뀌고, 끝난 시각은 그대로다', async () => {
+    const { id, matchId } = await playing();
+    const first = await service.setScore(id, matchId(1), { blueScore: 21, whiteScore: 15 });
+    const endedAt = first.matches.find((m) => m.matchNo === 1)!.endedAt;
+
+    const detail = await service.setScore(id, matchId(1), { blueScore: 18, whiteScore: 21 });
+
+    expect(scoreOf(detail, 1)).toEqual(['FINISHED', 18, 21]);
+    expect(detail.matches.find((m) => m.matchNo === 1)!.endedAt).toBe(endedAt);
+  });
+
+  it('코트에 올리지 않은 대기 경기에도 점수를 바로 넣을 수 있다', async () => {
+    const { id, matchId } = await playing();
+
+    expect(scoreOf(await service.setScore(id, matchId(2), { blueScore: 0, whiteScore: 21 }), 2)).toEqual(['FINISHED', 0, 21]);
+  });
+
+  it('점수를 지우면 대기 경기로 돌아가고, 점수가 없는 경기는 지울 수 없다', async () => {
+    const { id, matchId } = await playing();
+    await service.setScore(id, matchId(1), { blueScore: 21, whiteScore: 15 });
+
+    const detail = await service.clearScore(id, matchId(1));
+
+    const match = detail.matches.find((m) => m.matchNo === 1)!;
+    expect([match.status, match.blueScore, match.whiteScore, match.startedAt, match.endedAt]).toEqual(['QUEUED', null, null, null, null]);
+    await expect(service.clearScore(id, matchId(1))).rejects.toBeInstanceOf(ConflictException);
+  });
+});
