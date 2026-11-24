@@ -1,6 +1,22 @@
-import { IBracketNamePick, ICreateTournamentDto, IImportBracketDto } from '@letscok/shared-types';
+import {
+  IBracketNamePick,
+  ICreateTournamentDto,
+  IImportBracketDto,
+  IStartTournamentMatchDto,
+} from '@letscok/shared-types';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsOptional, IsString, Length, Matches, ValidateNested } from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  Length,
+  Matches,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 
 export class CreateTournamentDto implements ICreateTournamentDto {
   @IsString({ message: '대회 이름을 입력해주세요.' })
@@ -33,4 +49,15 @@ export class ImportBracketDto implements IImportBracketDto {
   @ValidateNested({ each: true })
   @Type(() => BracketNamePickDto)
   picks?: BracketNamePickDto[];
+}
+
+export class StartTournamentMatchDto implements IStartTournamentMatchDto {
+  @IsOptional()
+  @IsInt({ message: '코트 번호는 숫자여야 합니다.' })
+  @Min(1, { message: '코트 번호는 1 이상이어야 합니다.' })
+  courtNo?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  force?: boolean;
 }

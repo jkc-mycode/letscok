@@ -159,3 +159,93 @@ describe('대진표 붙여 넣기', () => {
     await expect(service.importBracket(id, { text: BRACKET })).rejects.toBeInstanceOf(ConflictException);
   });
 });
+
+describe('대회 시작과 경기 진행', () => {
+  async function ready() {
+    await seedMembers();
+    const { id } = await open();
+    const detail = await service.importBracket(id, { text: BRACKET });
+    const matchId = (matchNo: number) => detail.matches.find((m) => m.matchNo === matchNo)!.id;
+    return { id, matchId };
+  }
+
+  it('대진표가 없으면 시작할 수 없고, 시작하면 진행 중이 된다', async () => {
+    const { id } = await open();
+    await expect(service.open(id)).rejects.toBeInstanceOf(BadRequestException);
+
+    await seedMembers();
+    await service.importBracket(id, { text: BRACKET });
+    const detail = await service.open(id);
+
+    expect(detail.tournament.status).toBe('OPEN');
+    expect(detail.tournament.openedAt).not.toBeNull();
+    await expect(service.open(id)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('대회를 시작하기 전에는 경기를 올릴 수 없다', async () => {
+    const { id, matchId } = await ready();
+
+    await expect(service.startMatch(id, matchId(1), {})).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('경기를 시작하면 대진표의 코트에서 진행 중이 되고, 같은 코트에는 또 올릴 수 없다', async () => {
+    const { id, matchId } = await ready();
+    await service.open(id);
+
+    const detail = await service.startMatch(id, matchId(1), {});
+
+    const first = detail.matches.find((m) => m.matchNo === 1)!;
+    expect([first.status, first.courtNo]).toEqual(['PLAYING', 1]);
+    expect(first.startedAt).not.toBeNull();
+    await expect(service.startMatch(id, matchId(2), { courtNo: 1 })).rejects.toThrow('1코트에서 다른 경기가 진행 중입니다.');
+    await expect(service.startMatch(id, matchId(1), {})).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('다른 코트로 바꿔 시작할 수 있고, 없는 코트 번호는 막는다', async () => {
+    const { id, matchId } = await ready();
+    await service.open(id);
+
+    await expect(service.startMatch(id, matchId(1), { courtNo: 3 })).rejects.toBeInstanceOf(BadRequestException);
+    const detail = await service.startMatch(id, matchId(1), { courtNo: 2 });
+
+    expect(detail.matches.find((m) => m.matchNo === 1)!.courtNo).toBe(2);
+  });
+
+  it('선수가 다른 코트에서 경기 중이면 알리고, force로 보내면 시작한다', async () => {
+    const { id, matchId } = await ready();
+    await service.open(id);
+    await service.startMatch(id, matchId(1), {});
+
+    await expect(service.startMatch(id, matchId(3), { courtNo: 2 })).rejects.toMatchObject({
+      response: { error: 'PLAYER_BUSY', message: '가 님(1코트), 다 님(1코트)이 아직 경기 중이에요.' },
+    });
+    const detail = await service.startMatch(id, matchId(3), { courtNo: 2, force: true });
+
+    expect(detail.matches.find((m) => m.matchNo === 3)!.status).toBe('PLAYING');
+  });
+
+  it('잘못 올린 경기는 대기로 되돌린다', async () => {
+    const { id, matchId } = await ready();
+    await service.open(id);
+    await service.startMatch(id, matchId(1), {});
+
+    const detail = await service.cancelStart(id, matchId(1));
+
+    const first = detail.matches.find((m) => m.matchNo === 1)!;
+    expect([first.status, first.startedAt]).toEqual(['QUEUED', null]);
+    await expect(service.cancelStart(id, matchId(1))).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('진행 중인 경기가 있으면 종료할 수 없고, 종료하면 current에서 빠진다', async () => {
+    const { id, matchId } = await ready();
+    await service.open(id);
+    await service.startMatch(id, matchId(1), {});
+    await expect(service.close(id)).rejects.toBeInstanceOf(ConflictException);
+
+    await service.cancelStart(id, matchId(1));
+    const closed = await service.close(id);
+
+    expect(closed.status).toBe('CLOSED');
+    expect(await service.current()).toBeNull();
+  });
+});

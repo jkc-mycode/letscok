@@ -730,6 +730,13 @@ export interface ICreateTournamentDto {
   date: string; // YYYY-MM-DD
 }
 
+// 경기를 코트에 올리기 — courtNo를 생략하면 대진표의 코트. 선수가 다른 코트에서 경기 중이면 409(PLAYER_BUSY)로 알리고, force로 다시 보내면 시작한다
+export interface IStartTournamentMatchDto {
+  courtNo?: number;
+  force?: boolean;
+}
+export const TOURNAMENT_PLAYER_BUSY = 'PLAYER_BUSY';
+
 // 시트에서 번호~백팀 선수2(A~H열)를 복사해 붙여 넣은 글자 — 칸은 탭, 줄은 줄바꿈으로 나뉜다
 export interface IImportBracketDto {
   text: string;

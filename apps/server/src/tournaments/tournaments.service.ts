@@ -8,8 +8,10 @@ import {
   IBracketRow,
   ICreateTournamentDto,
   IImportBracketDto,
+  IStartTournamentMatchDto,
   ITournament,
   ITournamentDetail,
+  TOURNAMENT_PLAYER_BUSY,
   TournamentTeam,
 } from '@letscok/shared-types';
 import { generateCheckInCode } from '../common/utils/code.util';
@@ -122,6 +124,94 @@ export class TournamentsService {
     });
 
     return (await this.current())!;
+  }
+
+  // 대회 시작 — 이때부터 모임원 링크가 대회 현황으로 바뀐다
+  async open(id: string): Promise<ITournamentDetail> {
+    const tournament = await this.findActive(id);
+    if (tournament.status === 'OPEN') {
+      throw new ConflictException('이미 진행 중인 대회입니다.');
+    }
+    const matches = await this.prisma.tournamentMatch.count({ where: { tournamentId: id } });
+    if (matches === 0) {
+      throw new BadRequestException('대진표를 먼저 넣어 주세요.');
+    }
+    await this.prisma.tournament.update({ where: { id }, data: { status: 'OPEN', openedAt: new Date() } });
+    return (await this.current())!;
+  }
+
+  // 대회 종료 — 치르지 않은 대기 경기는 남겨 둔 채 끝낼 수 있다. 진행 중인 경기는 먼저 정리해야 한다
+  async close(id: string): Promise<ITournament> {
+    await this.findOpen(id);
+    const playing = await this.prisma.tournamentMatch.count({ where: { tournamentId: id, status: 'PLAYING' } });
+    if (playing > 0) {
+      throw new ConflictException('진행 중인 경기가 있어요. 점수를 넣거나 대기로 돌린 뒤 종료해 주세요.');
+    }
+    const closed = await this.prisma.tournament.update({ where: { id }, data: { status: 'CLOSED', closedAt: new Date() } });
+    return toTournament(closed);
+  }
+
+  // 경기를 코트에 올린다 — 코트가 비어 있어야 하고, 선수가 다른 코트에서 경기 중이면 force 없이는 막는다(경고)
+  async startMatch(id: string, matchId: string, dto: IStartTournamentMatchDto): Promise<ITournamentDetail> {
+    const tournament = await this.findOpen(id);
+    await this.prisma.$transaction(async (tx) => {
+      const match = await tx.tournamentMatch.findFirst({ where: { id: matchId, tournamentId: id }, include: { players: true } });
+      if (!match) {
+        throw new NotFoundException('경기를 찾을 수 없습니다.');
+      }
+      if (match.status !== 'QUEUED') {
+        throw new ConflictException('대기 중인 경기만 시작할 수 있습니다.');
+      }
+      const courtNo = dto.courtNo ?? match.courtNo;
+      if (courtNo > tournament.courtCount) {
+        throw new BadRequestException(`코트는 ${tournament.courtCount}번까지 있습니다.`);
+      }
+      const playing = await tx.tournamentMatch.findMany({
+        where: { tournamentId: id, status: 'PLAYING' },
+        include: { players: { include: { participant: { include: { member: true } } } } },
+      });
+      if (playing.some((other) => other.courtNo === courtNo)) {
+        throw new ConflictException(`${courtNo}코트에서 다른 경기가 진행 중입니다.`);
+      }
+      if (!dto.force) {
+        const mine = new Set(match.players.map((player) => player.participantId));
+        const busy = playing.flatMap((other) =>
+          other.players
+            .filter((player) => mine.has(player.participantId))
+            .map((player) => `${player.participant.member.name} 님(${other.courtNo}코트)`),
+        );
+        if (busy.length > 0) {
+          throw new ConflictException({
+            statusCode: 409,
+            message: `${busy.join(', ')}이 아직 경기 중이에요.`,
+            error: TOURNAMENT_PLAYER_BUSY,
+          });
+        }
+      }
+      await tx.tournamentMatch.update({ where: { id: matchId }, data: { status: 'PLAYING', courtNo, startedAt: new Date() } });
+    });
+    return (await this.current())!;
+  }
+
+  // 잘못 올린 경기를 대기로 되돌린다
+  async cancelStart(id: string, matchId: string): Promise<ITournamentDetail> {
+    await this.findOpen(id);
+    const { count } = await this.prisma.tournamentMatch.updateMany({
+      where: { id: matchId, tournamentId: id, status: 'PLAYING' },
+      data: { status: 'QUEUED', startedAt: null },
+    });
+    if (count === 0) {
+      throw new ConflictException('진행 중인 경기만 대기로 돌릴 수 있습니다.');
+    }
+    return (await this.current())!;
+  }
+
+  private async findOpen(id: string): Promise<Tournament> {
+    const tournament = await this.findActive(id);
+    if (tournament.status !== 'OPEN') {
+      throw new ConflictException('대회를 먼저 시작해 주세요.');
+    }
+    return tournament;
   }
 
   private async findActive(id: string): Promise<Tournament> {
