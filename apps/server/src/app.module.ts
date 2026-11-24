@@ -20,6 +20,7 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { SessionsModule } from './sessions/sessions.module';
 import { SettlementModule } from './settlement/settlement.module';
 import { EntryFeesModule } from './entry-fees/entry-fees.module';
+import { TournamentsModule } from './tournaments/tournaments.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { EntryFeesModule } from './entry-fees/entry-fees.module';
     AiCommandModule,
     SettlementModule,
     EntryFeesModule,
+    TournamentsModule,
   ],
   controllers: [HealthController, AuthController],
   providers: [

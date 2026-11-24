@@ -647,6 +647,149 @@ export type IAiCommandResult =
 // 여러 명령의 한 단계 — multi는 다시 들어가지 않는다
 export type IAiCommandStep = Exclude<IAiCommandResult, { kind: 'multi' }>;
 
+// ===== 자체 대회(청백전) =====
+// 평소 모임(세션)과 따로 여는 대회 — 미리 짠 대진표대로 21점 단판을 치르고 이긴 경기 수로 승자를 가린다
+
+export const TournamentStatus = {
+  DRAFT: 'DRAFT', // 준비 중 — 대진표를 넣고 고치는 단계
+  OPEN: 'OPEN', // 진행 중 — 모임원 링크가 대회 현황으로 바뀐다
+  CLOSED: 'CLOSED',
+} as const;
+export type TournamentStatus = (typeof TournamentStatus)[keyof typeof TournamentStatus];
+
+export const TournamentTeam = {
+  BLUE: 'BLUE', // 청팀
+  WHITE: 'WHITE', // 백팀
+} as const;
+export type TournamentTeam = (typeof TournamentTeam)[keyof typeof TournamentTeam];
+
+export const TournamentMatchType = {
+  MENS: 'MENS', // 남복
+  WOMENS: 'WOMENS', // 여복
+  MIXED: 'MIXED', // 혼복
+} as const;
+export type TournamentMatchType = (typeof TournamentMatchType)[keyof typeof TournamentMatchType];
+
+export const TournamentMatchStatus = {
+  QUEUED: 'QUEUED', // 대기 경기
+  PLAYING: 'PLAYING',
+  FINISHED: 'FINISHED', // 점수 입력 완료
+} as const;
+export type TournamentMatchStatus = (typeof TournamentMatchStatus)[keyof typeof TournamentMatchStatus];
+
+// 입장 코드는 여기 싣지 않는다 — 운영진 전용 조회로만 내보낸다(체크인 코드와 같은 규칙)
+export interface ITournament {
+  id: string;
+  name: string;
+  date: string; // YYYY-MM-DD
+  status: TournamentStatus;
+  courtCount: number; // 코트 번호는 1부터 이 수까지
+  openedAt: string | null;
+  closedAt: string | null;
+}
+
+export interface ITournamentParticipant {
+  id: string;
+  memberId: string;
+  name: string;
+  gender: Gender | null;
+  team: TournamentTeam;
+  enteredAt: string | null; // 입구 체크인 시각 — null = 아직 안 옴
+}
+
+export interface ITournamentMatchPlayer {
+  slot: number; // 0·1이 청팀, 2·3이 백팀
+  participantId: string;
+  name: string;
+  proxyName: string | null; // 지각 대리로 뛴 운영진 — 값이 있으면 이 자리의 팀이 결원 팀
+}
+
+export interface ITournamentMatch {
+  id: string;
+  matchNo: number; // 시트의 번호
+  round: number;
+  courtNo: number;
+  type: TournamentMatchType;
+  status: TournamentMatchStatus;
+  queueOrder: number;
+  blueScore: number | null;
+  whiteScore: number | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  players: ITournamentMatchPlayer[]; // slot 순
+}
+
+export interface ITournamentDetail {
+  tournament: ITournament;
+  participants: ITournamentParticipant[]; // 이름순
+  matches: ITournamentMatch[]; // 번호순
+}
+
+export interface ICreateTournamentDto {
+  name: string;
+  date: string; // YYYY-MM-DD
+}
+
+// 시트에서 번호~백팀 선수2(A~H열)를 복사해 붙여 넣은 글자 — 칸은 탭, 줄은 줄바꿈으로 나뉜다
+export interface IImportBracketDto {
+  text: string;
+  picks?: IBracketNamePick[]; // 같은 이름이 여러 명일 때 운영진이 고른 사람
+}
+
+export interface IBracketNamePick {
+  name: string; // 대진표에 적힌 이름
+  memberId: string;
+}
+
+export interface IBracketRow {
+  matchNo: number;
+  round: number;
+  courtNo: number;
+  type: TournamentMatchType;
+  blue: [string, string];
+  white: [string, string];
+}
+
+export const BracketIssueLevel = {
+  ERROR: 'ERROR', // 고치기 전에는 등록할 수 없다
+  WARN: 'WARN', // 등록은 되지만 확인이 필요하다
+} as const;
+export type BracketIssueLevel = (typeof BracketIssueLevel)[keyof typeof BracketIssueLevel];
+
+export const BracketIssueCode = {
+  BAD_ROW: 'BAD_ROW', // 칸이 모자라거나 읽을 수 없는 줄
+  DUPLICATE_MATCH_NO: 'DUPLICATE_MATCH_NO',
+  SAME_PLAYER_IN_MATCH: 'SAME_PLAYER_IN_MATCH', // 한 경기에 같은 사람이 두 번
+  UNKNOWN_NAME: 'UNKNOWN_NAME', // 회원 명단에 없는 이름
+  AMBIGUOUS_NAME: 'AMBIGUOUS_NAME', // 같은 이름이 여러 명 — picks로 골라야 한다
+  BOTH_TEAMS: 'BOTH_TEAMS', // 청팀과 백팀에 모두 나오는 사람
+  SAME_ROUND_TWICE: 'SAME_ROUND_TWICE', // 같은 라운드에 두 번 나오는 사람
+} as const;
+export type BracketIssueCode = (typeof BracketIssueCode)[keyof typeof BracketIssueCode];
+
+export interface IBracketNameCandidate {
+  memberId: string;
+  label: string; // "김민수 (97년생, C)" — 운영진 응답에만 실린다
+}
+
+export interface IBracketIssue {
+  level: BracketIssueLevel;
+  code: BracketIssueCode;
+  message: string;
+  line?: number; // 붙여 넣은 글자의 줄 번호(1부터) — BAD_ROW
+  matchNos?: number[]; // 관련 경기 번호
+  name?: string;
+  candidates?: IBracketNameCandidate[]; // AMBIGUOUS_NAME
+}
+
+export interface IBracketPreview {
+  rows: IBracketRow[];
+  issues: IBracketIssue[];
+  blueNames: string[]; // 청팀으로 정해질 사람 — 이름순
+  whiteNames: string[];
+  canImport: boolean; // ERROR가 없고 경기가 한 건 이상
+}
+
 // ===== 공통 응답 래퍼 =====
 
 export interface IApiResponse<T> {
