@@ -11,17 +11,14 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { TournamentPlayerEditor } from '@/components/admin/tournament-player-editor';
 import { ConfirmButton } from '@/components/confirm-button';
-import { TOURNAMENT_TYPE_LABEL } from '@/components/tournament-live';
+import { TOURNAMENT_TYPE_LABEL, tournamentBlueNames, tournamentWhiteNames, TournamentScoreText } from '@/components/tournament-live';
 import { api, ApiError } from '@/lib/api';
 
 // 대회 경기 진행 — 코트마다 지금 경기와 다음 경기를 보여 주고, 대기 경기를 빈 코트에 올리고, 점수를 넣고 고친다
-// 대기 경기는 순서를 바꾸고, 대기·진행 중 경기는 선수를 바꾼다
+// 대기 경기는 순서를 바꾸고, 대기·진행 중 경기는 선수를 바꾼다. 지각 대리는 끝난 경기에도 표시할 수 있다
 
 export { TOURNAMENT_TYPE_LABEL };
 const SMALL_BTN = 'h-9 rounded-lg px-3 text-sm font-bold transition-opacity disabled:opacity-40';
-
-const blueOf = (match: ITournamentMatch) => match.players.filter((p) => p.slot < 2).map((p) => p.name);
-const whiteOf = (match: ITournamentMatch) => match.players.filter((p) => p.slot >= 2).map((p) => p.name);
 
 // 겹침 경고 — 서버가 알린 내용을 보여 주고, 그래도 하겠다고 하면 force로 다시 보낸다
 interface BusyAsk {
@@ -88,6 +85,13 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
         }),
       (message) => setAsk({ message, label: '그래도 바꾸기', retry: () => void replacePlayer(matchId, slot, participantId, swapMatchId, true) }),
     );
+  // 지각 대리 — memberId가 null이면 대리 표시를 지운다
+  const setProxy = (matchId: string, slot: number, memberId: string | null) =>
+    run(() =>
+      memberId
+        ? api<ITournamentDetail>(`${base}/${matchId}/players/${slot}/proxy`, { method: 'PUT', admin: true, body: { memberId } })
+        : api<ITournamentDetail>(`${base}/${matchId}/players/${slot}/proxy`, { method: 'DELETE', admin: true }),
+    );
   // 대기 목록에서 한 칸 위·아래로 — 대기 경기 전부의 새 순서를 보낸다
   const move = (index: number, delta: -1 | 1) => {
     const ids = queued.map((m) => m.id);
@@ -105,6 +109,8 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
         detail={detail}
         match={match}
         busy={busy}
+        proxyOnly={match.status === TournamentMatchStatus.FINISHED}
+        onProxy={(slot, memberId) => void setProxy(match.id, slot, memberId)}
         onReplace={(slot, participantId, swapMatchId) => void replacePlayer(match.id, slot, participantId, swapMatchId)}
         onCancel={() => setEditingFor(null)}
       />
@@ -275,7 +281,7 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
                 <div className="min-w-0 flex-1">
                   <MatchNames match={match} />
                 </div>
-                <ScoreText match={match} />
+                <TournamentScoreText match={match} size="text-heading" />
               </div>
               <div className="flex flex-wrap gap-2">
                 <button onClick={() => toggleScoring(match.id)} disabled={busy} className={`${SMALL_BTN} border border-line text-dim`}>
@@ -289,25 +295,17 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
                   disabled={busy}
                   onConfirm={() => void clearScore(match.id)}
                 />
+                <button onClick={() => toggleEditing(match.id)} disabled={busy} className={`${SMALL_BTN} border border-line text-dim`}>
+                  대리 표시
+                </button>
               </div>
               {scoreForm(match)}
+              {playerEditor(match)}
             </li>
           ))}
         </ul>
       </div>
     </section>
-  );
-}
-
-// 이긴 팀 점수를 굵게 — 승리 팀은 점수에서 읽는다
-function ScoreText({ match }: { match: ITournamentMatch }) {
-  const blueWon = match.blueScore === TOURNAMENT_WIN_SCORE;
-  return (
-    <p className="shrink-0 text-heading tabular-nums">
-      <span className={blueWon ? 'font-bold text-sky' : 'text-faint'}>{match.blueScore}</span>
-      <span className="mx-1 text-caption text-faint">:</span>
-      <span className={blueWon ? 'text-faint' : 'font-bold'}>{match.whiteScore}</span>
-    </p>
   );
 }
 
@@ -390,9 +388,9 @@ function MatchNames({ match, showCourt = false }: { match: ITournamentMatch; sho
         {showCourt && `, ${match.courtNo}코트 예정`}
       </p>
       <p className="text-sm">
-        <span className="font-bold text-sky">{blueOf(match).join(', ')}</span>
+        <span className="font-bold text-sky">{tournamentBlueNames(match).join(', ')}</span>
         <span className="mx-1.5 text-caption text-faint">vs</span>
-        <span className="font-bold">{whiteOf(match).join(', ')}</span>
+        <span className="font-bold">{tournamentWhiteNames(match).join(', ')}</span>
       </p>
     </div>
   );

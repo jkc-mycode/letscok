@@ -4,8 +4,9 @@ import {
   computeTournamentStandings,
   ITournamentDetail,
   ITournamentMatch,
+  ITournamentMatchPlayer,
   ITournamentStandings,
-  TOURNAMENT_WIN_SCORE,
+  tournamentOfficialScore,
   TournamentMatchStatus,
   TournamentMatchType,
   TournamentTeam,
@@ -16,8 +17,11 @@ import { useMemo, useState } from 'react';
 
 export const TOURNAMENT_TYPE_LABEL: Record<TournamentMatchType, string> = { MENS: '남복', WOMENS: '여복', MIXED: '혼복' };
 
-export const tournamentBlueNames = (match: ITournamentMatch) => match.players.filter((p) => p.slot < 2).map((p) => p.name);
-export const tournamentWhiteNames = (match: ITournamentMatch) => match.players.filter((p) => p.slot >= 2).map((p) => p.name);
+// 지각 대리 경기 — 대진표의 선수 이름 옆에 대신 뛰는 사람을 적는다
+export const tournamentPlayerLabel = (player: ITournamentMatchPlayer) =>
+  player.proxyName ? `${player.name}(대리 ${player.proxyName})` : player.name;
+export const tournamentBlueNames = (match: ITournamentMatch) => match.players.filter((p) => p.slot < 2).map(tournamentPlayerLabel);
+export const tournamentWhiteNames = (match: ITournamentMatch) => match.players.filter((p) => p.slot >= 2).map(tournamentPlayerLabel);
 
 const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
 
@@ -130,12 +134,20 @@ function MatchResult({ match }: { match: ITournamentMatch }) {
   if (match.status !== TournamentMatchStatus.FINISHED) {
     return <span className="shrink-0 text-caption text-faint">대기</span>;
   }
-  const blueWon = match.blueScore === TOURNAMENT_WIN_SCORE;
+  return <TournamentScoreText match={match} size="text-body" />;
+}
+
+// 끝난 경기의 점수 — 이긴 팀을 굵게. 대리 경기는 집계에 들어가는 점수(결원 팀 0:21)를 보여 준다
+export function TournamentScoreText({ match, size }: { match: ITournamentMatch; size: string }) {
+  const score = tournamentOfficialScore(match);
+  if (!score) return null;
+  const blueWon = score.blue > score.white;
   return (
-    <p className="shrink-0 text-body tabular-nums">
-      <span className={blueWon ? 'font-bold text-sky' : 'text-faint'}>{match.blueScore}</span>
+    <p className={`shrink-0 ${size} tabular-nums`}>
+      {score.proxy && <span className="mr-1.5 text-caption font-bold text-amber">대리</span>}
+      <span className={blueWon ? 'font-bold text-sky' : 'text-faint'}>{score.blue}</span>
       <span className="mx-1 text-caption text-faint">:</span>
-      <span className={blueWon ? 'text-faint' : 'font-bold'}>{match.whiteScore}</span>
+      <span className={blueWon ? 'text-faint' : 'font-bold'}>{score.white}</span>
     </p>
   );
 }
