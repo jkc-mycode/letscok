@@ -1,9 +1,11 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put, UseGuards } from '@nestjs/common';
 import { IApiResponse, IBracketPreview, ITournament, ITournamentDetail } from '@letscok/shared-types';
 import { AdminGuard } from '../common/guards/admin.guard';
 import {
   CreateTournamentDto,
   ImportBracketDto,
+  ReorderTournamentMatchesDto,
+  ReplaceTournamentPlayerDto,
   SetTournamentEntryDto,
   SetTournamentScoreDto,
   StartTournamentMatchDto,
@@ -70,6 +72,23 @@ export class TournamentsController {
   @Post(':id/matches/:matchId/cancel-start')
   async cancelStart(@Param('id') id: string, @Param('matchId') matchId: string): Promise<IApiResponse<ITournamentDetail>> {
     return { success: true, data: await this.tournamentsService.cancelStart(id, matchId) };
+  }
+
+  // 대기 경기 순서 바꾸기
+  @Put(':id/matches/order')
+  async reorderQueue(@Param('id') id: string, @Body() dto: ReorderTournamentMatchesDto): Promise<IApiResponse<ITournamentDetail>> {
+    return { success: true, data: await this.tournamentsService.reorderQueue(id, dto.matchIds) };
+  }
+
+  // 선수 바꾸기와 맞바꾸기 — slot은 경기 안 자리(0·1 청팀, 2·3 백팀)
+  @Put(':id/matches/:matchId/players/:slot')
+  async replacePlayer(
+    @Param('id') id: string,
+    @Param('matchId') matchId: string,
+    @Param('slot', ParseIntPipe) slot: number,
+    @Body() dto: ReplaceTournamentPlayerDto,
+  ): Promise<IApiResponse<ITournamentDetail>> {
+    return { success: true, data: await this.tournamentsService.replacePlayer(id, matchId, slot, dto) };
   }
 
   // 점수 입력과 수정 — 같은 경로로 다시 보내면 고친다

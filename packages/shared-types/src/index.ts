@@ -737,6 +737,19 @@ export interface IStartTournamentMatchDto {
 }
 export const TOURNAMENT_PLAYER_BUSY = 'PLAYER_BUSY';
 
+// 대기 경기 순서 바꾸기 — 대기 경기 전부의 id를 새 순서대로 보낸다
+export interface IReorderTournamentMatchesDto {
+  matchIds: string[];
+}
+
+// 선수 바꾸기 — 그 자리에 같은 팀의 다른 참가자를 넣는다. swapMatchId를 주면 그 경기에 있던 사람과 맞바꾼다
+// 바꾼 결과로 같은 라운드에 두 번 나오거나 다른 코트에서 경기 중이면 409(PLAYER_BUSY)로 알리고, force로 다시 보내면 바꾼다
+export interface IReplaceTournamentPlayerDto {
+  participantId: string;
+  swapMatchId?: string;
+  force?: boolean;
+}
+
 // 입구 체크인 — 입장과 웰컴 키트·타월·추첨권 지급을 한 번에 기록한다. false로 보내면 잘못 누른 것을 되돌린다
 export interface ISetTournamentEntryDto {
   entered: boolean;

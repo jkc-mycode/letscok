@@ -2,6 +2,8 @@ import {
   IBracketNamePick,
   ICreateTournamentDto,
   IImportBracketDto,
+  IReorderTournamentMatchesDto,
+  IReplaceTournamentPlayerDto,
   ISetTournamentEntryDto,
   ISetTournamentScoreDto,
   IStartTournamentMatchDto,
@@ -10,6 +12,7 @@ import {
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsInt,
@@ -83,4 +86,27 @@ export class SetTournamentScoreDto implements ISetTournamentScoreDto {
 export class SetTournamentEntryDto implements ISetTournamentEntryDto {
   @IsBoolean({ message: '입장 여부를 보내 주세요.' })
   entered: boolean;
+}
+
+export class ReorderTournamentMatchesDto implements IReorderTournamentMatchesDto {
+  @IsArray()
+  @ArrayMinSize(1, { message: '순서를 바꿀 경기가 없습니다.' })
+  @ArrayMaxSize(500)
+  @IsString({ each: true })
+  matchIds: string[];
+}
+
+export class ReplaceTournamentPlayerDto implements IReplaceTournamentPlayerDto {
+  @IsString()
+  @Length(1, 40)
+  participantId: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 40)
+  swapMatchId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  force?: boolean;
 }

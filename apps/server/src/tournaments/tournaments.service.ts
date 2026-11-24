@@ -8,6 +8,7 @@ import {
   IBracketRow,
   ICreateTournamentDto,
   IImportBracketDto,
+  IReplaceTournamentPlayerDto,
   ISetTournamentScoreDto,
   IStartTournamentMatchDto,
   ITournament,
@@ -235,6 +236,96 @@ export class TournamentsService {
     if (count === 0) {
       throw new ConflictException('진행 중인 경기만 대기로 돌릴 수 있습니다.');
     }
+    return this.changed();
+  }
+
+  // 대기 경기 순서 바꾸기 — 대기 경기 전부를 새 순서대로 받아 1부터 다시 매긴다
+  async reorderQueue(id: string, matchIds: string[]): Promise<ITournamentDetail> {
+    await this.findActive(id);
+    await this.prisma.$transaction(async (tx) => {
+      const queued = await tx.tournamentMatch.findMany({ where: { tournamentId: id, status: 'QUEUED' }, select: { id: true } });
+      const sent = new Set(matchIds);
+      if (sent.size !== matchIds.length || sent.size !== queued.length || queued.some((match) => !sent.has(match.id))) {
+        throw new ConflictException('대기 경기가 바뀌었어요. 화면을 다시 확인한 뒤 순서를 바꿔 주세요.');
+      }
+      for (const [index, matchId] of matchIds.entries()) {
+        await tx.tournamentMatch.update({ where: { id: matchId }, data: { queueOrder: index + 1 } });
+      }
+    });
+    return this.changed();
+  }
+
+  // 선수 바꾸기 — 불참·부상이면 같은 팀의 다른 참가자로, swapMatchId가 있으면 그 경기의 사람과 맞바꾼다
+  // 끝난 경기는 바꾸지 않는다(기록이 달라진다). 대리 표시가 있던 자리는 새 선수가 들어오면 지운다
+  async replacePlayer(id: string, matchId: string, slot: number, dto: IReplaceTournamentPlayerDto): Promise<ITournamentDetail> {
+    await this.findActive(id);
+    await this.prisma.$transaction(async (tx) => {
+      const matches = await tx.tournamentMatch.findMany({
+        where: { tournamentId: id },
+        include: { players: { include: { participant: { include: { member: true } } } } },
+      });
+      const match = matches.find((m) => m.id === matchId);
+      const current = match?.players.find((player) => player.slot === slot);
+      if (!match || !current) {
+        throw new NotFoundException('경기나 자리를 찾을 수 없습니다.');
+      }
+      if (match.status === 'FINISHED') {
+        throw new ConflictException('끝난 경기의 선수는 바꿀 수 없습니다.');
+      }
+      const incoming = await tx.tournamentParticipant.findFirst({
+        where: { id: dto.participantId, tournamentId: id },
+        include: { member: true },
+      });
+      if (!incoming) {
+        throw new NotFoundException('참가자를 찾을 수 없습니다.');
+      }
+      if (incoming.team !== current.participant.team) {
+        throw new BadRequestException('같은 팀의 사람으로만 바꿀 수 있습니다.');
+      }
+      if (match.players.some((player) => player.participantId === incoming.id)) {
+        throw new BadRequestException('이미 이 경기에 있는 사람입니다.');
+      }
+
+      const other = dto.swapMatchId ? matches.find((m) => m.id === dto.swapMatchId) : undefined;
+      const otherSlot = other?.players.find((player) => player.participantId === incoming.id);
+      if (dto.swapMatchId) {
+        if (!other || !otherSlot || other.id === match.id) {
+          throw new BadRequestException('맞바꿀 경기에 그 사람이 없습니다.');
+        }
+        if (other.status === 'FINISHED') {
+          throw new ConflictException('끝난 경기의 선수와는 맞바꿀 수 없습니다.');
+        }
+        if (other.players.some((player) => player.participantId === current.participantId)) {
+          throw new BadRequestException('맞바꾸면 한 경기에 같은 사람이 두 번 들어갑니다.');
+        }
+      }
+
+      if (!dto.force) {
+        // 바꾼 뒤의 모습에서 겹침을 찾는다 — into에 들어가는 사람이 그 경기 말고 어디에 또 있는지
+        const conflicts = (participantId: string, name: string, into: typeof match, leaving?: typeof match): string[] =>
+          matches
+            .filter((m) => m.id !== into.id && m.id !== leaving?.id && m.players.some((p) => p.participantId === participantId))
+            .flatMap((m) => [
+              ...(m.round === into.round ? [`${name} 님이 ${into.round}라운드에 이미 있어요(${m.matchNo}번)`] : []),
+              ...(m.status === 'PLAYING' && into.status === 'PLAYING' ? [`${name} 님이 ${m.courtNo}코트에서 경기 중이에요`] : []),
+            ]);
+        const found = [
+          ...conflicts(incoming.id, incoming.member.name, match, other),
+          ...(other ? conflicts(current.participantId, current.participant.member.name, other, match) : []),
+        ];
+        if (found.length > 0) {
+          throw new ConflictException({ statusCode: 409, message: `${found.join(', ')}.`, error: TOURNAMENT_PLAYER_BUSY });
+        }
+      }
+
+      await tx.tournamentMatchPlayer.update({ where: { id: current.id }, data: { participantId: incoming.id, proxyMemberId: null } });
+      if (otherSlot) {
+        await tx.tournamentMatchPlayer.update({
+          where: { id: otherSlot.id },
+          data: { participantId: current.participantId, proxyMemberId: null },
+        });
+      }
+    });
     return this.changed();
   }
 

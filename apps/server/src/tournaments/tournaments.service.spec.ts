@@ -431,3 +431,115 @@ describe('입구 체크인', () => {
     await expect(service.setEntry(id, 'nope', true)).rejects.toBeInstanceOf(NotFoundException);
   });
 });
+
+describe('대기 경기 순서 바꾸기와 선수 바꾸기', () => {
+  // 1라운드: 1번(가 나 : 다 라) 2번(마 바 : 사 아) / 2라운드: 3번(가 마 : 다 사)
+  async function ready() {
+    await seedMembers();
+    const { id } = await open();
+    const detail = await service.importBracket(id, { text: BRACKET });
+    const matchId = (matchNo: number) => detail.matches.find((m) => m.matchNo === matchNo)!.id;
+    const who = (name: string) => detail.participants.find((p) => p.name === name)!.id;
+    return { id, matchId, who };
+  }
+  const namesOf = (detail: Awaited<ReturnType<typeof service.current>>, matchNo: number) =>
+    detail!.matches.find((m) => m.matchNo === matchNo)!.players.map((p) => p.name);
+
+  it('대기 경기 순서를 바꾸면 그 순서대로 1부터 다시 매긴다', async () => {
+    const { id, matchId } = await ready();
+
+    const detail = await service.reorderQueue(id, [matchId(3), matchId(1), matchId(2)]);
+
+    expect(detail.matches.map((m) => [m.matchNo, m.queueOrder])).toEqual([
+      [1, 2],
+      [2, 3],
+      [3, 1],
+    ]);
+  });
+
+  it('대기 경기 전부를 보내지 않았거나 대기가 아닌 경기가 섞이면 순서를 바꾸지 않는다', async () => {
+    const { id, matchId } = await ready();
+    await expect(service.reorderQueue(id, [matchId(3), matchId(1)])).rejects.toBeInstanceOf(ConflictException);
+
+    await service.open(id);
+    await service.startMatch(id, matchId(1), {});
+    await expect(service.reorderQueue(id, [matchId(3), matchId(1), matchId(2)])).rejects.toBeInstanceOf(ConflictException);
+    expect((await service.reorderQueue(id, [matchId(3), matchId(2)])).matches.map((m) => m.queueOrder)).toEqual([1, 2, 1]);
+  });
+
+  it('같은 팀의 다른 사람으로 바꾼다', async () => {
+    const { id, matchId, who } = await ready();
+
+    const detail = await service.replacePlayer(id, matchId(3), 0, { participantId: who('나') });
+
+    expect(namesOf(detail, 3)).toEqual(['나', '마', '다', '사']);
+  });
+
+  it('다른 팀 사람이나 이미 그 경기에 있는 사람으로는 바꿀 수 없다', async () => {
+    const { id, matchId, who } = await ready();
+
+    await expect(service.replacePlayer(id, matchId(3), 0, { participantId: who('라') })).rejects.toThrow('같은 팀의 사람으로만');
+    await expect(service.replacePlayer(id, matchId(3), 0, { participantId: who('마') })).rejects.toThrow('이미 이 경기에 있는');
+  });
+
+  it('바꾼 사람이 같은 라운드에 이미 있으면 알리고, force로 보내면 바꾼다', async () => {
+    const { id, matchId, who } = await ready();
+
+    await expect(service.replacePlayer(id, matchId(1), 1, { participantId: who('마') })).rejects.toMatchObject({
+      response: { error: 'PLAYER_BUSY', message: '마 님이 1라운드에 이미 있어요(2번).' },
+    });
+    const detail = await service.replacePlayer(id, matchId(1), 1, { participantId: who('마'), force: true });
+
+    expect(namesOf(detail, 1)).toEqual(['가', '마', '다', '라']);
+  });
+
+  it('맞바꾸면 두 경기의 사람이 서로 자리를 바꾸고, 같은 라운드 겹침이 생기지 않으면 경고도 없다', async () => {
+    const { id, matchId, who } = await ready();
+
+    const detail = await service.replacePlayer(id, matchId(1), 1, { participantId: who('바'), swapMatchId: matchId(2) });
+
+    expect(namesOf(detail, 1)).toEqual(['가', '바', '다', '라']);
+    expect(namesOf(detail, 2)).toEqual(['마', '나', '사', '아']);
+  });
+
+  it('맞바꾸면 한 경기에 같은 사람이 두 번 들어가는 경우는 막는다', async () => {
+    const { id, matchId, who } = await ready();
+
+    // 1번의 가 ↔ 3번의 마: 3번에는 가가 이미 있다
+    await expect(service.replacePlayer(id, matchId(1), 0, { participantId: who('마'), swapMatchId: matchId(3) })).rejects.toThrow(
+      '한 경기에 같은 사람이 두 번',
+    );
+  });
+
+  it('맞바꾼 결과로 나간 사람이 그 라운드에 두 번 나오면 알린다', async () => {
+    const { id, matchId, who } = await ready();
+
+    // 3번(2라운드)의 마 ↔ 1번(1라운드)의 나: 마는 1라운드 2번에 이미 있다
+    await expect(service.replacePlayer(id, matchId(3), 1, { participantId: who('나'), swapMatchId: matchId(1) })).rejects.toMatchObject({
+      response: { error: 'PLAYER_BUSY', message: '마 님이 1라운드에 이미 있어요(2번).' },
+    });
+    const detail = await service.replacePlayer(id, matchId(3), 1, { participantId: who('나'), swapMatchId: matchId(1), force: true });
+
+    expect(namesOf(detail, 3)).toEqual(['가', '나', '다', '사']);
+    expect(namesOf(detail, 1)).toEqual(['가', '마', '다', '라']);
+  });
+
+  it('끝난 경기의 선수는 바꿀 수 없다', async () => {
+    const { id, matchId, who } = await ready();
+    await service.open(id);
+    await service.setScore(id, matchId(1), { blueScore: 21, whiteScore: 3 });
+
+    await expect(service.replacePlayer(id, matchId(1), 1, { participantId: who('바') })).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('진행 중인 경기에 넣는 사람이 다른 코트에서 경기 중이면 알린다', async () => {
+    const { id, matchId, who } = await ready();
+    await service.open(id);
+    await service.startMatch(id, matchId(1), {});
+    await service.startMatch(id, matchId(3), { courtNo: 2, force: true });
+
+    await expect(service.replacePlayer(id, matchId(3), 1, { participantId: who('나') })).rejects.toMatchObject({
+      response: { error: 'PLAYER_BUSY', message: '나 님이 1코트에서 경기 중이에요.' },
+    });
+  });
+});
