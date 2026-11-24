@@ -265,6 +265,7 @@ model Tournament {
   createdAt  DateTime         @default(now())
   openedAt   DateTime?
   closedAt   DateTime?
+  resultHiddenAt DateTime? // 종료 뒤 최종 결과를 내린 시각 — 비어 있으면 모임원 화면과 전광판에 결과가 계속 보인다
 
   participants TournamentParticipant[]
   matches      TournamentMatch[]
