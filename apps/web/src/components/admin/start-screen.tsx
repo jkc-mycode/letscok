@@ -8,7 +8,7 @@ import { SettlementModal } from '@/components/settlement-modal';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Toast } from '@/components/badges';
 import { HomeLink } from '@/components/home-link';
-import { CalendarIcon, CardIcon, ChartIcon, UsersIcon } from '@/components/icons';
+import { CalendarIcon, CardIcon, ChartIcon, CrownIcon, UsersIcon } from '@/components/icons';
 import { InstallPrompt } from '@/components/install-prompt';
 import { Sheet } from '@/components/sheet';
 import { api } from '@/lib/api';
@@ -125,6 +125,7 @@ export function StartScreen({
           <MenuRow icon={<ChartIcon />} label="지난 기록" href="/admin/history" />
           <MenuRow icon={<CalendarIcon />} label="생일" onClick={() => setBirthdayOpen(true)} />
           <MenuRow icon={<CardIcon />} label="뒤풀이 정산" onClick={() => setSettlementOpen(true)} />
+          <MenuRow icon={<CrownIcon />} label="자체 대회" href="/admin/tournament" />
         </div>
       </section>
       <div className="mt-auto flex flex-col gap-3">
