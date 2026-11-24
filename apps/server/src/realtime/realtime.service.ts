@@ -84,6 +84,11 @@ export class RealtimeService implements OnModuleDestroy {
     this.gateway.emitMemosChanged(sessionId);
   }
 
+  // 대회가 바뀌었다는 신호만 — 받은 화면이 대회 현황을 다시 읽는다
+  notifyTournamentChanged(): void {
+    this.gateway.emitTournamentChanged();
+  }
+
   // 변경을 일으킨 서비스가 응답을 지연시키지 않도록 fire-and-forget으로 호출한다
   // (브로드캐스트 실패는 로그만 — 이미 커밋된 변경의 응답을 실패시키면 안 됨)
   // 이미 보낼 예정이면 그대로 둔다 — 보낼 때 그 시점의 현황을 새로 읽으므로 사이의 변경이 다 들어간다

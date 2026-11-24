@@ -1,12 +1,16 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { BracketIssueCode } from '@letscok/shared-types';
+import { BracketIssueCode, computeTournamentStandings } from '@letscok/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { TournamentsService } from './tournaments.service';
 
 // 대회 만들기와 대진표 등록 통합 테스트 — 실제 Prisma+테스트 DB로 검증한다
 
 const prisma = new PrismaService();
-const service = new TournamentsService(prisma);
+// 바뀔 때마다 다른 화면에 신호를 보내는지 센다 — 소켓 없이 서비스만 조립
+let notified = 0;
+const realtimeStub = { notifyTournamentChanged: () => void (notified += 1) } as unknown as RealtimeService;
+const service = new TournamentsService(prisma, realtimeStub);
 
 const row = (...cells: Array<string | number>) => cells.join('\t');
 const NAMES = ['가', '나', '다', '라', '마', '바', '사', '아'];
@@ -315,5 +319,87 @@ describe('점수 입력, 수정, 삭제', () => {
     const match = detail.matches.find((m) => m.matchNo === 1)!;
     expect([match.status, match.blueScore, match.whiteScore, match.startedAt, match.endedAt]).toEqual(['QUEUED', null, null, null, null]);
     await expect(service.clearScore(id, matchId(1))).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+
+describe('모임원이 보는 대회 현황과 점수판', () => {
+  async function started() {
+    await seedMembers();
+    const { id } = await open();
+    const detail = await service.importBracket(id, { text: BRACKET });
+    const matchId = (matchNo: number) => detail.matches.find((m) => m.matchNo === matchNo)!.id;
+    return { id, matchId };
+  }
+
+  it('준비 중에는 내보내지 않고, 시작하면 입구 체크인 여부를 뺀 현황을 내보낸다', async () => {
+    const { id } = await started();
+    await prisma.tournamentParticipant.updateMany({ where: { tournamentId: id }, data: { enteredAt: new Date() } });
+    expect(await service.live()).toBeNull();
+
+    await service.open(id);
+    const live = (await service.live())!;
+
+    expect(live.matches).toHaveLength(3);
+    expect(live.participants.every((p) => p.enteredAt === null)).toBe(true);
+    expect(live).not.toHaveProperty('tournament.entryCode');
+  });
+
+  it('바뀔 때마다 다른 화면에 신호를 보낸다', async () => {
+    const { id, matchId } = await started();
+    notified = 0;
+
+    await service.open(id);
+    await service.startMatch(id, matchId(1), {});
+    await service.setScore(id, matchId(1), { blueScore: 21, whiteScore: 10 });
+    await service.clearScore(id, matchId(1));
+
+    expect(notified).toBe(4);
+  });
+
+  it('점수판은 이긴 경기 수와 득실점, 개인 승수와 경기 수를 센다', async () => {
+    const { id, matchId } = await started();
+    await service.open(id);
+    await service.setScore(id, matchId(1), { blueScore: 21, whiteScore: 10 });
+    await service.setScore(id, matchId(2), { blueScore: 15, whiteScore: 21 });
+
+    const standings = computeTournamentStandings(await service.setScore(id, matchId(3), { blueScore: 21, whiteScore: 19 }));
+
+    expect(standings.blue).toEqual({ wins: 2, pointsFor: 57, pointsAgainst: 50 });
+    expect(standings.white).toEqual({ wins: 1, pointsFor: 50, pointsAgainst: 57 });
+    expect([standings.leader, standings.finished, standings.total]).toEqual(['BLUE', 3, 3]);
+    expect(standings.players.map((p) => [p.name, p.wins, p.games])).toEqual([
+      ['가', 2, 2],
+      ['나', 1, 1],
+      ['아', 1, 1],
+      ['마', 1, 2],
+      ['사', 1, 2],
+      ['라', 0, 1],
+      ['바', 0, 1],
+      ['다', 0, 2],
+    ]);
+  });
+
+  it('승수가 같으면 득실점 차이로 가리고, 그것도 같으면 동률', async () => {
+    const { id, matchId } = await started();
+    await service.open(id);
+    await service.setScore(id, matchId(1), { blueScore: 21, whiteScore: 10 });
+    const ahead = computeTournamentStandings(await service.setScore(id, matchId(2), { blueScore: 15, whiteScore: 21 }));
+    const even = computeTournamentStandings(await service.setScore(id, matchId(2), { blueScore: 10, whiteScore: 21 }));
+
+    expect(ahead.leader).toBe('BLUE');
+    expect(even.leader).toBeNull();
+  });
+
+  it('한 팀에만 대리가 있으면 실제 점수와 상관없이 그 팀의 0:21 패배이고, 개인 기록에서 뺀다', async () => {
+    const { id, matchId } = await started();
+    await service.open(id);
+    const proxy = await prisma.member.findFirstOrThrow({ where: { name: '아' } });
+    await prisma.tournamentMatchPlayer.updateMany({ where: { matchId: matchId(1), slot: 2 }, data: { proxyMemberId: proxy.id } });
+
+    const standings = computeTournamentStandings(await service.setScore(id, matchId(1), { blueScore: 12, whiteScore: 21 }));
+
+    expect(standings.blue).toEqual({ wins: 1, pointsFor: 21, pointsAgainst: 0 });
+    expect(standings.white).toEqual({ wins: 0, pointsFor: 0, pointsAgainst: 21 });
+    expect(standings.players.every((p) => p.games === 0 && p.wins === 0)).toBe(true);
   });
 });

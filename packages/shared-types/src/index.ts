@@ -755,6 +755,102 @@ export interface IBracketNamePick {
   memberId: string;
 }
 
+// ===== 대회 점수판 (서버·웹 공용 계산) =====
+
+export interface ITournamentTeamStanding {
+  wins: number;
+  pointsFor: number;
+  pointsAgainst: number;
+}
+
+export interface ITournamentPlayerStanding {
+  participantId: string;
+  memberId: string;
+  name: string;
+  team: TournamentTeam;
+  wins: number;
+  games: number; // 사람마다 경기 수가 달라 승수와 같이 보여 준다
+}
+
+export interface ITournamentStandings {
+  blue: ITournamentTeamStanding;
+  white: ITournamentTeamStanding;
+  leader: TournamentTeam | null; // 이긴 경기 수, 같으면 득실점 차이. 그것도 같으면 null(동률)
+  finished: number;
+  total: number;
+  players: ITournamentPlayerStanding[]; // 승수 많은 순, 같으면 경기 수 적은 순, 이름순
+}
+
+// 집계에 쓰는 점수 — 한 팀에만 대리(지각 결원)가 있으면 실제 점수와 상관없이 그 팀의 0:21 패배로 본다
+// 끝나지 않은 경기는 null. proxy가 true인 경기는 개인 승수·경기 수에서 뺀다
+export function tournamentOfficialScore(
+  match: ITournamentMatch,
+): { blue: number; white: number; proxy: boolean } | null {
+  if (match.status !== TournamentMatchStatus.FINISHED || match.blueScore === null || match.whiteScore === null) return null;
+  const blueProxy = match.players.some((player) => player.slot < 2 && player.proxyName !== null);
+  const whiteProxy = match.players.some((player) => player.slot >= 2 && player.proxyName !== null);
+  if (blueProxy !== whiteProxy) {
+    return blueProxy
+      ? { blue: 0, white: TOURNAMENT_WIN_SCORE, proxy: true }
+      : { blue: TOURNAMENT_WIN_SCORE, white: 0, proxy: true };
+  }
+  return { blue: match.blueScore, white: match.whiteScore, proxy: blueProxy };
+}
+
+export function computeTournamentStandings(detail: ITournamentDetail): ITournamentStandings {
+  const blue: ITournamentTeamStanding = { wins: 0, pointsFor: 0, pointsAgainst: 0 };
+  const white: ITournamentTeamStanding = { wins: 0, pointsFor: 0, pointsAgainst: 0 };
+  const players = new Map<string, ITournamentPlayerStanding>(
+    detail.participants.map((p) => [
+      p.id,
+      { participantId: p.id, memberId: p.memberId, name: p.name, team: p.team, wins: 0, games: 0 },
+    ]),
+  );
+  let finished = 0;
+
+  for (const match of detail.matches) {
+    const score = tournamentOfficialScore(match);
+    if (!score) continue;
+    finished += 1;
+    const blueWon = score.blue > score.white;
+    (blueWon ? blue : white).wins += 1;
+    blue.pointsFor += score.blue;
+    blue.pointsAgainst += score.white;
+    white.pointsFor += score.white;
+    white.pointsAgainst += score.blue;
+    if (score.proxy) continue;
+    for (const player of match.players) {
+      const row = players.get(player.participantId);
+      if (!row) continue;
+      row.games += 1;
+      if (player.slot < 2 === blueWon) row.wins += 1;
+    }
+  }
+
+  const diff = blue.pointsFor - blue.pointsAgainst;
+  const leader =
+    blue.wins !== white.wins
+      ? blue.wins > white.wins
+        ? TournamentTeam.BLUE
+        : TournamentTeam.WHITE
+      : diff !== 0
+        ? diff > 0
+          ? TournamentTeam.BLUE
+          : TournamentTeam.WHITE
+        : null;
+
+  return {
+    blue,
+    white,
+    leader,
+    finished,
+    total: detail.matches.length,
+    players: [...players.values()].sort(
+      (a, b) => b.wins - a.wins || a.games - b.games || a.name.localeCompare(b.name, 'ko'),
+    ),
+  };
+}
+
 export interface IBracketRow {
   matchNo: number;
   round: number;
@@ -820,6 +916,7 @@ export const SocketEvents = {
   SNAPSHOT_UPDATED: 'snapshot.updated', // payload: ISessionSnapshot
   SESSION_CLOSED: 'session.closed', // payload: { sessionId: string }
   MEMOS_CHANGED: 'memos.changed', // payload 없음 — 운영 메모가 바뀌었다는 신호만(내용은 운영진이 /memos로 다시 읽는다)
+  TOURNAMENT_CHANGED: 'tournament.changed', // payload 없음 — 대회가 바뀌었다는 신호만. 방 구분 없이 모든 연결에 보내고, 받은 화면이 다시 읽는다
 } as const;
 export type SocketEvent = (typeof SocketEvents)[keyof typeof SocketEvents];
 

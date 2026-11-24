@@ -21,6 +21,7 @@ import { toDateString } from '../common/utils/date.util';
 import { normalizeName } from '../common/utils/name.util';
 import { Prisma, Tournament } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { checkBracketPeople, parseBracket } from './bracket-parser';
 
 const ACTIVE = ['DRAFT', 'OPEN'] as const;
@@ -45,7 +46,10 @@ interface ResolvedBracket {
 // 자체 대회(청백전) — 평소 모임과 따로 연다. 준비 중이거나 진행 중인 대회는 늘 하나뿐
 @Injectable()
 export class TournamentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   async create(dto: ICreateTournamentDto): Promise<ITournament> {
     const active = await this.prisma.tournament.findFirst({ where: { status: { in: [...ACTIVE] } } });
@@ -55,6 +59,7 @@ export class TournamentsService {
     const tournament = await this.prisma.tournament.create({
       data: { name: dto.name.trim(), date: new Date(dto.date), entryCode: generateCheckInCode() },
     });
+    this.realtime.notifyTournamentChanged();
     return toTournament(tournament);
   }
 
@@ -65,6 +70,14 @@ export class TournamentsService {
       include: detailInclude,
     });
     return tournament ? toDetail(tournament) : null;
+  }
+
+  // 모임원 화면과 전광판이 로그인 없이 읽는 대회 현황 — 진행 중일 때만 내보내고, 입구 체크인 여부는 뺀다
+  async live(): Promise<ITournamentDetail | null> {
+    const tournament = await this.prisma.tournament.findFirst({ where: { status: 'OPEN' }, include: detailInclude });
+    if (!tournament) return null;
+    const detail = toDetail(tournament);
+    return { ...detail, participants: detail.participants.map((participant) => ({ ...participant, enteredAt: null })) };
   }
 
   async previewBracket(id: string, dto: IImportBracketDto): Promise<IBracketPreview> {
@@ -125,7 +138,7 @@ export class TournamentsService {
       });
     });
 
-    return (await this.current())!;
+    return this.changed();
   }
 
   // 대회 시작 — 이때부터 모임원 링크가 대회 현황으로 바뀐다
@@ -139,7 +152,7 @@ export class TournamentsService {
       throw new BadRequestException('대진표를 먼저 넣어 주세요.');
     }
     await this.prisma.tournament.update({ where: { id }, data: { status: 'OPEN', openedAt: new Date() } });
-    return (await this.current())!;
+    return this.changed();
   }
 
   // 대회 종료 — 치르지 않은 대기 경기는 남겨 둔 채 끝낼 수 있다. 진행 중인 경기는 먼저 정리해야 한다
@@ -150,6 +163,7 @@ export class TournamentsService {
       throw new ConflictException('진행 중인 경기가 있어요. 점수를 넣거나 대기로 돌린 뒤 종료해 주세요.');
     }
     const closed = await this.prisma.tournament.update({ where: { id }, data: { status: 'CLOSED', closedAt: new Date() } });
+    this.realtime.notifyTournamentChanged();
     return toTournament(closed);
   }
 
@@ -192,7 +206,7 @@ export class TournamentsService {
       }
       await tx.tournamentMatch.update({ where: { id: matchId }, data: { status: 'PLAYING', courtNo, startedAt: new Date() } });
     });
-    return (await this.current())!;
+    return this.changed();
   }
 
   // 잘못 올린 경기를 대기로 되돌린다
@@ -205,7 +219,7 @@ export class TournamentsService {
     if (count === 0) {
       throw new ConflictException('진행 중인 경기만 대기로 돌릴 수 있습니다.');
     }
-    return (await this.current())!;
+    return this.changed();
   }
 
   // 점수 입력과 수정 — 승리 팀은 저장하지 않고 점수에서 읽는다. 코트에 올리지 않고 치른 대기 경기에도 바로 넣을 수 있다
@@ -227,7 +241,7 @@ export class TournamentsService {
       // 고칠 때는 처음 끝난 시각을 그대로 둔다
       data: { status: 'FINISHED', blueScore, whiteScore, endedAt: match.endedAt ?? new Date() },
     });
-    return (await this.current())!;
+    return this.changed();
   }
 
   // 점수 지우기 — 잘못된 경기에 넣었을 때. 그 경기는 대기로 돌아가고, 다시 치르려면 빈 코트에 올린다
@@ -240,7 +254,7 @@ export class TournamentsService {
     if (count === 0) {
       throw new ConflictException('점수가 들어간 경기만 지울 수 있습니다.');
     }
-    return (await this.current())!;
+    return this.changed();
   }
 
   private async findOpen(id: string): Promise<Tournament> {
@@ -249,6 +263,12 @@ export class TournamentsService {
       throw new ConflictException('대회를 먼저 시작해 주세요.');
     }
     return tournament;
+  }
+
+  // 바뀐 뒤의 대회를 돌려주고, 다른 화면에 다시 읽으라는 신호를 보낸다
+  private async changed(): Promise<ITournamentDetail> {
+    this.realtime.notifyTournamentChanged();
+    return (await this.current())!;
   }
 
   private async findActive(id: string): Promise<Tournament> {

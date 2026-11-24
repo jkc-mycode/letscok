@@ -77,3 +77,14 @@ export class TournamentsController {
     return { success: true, data: await this.tournamentsService.clearScore(id, matchId) };
   }
 }
+
+// 로그인 없이 읽는 대회 현황 — 모임원 화면과 운영석 전광판이 쓴다
+@Controller('tournaments')
+export class TournamentLiveController {
+  constructor(private readonly tournamentsService: TournamentsService) {}
+
+  @Get('live')
+  async live(): Promise<IApiResponse<ITournamentDetail | null>> {
+    return { success: true, data: await this.tournamentsService.live() };
+  }
+}

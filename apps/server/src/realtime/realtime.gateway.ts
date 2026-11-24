@@ -64,6 +64,11 @@ export class RealtimeGateway {
     this.server.to(sessionRoom(sessionId)).emit(SocketEvents.MEMOS_CHANGED);
   }
 
+  // 대회는 모임 방과 무관 — 연결된 모든 화면에 신호만 보낸다(대회 화면만 듣고 다시 읽는다)
+  emitTournamentChanged(): void {
+    this.server.emit(SocketEvents.TOURNAMENT_CHANGED);
+  }
+
   emitSessionClosed(sessionId: string): void {
     this.server
       .to(sessionRoom(sessionId))
