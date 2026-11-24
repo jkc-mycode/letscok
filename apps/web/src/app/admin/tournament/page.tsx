@@ -2,6 +2,7 @@
 
 import {
   BracketIssueLevel,
+  computeTournamentStandings,
   IBracketIssue,
   IBracketNamePick,
   IBracketPreview,
@@ -13,11 +14,13 @@ import {
   TournamentTeam,
 } from '@letscok/shared-types';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
 import { TOURNAMENT_TYPE_LABEL as TYPE_LABEL, TournamentBoard } from '@/components/admin/tournament-board';
 import { ConfirmButton } from '@/components/confirm-button';
+import { TournamentScoreboard } from '@/components/tournament-live';
 import { api, ApiError } from '@/lib/api';
+import { useTournamentLive } from '@/lib/use-tournament-live';
 
 // 관제판 대회 화면 — 대회를 만들고 시트 대진표를 붙여 넣어 등록한 뒤, 시작하면 경기 진행 화면이 된다
 
@@ -44,14 +47,9 @@ export default function TournamentPage() {
 }
 
 function TournamentHome() {
-  // undefined = 불러오는 중, null = 준비 중이거나 진행 중인 대회가 없음
-  const [detail, setDetail] = useState<ITournamentDetail | null | undefined>(undefined);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    api<ITournamentDetail | null>('/tournaments/current', { admin: true })
-      .then((result) => setDetail(result ?? null))
-      .catch((e) => setError(failText(e, '대회를 불러오지 못했습니다.')));
-  }, []);
+  // 다른 운영진 기기에서 바꾼 내용도 신호를 받아 다시 읽는다
+  const { detail, loading, failed, setDetail } = useTournamentLive({ admin: true });
+  const standings = useMemo(() => (detail ? computeTournamentStandings(detail) : null), [detail]);
 
   return (
     <main className="fade-in mx-auto flex min-h-dvh w-full max-w-2xl flex-col gap-5 p-6">
@@ -62,12 +60,13 @@ function TournamentHome() {
         <h1 className="mt-1 text-2xl font-bold">자체 대회</h1>
       </header>
 
-      {error && <p className="py-10 text-center text-sm text-coral">{error}</p>}
-      {!error && detail === undefined && <p className="py-10 text-center text-sm text-dim">불러오는 중...</p>}
-      {detail === null && <CreateForm onCreated={(tournament) => setDetail({ tournament, participants: [], matches: [] })} />}
+      {failed && !detail && <p className="py-10 text-center text-sm text-coral">대회를 불러오지 못했습니다.</p>}
+      {loading && <p className="py-10 text-center text-sm text-dim">불러오는 중...</p>}
+      {!loading && !failed && !detail && <CreateForm onCreated={(tournament) => setDetail({ tournament, participants: [], matches: [] })} />}
       {detail && (
         <>
           <Summary detail={detail} onChange={setDetail} />
+          {detail.tournament.status === TournamentStatus.OPEN && standings && <TournamentScoreboard standings={standings} />}
           {detail.tournament.status === TournamentStatus.OPEN && <TournamentBoard detail={detail} onChange={setDetail} />}
           {/* 시작한 경기가 생기면 서버가 다시 넣기를 막는다 — 그때부터는 버튼도 숨긴다 */}
           {detail.matches.every((match) => match.status === TournamentMatchStatus.QUEUED) && (
