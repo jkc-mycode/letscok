@@ -22,7 +22,7 @@ import {
 import { useTournamentLive } from '@/lib/use-tournament-live';
 
 export default function TournamentBoardPage() {
-  const { detail, loading } = useTournamentLive();
+  const { detail, loading, stale } = useTournamentLive();
   if (!detail) {
     return (
       <main className="flex h-dvh flex-col items-center justify-center gap-[2vh] text-center">
@@ -31,7 +31,16 @@ export default function TournamentBoardPage() {
       </main>
     );
   }
-  return detail.tournament.status === TournamentStatus.CLOSED ? <FinalBoard detail={detail} /> : <Board detail={detail} />;
+  return (
+    <>
+      {stale && (
+        <span className="fixed top-[1.5vh] right-[1.5vh] z-10 rounded-[1.5vh] bg-coral px-[2vh] py-[1vh] text-[2.2vh] font-bold text-bg">
+          연결 끊김, 다시 연결하는 중
+        </span>
+      )}
+      {detail.tournament.status === TournamentStatus.CLOSED ? <FinalBoard detail={detail} /> : <Board detail={detail} />}
+    </>
+  );
 }
 
 // 끝난 대회의 최종 결과 — 위에 이긴 팀과 청백 승수, 아래에 개인 순위 앞쪽. 시상할 때 띄워 둔다

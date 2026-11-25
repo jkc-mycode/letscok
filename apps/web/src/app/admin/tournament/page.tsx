@@ -53,7 +53,7 @@ export default function TournamentPage() {
 
 function TournamentHome() {
   // 다른 운영진 기기에서 바꾼 내용도 신호를 받아 다시 읽는다
-  const { detail, loading, failed, setDetail } = useTournamentLive({ admin: true });
+  const { detail, loading, failed, stale, setDetail } = useTournamentLive({ admin: true });
   const standings = useMemo(() => (detail ? computeTournamentStandings(detail) : null), [detail]);
   // 입구 담당은 체크인 탭만 띄워 둔다. 대진표와 개인 순위는 모임원이 보는 현황과 같은 부품이다
   const [view, setView] = useState<'main' | 'bracket' | 'ranking' | 'entry'>('main');
@@ -71,6 +71,11 @@ function TournamentHome() {
       </header>
 
       {failed && !detail && <p className="py-10 text-center text-sm text-coral">대회를 불러오지 못했습니다.</p>}
+      {stale && detail && (
+        <p className="sticky top-2 z-10 rounded-xl border border-coral/50 bg-panel px-4 py-3 text-sm font-bold text-coral">
+          연결이 끊겼어요. 다른 기기에서 바꾼 내용이 안 보일 수 있어요. 다시 연결하는 중이에요.
+        </p>
+      )}
       {loading && <p className="py-10 text-center text-sm text-dim">불러오는 중...</p>}
       {!loading && !failed && !detail && <CreateForm onCreated={(tournament) => setDetail({ tournament, participants: [], matches: [] })} />}
       {detail && (

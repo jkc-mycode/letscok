@@ -41,13 +41,14 @@ import { useTournamentLive } from '@/lib/use-tournament-live';
 
 // 대회가 진행 중이면 대회 현황이 먼저 — 폰을 연결하지 않아도 보인다. 대회가 없거나 못 읽으면 평소 화면 그대로
 export default function MyStatusPage() {
-  const { detail, loading } = useTournamentLive();
+  const { detail, loading, stale } = useTournamentLive();
   if (loading) {
     return <Shell><LogoLoader className="py-20" /></Shell>;
   }
   if (detail) {
     return (
       <Shell>
+        {stale && <p className="rounded-xl border border-coral/50 px-4 py-3 text-sm text-coral">연결이 끊겼어요. 다시 연결하는 중이에요.</p>}
         <TournamentLiveView detail={detail} />
       </Shell>
     );
