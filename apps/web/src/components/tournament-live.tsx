@@ -5,14 +5,17 @@ import {
   ITournamentDetail,
   ITournamentMatch,
   ITournamentMatchPlayer,
+  ITournamentParticipant,
   ITournamentStandings,
+  matchesName,
   tournamentOfficialScore,
   TournamentMatchStatus,
   TournamentMatchType,
   TournamentStatus,
   TournamentTeam,
 } from '@letscok/shared-types';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { getMemberId } from '@/lib/member';
 
 // 대회 현황 부품 — 모임원 화면과 운영석 전광판, 관제판이 같이 쓴다(읽기 전용)
 
@@ -126,7 +129,8 @@ export function TournamentCourts({ detail }: { detail: ITournamentDetail }) {
 }
 
 // 라운드별 대진표 — 끝난 경기는 점수, 아니면 상태. wide: 운영 화면처럼 넓은 곳에서는 라운드를 두 줄로 나란히
-export function TournamentBracket({ detail, wide = false }: { detail: ITournamentDetail; wide?: boolean }) {
+// mineId: 내 경기를 고른 참가자 — 그 사람이 뛰는 경기 줄에 표시를 붙인다
+export function TournamentBracket({ detail, wide = false, mineId }: { detail: ITournamentDetail; wide?: boolean; mineId?: string }) {
   const rounds = [...new Set(detail.matches.map((m) => m.round))].sort((a, b) => a - b);
   return (
     <div className={`flex flex-col gap-3 ${wide ? 'lg:grid lg:grid-cols-2 lg:items-start' : ''}`}>
@@ -141,6 +145,9 @@ export function TournamentBracket({ detail, wide = false }: { detail: ITournamen
                   <div className="min-w-0 flex-1">
                     <p className="text-caption text-dim">
                       {match.matchNo}번, {match.courtNo}코트, {TOURNAMENT_TYPE_LABEL[match.type]}
+                      {mineId && match.players.some((p) => p.participantId === mineId) && (
+                        <span className="ml-1.5 font-bold text-court">내 경기</span>
+                      )}
                     </p>
                     <TournamentMatchNames match={match} />
                   </div>
@@ -199,6 +206,165 @@ export function TournamentRanking({ standings }: { standings: ITournamentStandin
   );
 }
 
+// 내 경기를 볼 사람 — 대회 현황은 모두 공개라 이름만 고르면 된다. 평소 모임 때 연결한 폰은 그 회원으로 바로 보여 준다
+// 여기서 고른 이름은 대회 화면에만 쓴다(평소 모임의 폰 연결과 별개)
+const MINE_KEY = 'letscok:tournament-member-id';
+
+function useMyParticipant(detail: ITournamentDetail) {
+  const [memberId, setMemberId] = useState<string | null>(null);
+  useEffect(() => setMemberId(localStorage.getItem(MINE_KEY) ?? getMemberId()), []);
+  const pick = (next: string | null) => {
+    if (next) localStorage.setItem(MINE_KEY, next);
+    else localStorage.removeItem(MINE_KEY);
+    setMemberId(next);
+  };
+  return { me: detail.participants.find((p) => p.memberId === memberId) ?? null, pick };
+}
+
+function MyMatches({
+  detail,
+  me,
+  onPick,
+}: {
+  detail: ITournamentDetail;
+  me: ITournamentParticipant | null;
+  onPick: (memberId: string | null) => void;
+}) {
+  const [picking, setPicking] = useState(false);
+  const [query, setQuery] = useState('');
+  if (picking || !me) {
+    if (!picking) {
+      return (
+        <button onClick={() => setPicking(true)} className="h-12 rounded-xl border border-court/40 text-sm font-bold text-court">
+          내 경기 보기
+        </button>
+      );
+    }
+    const shown = detail.participants.filter((p) => matchesName(p.name, query.trim()));
+    return (
+      <section className="flex flex-col gap-2 rounded-2xl bg-panel p-4">
+        <div className="flex items-center">
+          <h2 className="text-body font-bold">내 이름을 골라 주세요</h2>
+          <button onClick={() => setPicking(false)} className="ml-auto text-sm text-dim">
+            닫기
+          </button>
+        </div>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="이름이나 초성으로 찾기"
+          className="h-11 rounded-lg border border-line bg-panel2 px-3 text-body outline-none focus:border-court"
+        />
+        {shown.length === 0 && <p className="text-sm text-faint">찾는 이름이 없어요. 대진표에 있는 사람만 나와요.</p>}
+        <ul className="grid max-h-64 grid-cols-2 gap-1.5 overflow-y-auto">
+          {shown.map((p) => (
+            <li key={p.id}>
+              <button
+                onClick={() => {
+                  onPick(p.memberId);
+                  setPicking(false);
+                  setQuery('');
+                }}
+                className="flex h-11 w-full items-center gap-2 rounded-lg bg-panel2 px-3 text-left"
+              >
+                <span className={`text-sm font-bold ${p.team === TournamentTeam.BLUE ? 'text-sky' : ''}`}>{p.name}</span>
+                <span className="text-caption text-faint">{p.team === TournamentTeam.BLUE ? '청팀' : '백팀'}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
+  }
+
+  const mine = detail.matches.filter((m) => m.players.some((p) => p.participantId === me.id));
+  const playing = mine.find((m) => m.status === TournamentMatchStatus.PLAYING);
+  const queued = mine.filter((m) => m.status === TournamentMatchStatus.QUEUED).sort((a, b) => a.queueOrder - b.queueOrder);
+  const done = mine.filter((m) => m.status === TournamentMatchStatus.FINISHED);
+  const blue = me.team === TournamentTeam.BLUE;
+  const record = computeTournamentStandings(detail).players.find((p) => p.participantId === me.id);
+  const closed = detail.tournament.status === TournamentStatus.CLOSED;
+  const next = queued[0];
+  // 그 코트에서 내 경기보다 먼저 치를 경기 수 — 지금 하고 있는 경기도 센다
+  const ahead = next
+    ? detail.matches.filter(
+        (m) =>
+          m.courtNo === next.courtNo &&
+          (m.status === TournamentMatchStatus.PLAYING ||
+            (m.status === TournamentMatchStatus.QUEUED && m.queueOrder < next.queueOrder)),
+      ).length
+    : 0;
+  // 같은 편과 상대 — 내 자리에 대리가 있으면 알려 준다
+  const sides = (match: ITournamentMatch) => {
+    const myTeam = match.players.filter((p) => p.slot < 2 === blue);
+    return {
+      partner: myTeam.filter((p) => p.participantId !== me.id).map(tournamentPlayerLabel).join(', '),
+      rivals: match.players.filter((p) => p.slot < 2 !== blue).map(tournamentPlayerLabel).join(', '),
+      proxy: myTeam.find((p) => p.participantId === me.id)?.proxyName ?? null,
+    };
+  };
+  const card = (match: ITournamentMatch, label: string, labelCls: string, note: string) => {
+    const { partner, rivals, proxy } = sides(match);
+    return (
+      <div className="flex flex-col gap-1 rounded-xl bg-panel2 p-3">
+        <div className="flex items-baseline gap-2">
+          <span className={`text-caption font-bold ${labelCls}`}>{label}</span>
+          <span className="text-heading font-bold">{match.courtNo}코트</span>
+          <span className="text-sm text-dim">{note}</span>
+          <span className="ml-auto text-caption text-dim">
+            {match.matchNo}번, {match.round}라운드
+          </span>
+        </div>
+        <p className="text-sm">
+          <span className="text-dim">같은 편</span> <span className="font-bold">{partner || '없음'}</span>
+          <span className="ml-3 text-dim">상대</span> <span className="font-bold">{rivals}</span>
+        </p>
+        {proxy && <p className="text-caption text-amber">{proxy} 님이 대신 뛰는 것으로 되어 있어요. 도착했으면 운영진에게 알려 주세요.</p>}
+      </div>
+    );
+  };
+
+  return (
+    <section className="flex flex-col gap-2 rounded-2xl bg-panel p-4">
+      <div className="flex items-baseline gap-2">
+        <h2 className="text-body font-bold">
+          <span className={blue ? 'text-sky' : ''}>{me.name}</span> 님의 경기
+        </h2>
+        {record && record.games > 0 && (
+          <span className="text-sm tabular-nums text-dim">
+            {record.wins}승 {record.games - record.wins}패
+          </span>
+        )}
+        <button onClick={() => setPicking(true)} className="ml-auto text-caption text-dim underline">
+          다른 사람으로
+        </button>
+      </div>
+      {mine.length === 0 && <p className="text-sm text-faint">대진표에 들어 있는 경기가 없어요</p>}
+      {playing && card(playing, '경기 중', 'text-court', '지금 경기 중이에요')}
+      {!closed && next && card(next, '다음 경기', 'text-amber', playing ? '' : ahead === 0 ? '곧 시작해요' : `앞에 ${ahead}경기`)}
+      {!closed && queued.length > 1 && <p className="text-caption text-dim">그 뒤로 {queued.length - 1}경기가 더 남았어요</p>}
+      {!closed && mine.length > 0 && !playing && !next && <p className="text-sm text-dim">남은 경기가 없어요. 수고하셨어요!</p>}
+      {done.length > 0 && (
+        <ul className="flex flex-col">
+          {done.map((match) => {
+            const score = tournamentOfficialScore(match)!;
+            const won = score.blue > score.white === blue;
+            return (
+              <li key={match.id} className="flex items-center gap-2 border-t border-line py-1.5 text-sm">
+                <span className={`w-6 shrink-0 font-bold ${won ? 'text-court' : 'text-faint'}`}>{won ? '승' : '패'}</span>
+                <span className="min-w-0 flex-1 truncate text-dim">
+                  {match.matchNo}번, 상대 {sides(match).rivals}
+                </span>
+                <TournamentScoreText match={match} size="text-sm" />
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 const TABS = [
   { key: 'courts', label: '코트 현황' },
   { key: 'bracket', label: '대진표' },
@@ -213,6 +379,7 @@ export function TournamentLiveView({ detail }: { detail: ITournamentDetail }) {
   const closed = detail.tournament.status === TournamentStatus.CLOSED;
   const [picked, setTab] = useState<TabKey>('courts');
   const tab = closed && picked === 'courts' ? 'ranking' : picked;
+  const { me, pick } = useMyParticipant(detail);
   return (
     <>
       <header className="flex flex-col items-center gap-1 pt-2 text-center">
@@ -220,6 +387,7 @@ export function TournamentLiveView({ detail }: { detail: ITournamentDetail }) {
         <h1 className="text-title font-bold">{detail.tournament.name}</h1>
       </header>
       <TournamentScoreboard standings={standings} final={closed} />
+      <MyMatches detail={detail} me={me} onPick={pick} />
       <nav className="flex gap-2">
         {TABS.filter(({ key }) => !closed || key !== 'courts').map(({ key, label }) => (
           <button
@@ -234,7 +402,7 @@ export function TournamentLiveView({ detail }: { detail: ITournamentDetail }) {
         ))}
       </nav>
       {tab === 'courts' && <TournamentCourts detail={detail} />}
-      {tab === 'bracket' && <TournamentBracket detail={detail} />}
+      {tab === 'bracket' && <TournamentBracket detail={detail} mineId={me?.id} />}
       {tab === 'ranking' && <TournamentRanking standings={standings} />}
     </>
   );
