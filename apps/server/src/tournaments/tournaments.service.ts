@@ -42,6 +42,16 @@ const detailInclude = {
 } satisfies Prisma.TournamentInclude;
 type TournamentWithDetail = Prisma.TournamentGetPayload<{ include: typeof detailInclude }>;
 
+function assertActive(tournament: Tournament | null): Tournament {
+  if (!tournament) {
+    throw new NotFoundException('대회를 찾을 수 없습니다.');
+  }
+  if (tournament.status === 'CLOSED') {
+    throw new ConflictException('이미 끝난 대회입니다.');
+  }
+  return tournament;
+}
+
 interface ResolvedBracket {
   preview: IBracketPreview;
   memberIdOf: Map<string, string>; // 정규화한 이름 → 회원 id (찾은 이름만)
@@ -108,7 +118,7 @@ export class TournamentsService {
       row.white.forEach((name) => teamOf.set(memberId(name), TournamentTeam.WHITE));
     }
 
-    await this.prisma.$transaction(async (tx) => {
+    return this.mutate(id, 'ACTIVE', async (tx) => {
       const started = await tx.tournamentMatch.count({ where: { tournamentId: id, status: { not: 'QUEUED' } } });
       if (started > 0) {
         throw new ConflictException('이미 시작한 경기가 있어 대진표를 다시 넣을 수 없습니다.');
@@ -157,82 +167,80 @@ export class TournamentsService {
         data: { courtCount: Math.max(...preview.rows.map((row) => row.courtNo)) },
       });
     });
-
-    return this.changed();
   }
 
   // 참가자 추가 — 대진표에 없는 회원을 당일에 대타로 넣을 수 있게 한다. 경기에는 선수 바꾸기로 넣는다
   async addParticipant(id: string, dto: IAddTournamentParticipantDto): Promise<ITournamentDetail> {
-    await this.findActive(id);
-    const member = await this.prisma.member.findFirst({ where: { id: dto.memberId, deletedAt: null } });
-    if (!member) {
-      throw new NotFoundException('회원을 찾을 수 없습니다.');
-    }
-    const existing = await this.prisma.tournamentParticipant.findFirst({ where: { tournamentId: id, memberId: dto.memberId } });
-    if (existing) {
-      throw new ConflictException(`이미 ${existing.team === TournamentTeam.BLUE ? '청팀' : '백팀'} 참가자입니다.`);
-    }
-    await this.prisma.tournamentParticipant.create({ data: { tournamentId: id, memberId: dto.memberId, team: dto.team } });
-    return this.changed();
+    return this.mutate(id, 'ACTIVE', async (tx) => {
+      const member = await tx.member.findFirst({ where: { id: dto.memberId, deletedAt: null } });
+      if (!member) {
+        throw new NotFoundException('회원을 찾을 수 없습니다.');
+      }
+      const existing = await tx.tournamentParticipant.findFirst({ where: { tournamentId: id, memberId: dto.memberId } });
+      if (existing) {
+        throw new ConflictException(`이미 ${existing.team === TournamentTeam.BLUE ? '청팀' : '백팀'} 참가자입니다.`);
+      }
+      await tx.tournamentParticipant.create({ data: { tournamentId: id, memberId: dto.memberId, team: dto.team } });
+    });
   }
 
   // 참가자 빼기 — 잘못 추가했을 때. 경기에 들어가 있는 사람은 뺄 수 없다(먼저 선수 바꾸기로 뺀다)
   async removeParticipant(id: string, participantId: string): Promise<ITournamentDetail> {
-    await this.findActive(id);
-    const participant = await this.prisma.tournamentParticipant.findFirst({
-      where: { id: participantId, tournamentId: id },
-      include: { _count: { select: { matchPlayers: true } } },
+    return this.mutate(id, 'ACTIVE', async (tx) => {
+      const participant = await tx.tournamentParticipant.findFirst({
+        where: { id: participantId, tournamentId: id },
+        include: { _count: { select: { matchPlayers: true } } },
+      });
+      if (!participant) {
+        throw new NotFoundException('참가자를 찾을 수 없습니다.');
+      }
+      if (participant._count.matchPlayers > 0) {
+        throw new ConflictException('경기에 들어가 있는 사람은 뺄 수 없습니다.');
+      }
+      await tx.tournamentParticipant.delete({ where: { id: participantId } });
     });
-    if (!participant) {
-      throw new NotFoundException('참가자를 찾을 수 없습니다.');
-    }
-    if (participant._count.matchPlayers > 0) {
-      throw new ConflictException('경기에 들어가 있는 사람은 뺄 수 없습니다.');
-    }
-    await this.prisma.tournamentParticipant.delete({ where: { id: participantId } });
-    return this.changed();
   }
 
   // 입구 체크인 — 대회를 시작하기 전(준비 중)에도 받는다. 처음 누른 시각을 남기고, 되돌리면 지운다
   async setEntry(id: string, participantId: string, entered: boolean): Promise<ITournamentDetail> {
-    await this.findActive(id);
-    const participant = await this.prisma.tournamentParticipant.findFirst({ where: { id: participantId, tournamentId: id } });
-    if (!participant) {
-      throw new NotFoundException('참가자를 찾을 수 없습니다.');
-    }
-    if (entered !== (participant.enteredAt !== null)) {
-      await this.prisma.tournamentParticipant.update({
-        where: { id: participantId },
-        data: { enteredAt: entered ? new Date() : null },
-      });
-    }
-    return this.changed();
+    return this.mutate(id, 'ACTIVE', async (tx) => {
+      const participant = await tx.tournamentParticipant.findFirst({ where: { id: participantId, tournamentId: id } });
+      if (!participant) {
+        throw new NotFoundException('참가자를 찾을 수 없습니다.');
+      }
+      if (entered !== (participant.enteredAt !== null)) {
+        await tx.tournamentParticipant.update({
+          where: { id: participantId },
+          data: { enteredAt: entered ? new Date() : null },
+        });
+      }
+    });
   }
 
   // 대회 시작 — 이때부터 모임원 링크가 대회 현황으로 바뀐다
   async open(id: string): Promise<ITournamentDetail> {
-    const tournament = await this.findActive(id);
-    if (tournament.status === 'OPEN') {
-      throw new ConflictException('이미 진행 중인 대회입니다.');
-    }
-    const matches = await this.prisma.tournamentMatch.count({ where: { tournamentId: id } });
-    if (matches === 0) {
-      throw new BadRequestException('대진표를 먼저 넣어 주세요.');
-    }
-    await this.prisma.tournament.update({ where: { id }, data: { status: 'OPEN', openedAt: new Date() } });
-    return this.changed();
+    return this.mutate(id, 'ACTIVE', async (tx, tournament) => {
+      if (tournament.status === 'OPEN') {
+        throw new ConflictException('이미 진행 중인 대회입니다.');
+      }
+      const matches = await tx.tournamentMatch.count({ where: { tournamentId: id } });
+      if (matches === 0) {
+        throw new BadRequestException('대진표를 먼저 넣어 주세요.');
+      }
+      await tx.tournament.update({ where: { id }, data: { status: 'OPEN', openedAt: new Date() } });
+    });
   }
 
   // 대회 종료 — 치르지 않은 대기 경기는 남겨 둔 채 끝낼 수 있다. 진행 중인 경기는 먼저 정리해야 한다
   // 끝난 대회는 운영진이 결과를 내릴 때까지 최종 결과로 계속 보인다
   async close(id: string): Promise<ITournamentDetail> {
-    await this.findOpen(id);
-    const playing = await this.prisma.tournamentMatch.count({ where: { tournamentId: id, status: 'PLAYING' } });
-    if (playing > 0) {
-      throw new ConflictException('진행 중인 경기가 있어요. 점수를 넣거나 대기로 돌린 뒤 종료해 주세요.');
-    }
-    await this.prisma.tournament.update({ where: { id }, data: { status: 'CLOSED', closedAt: new Date() } });
-    return this.changed();
+    return this.mutate(id, 'OPEN', async (tx) => {
+      const playing = await tx.tournamentMatch.count({ where: { tournamentId: id, status: 'PLAYING' } });
+      if (playing > 0) {
+        throw new ConflictException('진행 중인 경기가 있어요. 점수를 넣거나 대기로 돌린 뒤 종료해 주세요.');
+      }
+      await tx.tournament.update({ where: { id }, data: { status: 'CLOSED', closedAt: new Date() } });
+    });
   }
 
   // 최종 결과 내리기 — 모임원 화면과 전광판이 평소 화면으로 돌아간다. 기록은 그대로 남는다
@@ -249,8 +257,7 @@ export class TournamentsService {
 
   // 경기를 코트에 올린다 — 코트가 비어 있어야 하고, 선수가 다른 코트에서 경기 중이면 force 없이는 막는다(경고)
   async startMatch(id: string, matchId: string, dto: IStartTournamentMatchDto): Promise<ITournamentDetail> {
-    const tournament = await this.findOpen(id);
-    await this.prisma.$transaction(async (tx) => {
+    return this.mutate(id, 'OPEN', async (tx, tournament) => {
       const match = await tx.tournamentMatch.findFirst({ where: { id: matchId, tournamentId: id }, include: { players: true } });
       if (!match) {
         throw new NotFoundException('경기를 찾을 수 없습니다.');
@@ -286,26 +293,24 @@ export class TournamentsService {
       }
       await tx.tournamentMatch.update({ where: { id: matchId }, data: { status: 'PLAYING', courtNo, startedAt: new Date() } });
     });
-    return this.changed();
   }
 
   // 잘못 올린 경기를 대기로 되돌린다
   async cancelStart(id: string, matchId: string): Promise<ITournamentDetail> {
-    await this.findOpen(id);
-    const { count } = await this.prisma.tournamentMatch.updateMany({
-      where: { id: matchId, tournamentId: id, status: 'PLAYING' },
-      data: { status: 'QUEUED', startedAt: null },
+    return this.mutate(id, 'OPEN', async (tx) => {
+      const { count } = await tx.tournamentMatch.updateMany({
+        where: { id: matchId, tournamentId: id, status: 'PLAYING' },
+        data: { status: 'QUEUED', startedAt: null },
+      });
+      if (count === 0) {
+        throw new ConflictException('진행 중인 경기만 대기로 돌릴 수 있습니다.');
+      }
     });
-    if (count === 0) {
-      throw new ConflictException('진행 중인 경기만 대기로 돌릴 수 있습니다.');
-    }
-    return this.changed();
   }
 
   // 대기 경기 순서 바꾸기 — 대기 경기 전부를 새 순서대로 받아 1부터 다시 매긴다
   async reorderQueue(id: string, matchIds: string[]): Promise<ITournamentDetail> {
-    await this.findActive(id);
-    await this.prisma.$transaction(async (tx) => {
+    return this.mutate(id, 'ACTIVE', async (tx) => {
       const queued = await tx.tournamentMatch.findMany({ where: { tournamentId: id, status: 'QUEUED' }, select: { id: true } });
       const sent = new Set(matchIds);
       if (sent.size !== matchIds.length || sent.size !== queued.length || queued.some((match) => !sent.has(match.id))) {
@@ -315,14 +320,12 @@ export class TournamentsService {
         await tx.tournamentMatch.update({ where: { id: matchId }, data: { queueOrder: index + 1 } });
       }
     });
-    return this.changed();
   }
 
   // 선수 바꾸기 — 불참·부상이면 같은 팀의 다른 참가자로, swapMatchId가 있으면 그 경기의 사람과 맞바꾼다
   // 끝난 경기는 바꾸지 않는다(기록이 달라진다). 대리 표시가 있던 자리는 새 선수가 들어오면 지운다
   async replacePlayer(id: string, matchId: string, slot: number, dto: IReplaceTournamentPlayerDto): Promise<ITournamentDetail> {
-    await this.findActive(id);
-    await this.prisma.$transaction(async (tx) => {
+    return this.mutate(id, 'ACTIVE', async (tx) => {
       const matches = await tx.tournamentMatch.findMany({
         where: { tournamentId: id },
         include: { players: { include: { participant: { include: { member: true } } } } },
@@ -389,78 +392,87 @@ export class TournamentsService {
         });
       }
     });
-    return this.changed();
   }
 
   // 지각 대리 경기 — 대진표의 선수는 그대로 두고 대신 뛴 회원만 적는다. memberId가 null이면 대리 표시를 지운다
   // 한 팀에만 대리가 있으면 집계에서 그 팀의 0:21 패배로 본다. 표시를 빠뜨린 채 점수를 넣었을 수 있어 끝난 경기에도 고칠 수 있다
   async setProxy(id: string, matchId: string, slot: number, memberId: string | null): Promise<ITournamentDetail> {
-    await this.findActive(id);
-    const match = await this.prisma.tournamentMatch.findFirst({
-      where: { id: matchId, tournamentId: id },
-      include: { players: { include: { participant: true } } },
+    return this.mutate(id, 'ACTIVE', async (tx) => {
+      const match = await tx.tournamentMatch.findFirst({
+        where: { id: matchId, tournamentId: id },
+        include: { players: { include: { participant: true } } },
+      });
+      const current = match?.players.find((player) => player.slot === slot);
+      if (!match || !current) {
+        throw new NotFoundException('경기나 자리를 찾을 수 없습니다.');
+      }
+      if (memberId) {
+        const member = await tx.member.findFirst({ where: { id: memberId, deletedAt: null, isGuest: false } });
+        if (!member) {
+          throw new NotFoundException('회원을 찾을 수 없습니다.');
+        }
+        const inMatch = match.players.some(
+          (player) => player.participant.memberId === memberId || (player.slot !== slot && player.proxyMemberId === memberId),
+        );
+        if (inMatch) {
+          throw new BadRequestException('이미 이 경기에 있는 사람입니다.');
+        }
+      }
+      await tx.tournamentMatchPlayer.update({ where: { id: current.id }, data: { proxyMemberId: memberId } });
     });
-    const current = match?.players.find((player) => player.slot === slot);
-    if (!match || !current) {
-      throw new NotFoundException('경기나 자리를 찾을 수 없습니다.');
-    }
-    if (memberId) {
-      const member = await this.prisma.member.findFirst({ where: { id: memberId, deletedAt: null, isGuest: false } });
-      if (!member) {
-        throw new NotFoundException('회원을 찾을 수 없습니다.');
-      }
-      const inMatch = match.players.some(
-        (player) => player.participant.memberId === memberId || (player.slot !== slot && player.proxyMemberId === memberId),
-      );
-      if (inMatch) {
-        throw new BadRequestException('이미 이 경기에 있는 사람입니다.');
-      }
-    }
-    await this.prisma.tournamentMatchPlayer.update({ where: { id: current.id }, data: { proxyMemberId: memberId } });
-    return this.changed();
   }
 
   // 점수 입력과 수정 — 승리 팀은 저장하지 않고 점수에서 읽는다. 코트에 올리지 않고 치른 대기 경기에도 바로 넣을 수 있다
   async setScore(id: string, matchId: string, dto: ISetTournamentScoreDto): Promise<ITournamentDetail> {
-    await this.findOpen(id);
-    const { blueScore, whiteScore } = dto;
-    const winnerCount = [blueScore, whiteScore].filter((score) => score === TOURNAMENT_WIN_SCORE).length;
-    if (winnerCount !== 1) {
-      throw new BadRequestException(
-        `${TOURNAMENT_WIN_SCORE}점 단판이에요. 이긴 팀은 ${TOURNAMENT_WIN_SCORE}점, 진 팀은 0~${TOURNAMENT_WIN_SCORE - 1}점이어야 해요.`,
-      );
-    }
-    const match = await this.prisma.tournamentMatch.findFirst({ where: { id: matchId, tournamentId: id } });
-    if (!match) {
-      throw new NotFoundException('경기를 찾을 수 없습니다.');
-    }
-    await this.prisma.tournamentMatch.update({
-      where: { id: matchId },
-      // 고칠 때는 처음 끝난 시각을 그대로 둔다
-      data: { status: 'FINISHED', blueScore, whiteScore, endedAt: match.endedAt ?? new Date() },
+    return this.mutate(id, 'OPEN', async (tx) => {
+      const { blueScore, whiteScore } = dto;
+      const winnerCount = [blueScore, whiteScore].filter((score) => score === TOURNAMENT_WIN_SCORE).length;
+      if (winnerCount !== 1) {
+        throw new BadRequestException(
+          `${TOURNAMENT_WIN_SCORE}점 단판이에요. 이긴 팀은 ${TOURNAMENT_WIN_SCORE}점, 진 팀은 0~${TOURNAMENT_WIN_SCORE - 1}점이어야 해요.`,
+        );
+      }
+      const match = await tx.tournamentMatch.findFirst({ where: { id: matchId, tournamentId: id } });
+      if (!match) {
+        throw new NotFoundException('경기를 찾을 수 없습니다.');
+      }
+      await tx.tournamentMatch.update({
+        where: { id: matchId },
+        // 고칠 때는 처음 끝난 시각을 그대로 둔다
+        data: { status: 'FINISHED', blueScore, whiteScore, endedAt: match.endedAt ?? new Date() },
+      });
     });
-    return this.changed();
   }
 
   // 점수 지우기 — 잘못된 경기에 넣었을 때. 그 경기는 대기로 돌아가고, 다시 치르려면 빈 코트에 올린다
   async clearScore(id: string, matchId: string): Promise<ITournamentDetail> {
-    await this.findOpen(id);
-    const { count } = await this.prisma.tournamentMatch.updateMany({
-      where: { id: matchId, tournamentId: id, status: 'FINISHED' },
-      data: { status: 'QUEUED', blueScore: null, whiteScore: null, startedAt: null, endedAt: null },
+    return this.mutate(id, 'OPEN', async (tx) => {
+      const { count } = await tx.tournamentMatch.updateMany({
+        where: { id: matchId, tournamentId: id, status: 'FINISHED' },
+        data: { status: 'QUEUED', blueScore: null, whiteScore: null, startedAt: null, endedAt: null },
+      });
+      if (count === 0) {
+        throw new ConflictException('점수가 들어간 경기만 지울 수 있습니다.');
+      }
     });
-    if (count === 0) {
-      throw new ConflictException('점수가 들어간 경기만 지울 수 있습니다.');
-    }
-    return this.changed();
   }
 
-  private async findOpen(id: string): Promise<Tournament> {
-    const tournament = await this.findActive(id);
-    if (tournament.status !== 'OPEN') {
-      throw new ConflictException('대회를 먼저 시작해 주세요.');
-    }
-    return tournament;
+  // 대회를 바꾸는 요청은 대회 줄을 잠그고 하나씩 처리한다 — 운영진 둘이 동시에 눌러도 서로 옛 상태를 보고 검사를 통과하지 않게
+  // need가 OPEN이면 진행 중인 대회만, ACTIVE면 준비 중인 대회도 받는다
+  private async mutate(
+    id: string,
+    need: 'ACTIVE' | 'OPEN',
+    work: (tx: Prisma.TransactionClient, tournament: Tournament) => Promise<void>,
+  ): Promise<ITournamentDetail> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM tournaments WHERE id = ${id} FOR UPDATE`;
+      const tournament = assertActive(await tx.tournament.findUnique({ where: { id } }));
+      if (need === 'OPEN' && tournament.status !== 'OPEN') {
+        throw new ConflictException('대회를 먼저 시작해 주세요.');
+      }
+      await work(tx, tournament);
+    });
+    return this.changed();
   }
 
   // 바뀐 뒤의 대회를 돌려주고, 다른 화면에 다시 읽으라는 신호를 보낸다
@@ -474,14 +486,7 @@ export class TournamentsService {
   }
 
   private async findActive(id: string): Promise<Tournament> {
-    const tournament = await this.prisma.tournament.findUnique({ where: { id } });
-    if (!tournament) {
-      throw new NotFoundException('대회를 찾을 수 없습니다.');
-    }
-    if (tournament.status === 'CLOSED') {
-      throw new ConflictException('이미 끝난 대회입니다.');
-    }
-    return tournament;
+    return assertActive(await this.prisma.tournament.findUnique({ where: { id } }));
   }
 
   // 붙여 넣은 글자를 읽고 이름을 회원과 잇는다 — 별명(소모임 표기)도 이름으로 받는다

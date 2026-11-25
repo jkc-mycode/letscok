@@ -225,6 +225,27 @@ describe('대회 시작과 경기 진행', () => {
     await expect(service.startMatch(id, matchId(1), {})).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it('두 경기를 같은 코트에 동시에 올려도 하나만 시작된다', async () => {
+    const { id, matchId } = await ready();
+    await service.open(id);
+    const results = await Promise.allSettled([
+      service.startMatch(id, matchId(1), { courtNo: 1 }),
+      service.startMatch(id, matchId(2), { courtNo: 1 }),
+    ]);
+    expect(results.map((result) => result.status).sort()).toEqual(['fulfilled', 'rejected']);
+    const playing = await prisma.tournamentMatch.count({ where: { tournamentId: id, status: 'PLAYING' } });
+    expect(playing).toBe(1);
+  });
+
+  it('종료와 경기 시작이 동시에 들어와도 끝난 대회에 진행 중인 경기가 남지 않는다', async () => {
+    const { id, matchId } = await ready();
+    await service.open(id);
+    await Promise.allSettled([service.close(id), service.startMatch(id, matchId(1), {})]);
+    const tournament = await prisma.tournament.findUniqueOrThrow({ where: { id } });
+    const playing = await prisma.tournamentMatch.count({ where: { tournamentId: id, status: 'PLAYING' } });
+    expect(tournament.status === 'CLOSED' && playing > 0).toBe(false);
+  });
+
   it('다른 코트로 바꿔 시작할 수 있고, 없는 코트 번호는 막는다', async () => {
     const { id, matchId } = await ready();
     await service.open(id);
