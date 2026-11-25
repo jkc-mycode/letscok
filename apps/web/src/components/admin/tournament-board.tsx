@@ -165,12 +165,12 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {courts.map((courtNo) => {
           const current = playing.find((m) => m.courtNo === courtNo);
           const next = queued.find((m) => m.courtNo === courtNo);
           return (
-            <div key={courtNo} className={`flex flex-col gap-2 rounded-2xl p-4 ${current ? 'bg-court/10' : 'bg-panel'}`}>
+            <div key={courtNo} className={`flex min-h-[9.25rem] flex-col gap-2 rounded-2xl p-4 ${current ? 'bg-court/10' : 'bg-panel'}`}>
               <div className="flex items-center gap-2">
                 <h3 className="text-body font-bold">{courtNo}코트</h3>
                 <span className={`text-caption font-bold ${current ? 'text-court' : 'text-faint'}`}>
