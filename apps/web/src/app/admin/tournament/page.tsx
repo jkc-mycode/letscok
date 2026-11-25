@@ -8,6 +8,7 @@ import {
   IBracketPreview,
   ITournament,
   ITournamentDetail,
+  ITournamentStandings,
   TournamentMatchStatus,
   TournamentMatchType,
   TournamentStatus,
@@ -23,7 +24,8 @@ import { TournamentBracket, TournamentRanking, TournamentScoreboard } from '@/co
 import { api, ApiError } from '@/lib/api';
 import { useTournamentLive } from '@/lib/use-tournament-live';
 
-// 관제판 대회 화면 — 대회를 만들고 시트 대진표를 붙여 넣어 등록한 뒤, 시작하면 경기 진행 화면이 된다
+// 대회 운영 화면 — 대회를 만들고 시트 대진표를 붙여 넣어 등록한 뒤, 시작하면 경기 진행 화면이 된다
+// 종료하면 최종 결과 화면이 되고, "결과 내리기"를 누르면 모임원 화면과 전광판이 평소 화면으로 돌아간다
 
 const STATUS_LABEL: Record<TournamentStatus, string> = { DRAFT: '준비 중', OPEN: '진행 중', CLOSED: '종료' };
 const INPUT_CLS = 'h-12 rounded-xl border border-line bg-panel px-4 text-body outline-none focus:border-court';
@@ -54,10 +56,11 @@ function TournamentHome() {
   // 입구 담당은 체크인 탭만 띄워 둔다. 대진표와 개인 순위는 모임원이 보는 현황과 같은 부품이다
   const [view, setView] = useState<'main' | 'bracket' | 'ranking' | 'entry'>('main');
   const open = detail?.tournament.status === TournamentStatus.OPEN;
+  const closed = detail?.tournament.status === TournamentStatus.CLOSED;
 
   return (
     // 대회 중에는 노트북과 태블릿에서 코트 전체가 한 화면에 들어오게 넓게 쓴다
-    <main className={`fade-in mx-auto flex min-h-dvh w-full flex-col gap-5 p-6 ${open ? 'max-w-6xl' : 'max-w-2xl'}`}>
+    <main className={`fade-in mx-auto flex min-h-dvh w-full flex-col gap-5 p-6 ${open || closed ? 'max-w-6xl' : 'max-w-2xl'}`}>
       <header>
         <Link href="/admin" className="text-sm text-dim transition-opacity hover:opacity-70">
           ← 운영 화면
@@ -71,7 +74,8 @@ function TournamentHome() {
       {detail && (
         <>
           <Summary detail={detail} onChange={setDetail} />
-          {detail.participants.length > 0 && (
+          {closed && standings && <FinalResult detail={detail} standings={standings} />}
+          {!closed && detail.participants.length > 0 && (
             <nav className="flex gap-2">
               {(
                 [
@@ -92,7 +96,7 @@ function TournamentHome() {
               ))}
             </nav>
           )}
-          {view === 'entry' && detail.participants.length > 0 ? (
+          {closed ? null : view === 'entry' && detail.participants.length > 0 ? (
             <div className="mx-auto w-full max-w-2xl">
               <TournamentEntry detail={detail} onChange={setDetail} />
             </div>
@@ -210,7 +214,7 @@ function Summary({ detail, onChange }: { detail: ITournamentDetail; onChange: (n
       <p className="mt-1 text-sm">
         {matches.length === 0
           ? '아직 대진표가 없어요'
-          : `경기 ${matches.length}건${tournament.status === TournamentStatus.OPEN ? ` 중 ${done}건 끝남` : ''}, 참가자 ${participants.length}명 (청팀 ${count(TournamentTeam.BLUE)}명, 백팀 ${count(TournamentTeam.WHITE)}명), 코트 ${tournament.courtCount}개`}
+          : `경기 ${matches.length}건${tournament.status === TournamentStatus.DRAFT ? '' : ` 중 ${done}건 끝남`}, 참가자 ${participants.length}명 (청팀 ${count(TournamentTeam.BLUE)}명, 백팀 ${count(TournamentTeam.WHITE)}명), 코트 ${tournament.courtCount}개`}
       </p>
       {error && <p className="mt-1 text-sm text-coral">{error}</p>}
       {tournament.status === TournamentStatus.DRAFT && matches.length > 0 && (
@@ -231,14 +235,50 @@ function Summary({ detail, onChange }: { detail: ITournamentDetail; onChange: (n
           idleCls="border border-line text-dim"
           disabled={busy}
           onConfirm={() =>
-            void run(async () => {
-              await api<ITournament>(`${path}/close`, { method: 'POST', admin: true });
-              return null;
-            })
+            void run(() => api<ITournamentDetail>(`${path}/close`, { method: 'POST', admin: true }))
           }
         />
       )}
+      {tournament.status === TournamentStatus.CLOSED && (
+        <>
+          <p className="mt-1 text-sm text-dim">
+            최종 결과가 모임원 링크와 전광판에 떠 있어요. 평소 모임 전에 결과를 내려 주세요.
+          </p>
+          <ConfirmButton
+            label="결과 내리기"
+            confirmLabel="모임원 링크와 전광판이 평소 화면으로 돌아가요. 한 번 더 누르면 내리기"
+            className="mt-2 h-10 self-start rounded-lg px-4 text-sm font-bold"
+            idleCls="border border-line text-dim"
+            disabled={busy}
+            onConfirm={() =>
+              void run(async () => {
+                await api<null>(`${path}/hide-result`, { method: 'POST', admin: true });
+                return null;
+              })
+            }
+          />
+        </>
+      )}
     </section>
+  );
+}
+
+// 끝난 대회 — 이긴 팀과 청백 승수, 개인 순위와 대진표를 한 화면에 둔다
+function FinalResult({ detail, standings }: { detail: ITournamentDetail; standings: ITournamentStandings }) {
+  return (
+    <>
+      <TournamentScoreboard standings={standings} final />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
+        <section className="flex flex-col gap-2">
+          <h2 className="text-body-sm font-bold text-dim">개인 순위</h2>
+          <TournamentRanking standings={standings} />
+        </section>
+        <section className="flex flex-col gap-2">
+          <h2 className="text-body-sm font-bold text-dim">대진표</h2>
+          <TournamentBracket detail={detail} />
+        </section>
+      </div>
+    </>
   );
 }
 

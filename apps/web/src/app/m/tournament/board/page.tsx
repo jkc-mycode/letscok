@@ -8,10 +8,17 @@ import {
   ITournamentDetail,
   ITournamentMatch,
   TournamentMatchStatus,
+  TournamentStatus,
   TournamentTeam,
 } from '@letscok/shared-types';
 import { useMemo } from 'react';
-import { TOURNAMENT_TYPE_LABEL, tournamentBlueNames, tournamentWhiteNames } from '@/components/tournament-live';
+import {
+  TOURNAMENT_TYPE_LABEL,
+  tournamentBlueNames,
+  tournamentRankRows,
+  tournamentWhiteNames,
+  tournamentWinnerText,
+} from '@/components/tournament-live';
 import { useTournamentLive } from '@/lib/use-tournament-live';
 
 export default function TournamentBoardPage() {
@@ -24,7 +31,58 @@ export default function TournamentBoardPage() {
       </main>
     );
   }
-  return <Board detail={detail} />;
+  return detail.tournament.status === TournamentStatus.CLOSED ? <FinalBoard detail={detail} /> : <Board detail={detail} />;
+}
+
+// 끝난 대회의 최종 결과 — 위에 이긴 팀과 청백 승수, 아래에 개인 순위 앞쪽. 시상할 때 띄워 둔다
+const FINAL_RANK_ROWS = 8;
+function FinalBoard({ detail }: { detail: ITournamentDetail }) {
+  const standings = useMemo(() => computeTournamentStandings(detail), [detail]);
+  const { blue, white, finished, total } = standings;
+  const winner = tournamentWinnerText(standings);
+  // 한 경기도 뛰지 않은 사람(불참)은 순위에서 뺀다
+  const rows = tournamentRankRows(standings)
+    .filter(({ player }) => player.games > 0)
+    .slice(0, FINAL_RANK_ROWS);
+  const half = Math.ceil(rows.length / 2);
+  return (
+    <main className="flex h-dvh flex-col gap-[2vh] overflow-hidden p-[2.5vh]">
+      <section className="flex shrink-0 flex-col items-center gap-[1vh] rounded-[3vh] bg-panel px-[4vh] py-[3vh] text-center">
+        <span className="text-[2vh] font-bold tracking-[0.3em] text-court">LETSCOK</span>
+        <span className="text-[3vh] font-bold text-dim">{detail.tournament.name} 최종 결과</span>
+        <span className={`text-[13vh] leading-none font-bold ${winner.cls}`}>{winner.title}</span>
+        <div className="flex w-full items-center">
+          <TeamScore label="청팀" wins={blue.wins} diff={blue.pointsFor - blue.pointsAgainst} cls="text-sky" />
+          <span className="text-[6vh] text-faint">:</span>
+          <TeamScore label="백팀" wins={white.wins} diff={white.pointsFor - white.pointsAgainst} cls="text-ink" />
+        </div>
+        <span className="text-[2.2vh] text-faint">
+          {winner.note ? `${winner.note}, ` : ''}
+          {total}경기 중 {finished}경기 치름
+        </span>
+      </section>
+      <section className="flex min-h-0 flex-1 flex-col gap-[1.5vh] rounded-[3vh] bg-panel px-[4vh] py-[2.5vh]">
+        <span className="text-[2.6vh] font-bold text-dim">개인 순위</span>
+        {rows.length === 0 && <p className="text-[2.6vh] text-faint">끝난 경기가 없어요</p>}
+        <div className="grid min-h-0 flex-1 grid-cols-2 gap-x-[6vh]">
+          {[rows.slice(0, half), rows.slice(half)].map((column, index) => (
+            <ul key={index} className="flex min-h-0 flex-col justify-around">
+              {column.map(({ player, rank, tied }) => (
+                <li key={player.participantId} className="flex items-baseline gap-[2vh] text-[4vh] leading-tight">
+                  <span className="w-[5vh] shrink-0 text-center tabular-nums text-dim">{tied ? '' : rank}</span>
+                  <span className={`truncate font-bold ${player.team === TournamentTeam.BLUE ? 'text-sky' : ''}`}>{player.name}</span>
+                  <span className="ml-auto shrink-0 tabular-nums">
+                    <span className="font-bold">{player.wins}승</span>
+                    <span className="ml-[1.5vh] text-[2.6vh] text-dim">{player.games}경기</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ))}
+        </div>
+      </section>
+    </main>
+  );
 }
 
 function Board({ detail }: { detail: ITournamentDetail }) {

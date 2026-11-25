@@ -9,6 +9,7 @@ import {
   tournamentOfficialScore,
   TournamentMatchStatus,
   TournamentMatchType,
+  TournamentStatus,
   TournamentTeam,
 } from '@letscok/shared-types';
 import { useMemo, useState } from 'react';
@@ -25,11 +26,31 @@ export const tournamentWhiteNames = (match: ITournamentMatch) => match.players.f
 
 const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
 
-// 청백 승수 — 이긴 경기 수가 기준이고, 같으면 득실점 차이로 앞선 팀을 가린다
-export function TournamentScoreboard({ standings }: { standings: ITournamentStandings }) {
+// 끝난 대회의 승자 문구 — 승수가 같아 득실점 차이로 갈렸으면 그 사실을 같이 알린다
+export function tournamentWinnerText(standings: ITournamentStandings) {
+  const { blue, white, leader } = standings;
+  return {
+    title: leader === null ? '무승부' : `${leader === TournamentTeam.BLUE ? '청팀' : '백팀'} 우승`,
+    cls: leader === TournamentTeam.BLUE ? 'text-sky' : 'text-ink',
+    note: leader !== null && blue.wins === white.wins ? '승수가 같아 득실점 차이로 가렸어요' : null,
+  };
+}
+
+// 개인 순위 줄 — 승수와 경기 수가 같으면 같은 순위(tied면 순위 숫자를 비운다)
+export function tournamentRankRows(standings: ITournamentStandings) {
+  return standings.players.map((player, index, all) => {
+    const first = all.findIndex((other) => other.wins === player.wins && other.games === player.games);
+    return { player, rank: first + 1, tied: first !== index };
+  });
+}
+
+// 청백 승수 — 이긴 경기 수가 기준이고, 같으면 득실점 차이로 앞선 팀을 가린다. final: 끝난 대회의 최종 결과
+export function TournamentScoreboard({ standings, final = false }: { standings: ITournamentStandings; final?: boolean }) {
   const { blue, white, leader, finished, total } = standings;
-  const leadText =
-    finished === 0
+  const winner = tournamentWinnerText(standings);
+  const leadText = final
+    ? (winner.note ?? '')
+    : finished === 0
       ? '아직 끝난 경기가 없어요'
       : leader === null
         ? '동률이에요'
@@ -42,14 +63,20 @@ export function TournamentScoreboard({ standings }: { standings: ITournamentStan
     </div>
   );
   return (
-    <section className="flex flex-col gap-3 rounded-2xl bg-panel p-5">
+    <section className={`flex flex-col gap-3 rounded-2xl bg-panel p-5 ${final ? 'border border-court/40' : ''}`}>
+      {final && (
+        <div className="flex flex-col items-center gap-1 text-center">
+          <span className="text-caption font-bold text-court">최종 결과</span>
+          <span className={`text-[2.25rem] leading-tight font-bold ${winner.cls}`}>{winner.title}</span>
+        </div>
+      )}
       <div className="flex items-center">
         {side('청팀', blue.wins, blue.pointsFor - blue.pointsAgainst, 'text-sky')}
         <span className="text-heading text-faint">:</span>
         {side('백팀', white.wins, white.pointsFor - white.pointsAgainst, 'text-ink')}
       </div>
       <p className="text-center text-sm text-dim">
-        {leadText} <span className="text-faint">({total}경기 중 {finished}경기 끝남)</span>
+        {leadText} <span className="text-faint">({total}경기 중 {finished}경기{final ? ' 치름' : ' 끝남'})</span>
       </p>
     </section>
   );
@@ -154,10 +181,7 @@ export function TournamentScoreText({ match, size }: { match: ITournamentMatch; 
 
 // 개인 승수 순위 — 사람마다 경기 수가 달라 같이 보여 준다. 승수와 경기 수가 같으면 같은 순위
 export function TournamentRanking({ standings }: { standings: ITournamentStandings }) {
-  const rows = standings.players.map((player, index, all) => {
-    const first = all.findIndex((other) => other.wins === player.wins && other.games === player.games);
-    return { player, rank: first + 1, tied: first !== index };
-  });
+  const rows = tournamentRankRows(standings);
   return (
     <ul className="flex flex-col rounded-xl bg-panel px-3">
       {rows.map(({ player, rank, tied }) => (
@@ -183,18 +207,21 @@ const TABS = [
 type TabKey = (typeof TABS)[number]['key'];
 
 // 모임원이 보는 대회 현황 — 점수판은 늘 위에, 아래는 탭으로 나눠 폰에서 길어지지 않게
+// 끝난 대회는 최종 결과로 보여 준다 — 코트 현황은 볼 것이 없어 빼고 개인 순위를 먼저 연다
 export function TournamentLiveView({ detail }: { detail: ITournamentDetail }) {
   const standings = useMemo(() => computeTournamentStandings(detail), [detail]);
-  const [tab, setTab] = useState<TabKey>('courts');
+  const closed = detail.tournament.status === TournamentStatus.CLOSED;
+  const [picked, setTab] = useState<TabKey>('courts');
+  const tab = closed && picked === 'courts' ? 'ranking' : picked;
   return (
     <>
       <header className="flex flex-col items-center gap-1 pt-2 text-center">
         <span className="text-caption font-bold tracking-[0.3em] text-court">LETSCOK</span>
         <h1 className="text-title font-bold">{detail.tournament.name}</h1>
       </header>
-      <TournamentScoreboard standings={standings} />
+      <TournamentScoreboard standings={standings} final={closed} />
       <nav className="flex gap-2">
-        {TABS.map(({ key, label }) => (
+        {TABS.filter(({ key }) => !closed || key !== 'courts').map(({ key, label }) => (
           <button
             key={key}
             onClick={() => setTab(key)}
