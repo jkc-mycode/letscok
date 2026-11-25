@@ -165,7 +165,7 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
         </div>
       )}
 
-      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {courts.map((courtNo) => {
           const current = playing.find((m) => m.courtNo === courtNo);
           const next = queued.find((m) => m.courtNo === courtNo);
@@ -174,7 +174,7 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
               <div className="flex items-center gap-2">
                 <h3 className="text-body font-bold">{courtNo}코트</h3>
                 <span className={`text-caption font-bold ${current ? 'text-court' : 'text-faint'}`}>
-                  {current ? '경기 중' : '비어 있음'}
+                  {current ? '경기 중' : next ? '비어 있음, 다음 경기' : '비어 있음'}
                 </span>
               </div>
               {current ? (
@@ -201,7 +201,6 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
                 </>
               ) : next ? (
                 <>
-                  <p className="text-caption text-dim">다음 경기</p>
                   <MatchNames match={next} />
                   <button onClick={() => void start(next.id, courtNo)} disabled={busy} className={`${SMALL_BTN} self-start bg-court text-bg`}>
                     시작
