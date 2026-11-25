@@ -14,6 +14,7 @@ import { api } from '@/lib/api';
 
 // 선수 바꾸기 — 바꿀 자리를 고르고, 같은 팀 참가자 가운데 넣을 사람을 고른다
 // 넣을 사람이 같은 라운드의 다른 경기에 있으면 그 경기와 맞바꿀 수 있다(둘 다 그 라운드에 한 번씩만 뛰게)
+// 대진표에 없는 사람은 먼저 참가자로 추가한 뒤 넣는다(당일 대타)
 // 지각이면 선수는 그대로 두고 대신 뛸 사람(대리)만 적는다. 끝난 경기는 대리 표시만 고친다(proxyOnly)
 
 const BTN = 'h-9 rounded-lg px-3 text-sm font-bold transition-opacity disabled:opacity-40';
@@ -25,6 +26,8 @@ export function TournamentPlayerEditor({
   proxyOnly = false,
   onReplace,
   onProxy,
+  onAddParticipant,
+  onRemoveParticipant,
   onCancel,
 }: {
   detail: ITournamentDetail;
@@ -33,10 +36,17 @@ export function TournamentPlayerEditor({
   proxyOnly?: boolean;
   onReplace: (slot: number, participantId: string, swapMatchId?: string) => void;
   onProxy: (slot: number, memberId: string | null) => void;
+  onAddParticipant: (memberId: string, team: TournamentTeam) => void;
+  onRemoveParticipant: (participantId: string) => void;
   onCancel: () => void;
 }) {
   const [slot, setSlot] = useState<number | null>(null);
   const [proxyOpen, setProxyOpen] = useState(proxyOnly);
+  const [addOpen, setAddOpen] = useState(false);
+  // 어느 경기에도 없는 참가자(주로 당일에 추가한 사람) — 잘못 추가했으면 여기서 뺀다
+  const playingIds = new Set(detail.matches.flatMap((m) => m.players.map((player) => player.participantId)));
+  const matchMemberIds = new Set(detail.participants.filter((p) => match.players.some((player) => player.participantId === p.id)).map((p) => p.memberId));
+  const allMemberIds = new Set(detail.participants.map((p) => p.memberId));
   const out = match.players.find((player) => player.slot === slot) ?? null;
   const team = slot === null ? null : slot < 2 ? TournamentTeam.BLUE : TournamentTeam.WHITE;
   const inMatch = new Set(match.players.map((player) => player.participantId));
@@ -89,7 +99,7 @@ export function TournamentPlayerEditor({
           </div>
           <p className="text-caption text-faint">대리가 뛴 팀은 0:21 패배로 계산하고, 이 경기는 개인 순위에서 빠져요</p>
           {proxyOpen && (
-            <ProxyPicker detail={detail} match={match} busy={busy} onPick={(memberId) => onProxy(out.slot, memberId)} />
+            <MemberPicker excluded={matchMemberIds} label="대리로 넣기" busy={busy} onPick={(memberId) => onProxy(out.slot, memberId)} />
           )}
         </div>
       )}
@@ -110,7 +120,13 @@ export function TournamentPlayerEditor({
                       {match.round}라운드 {other.matchNo}번에 있음
                     </span>
                   )}
+                  {!playingIds.has(candidate.id) && <span className="text-caption text-faint">경기 없음</span>}
                   <span className="ml-auto flex gap-2">
+                    {!playingIds.has(candidate.id) && (
+                      <button onClick={() => onRemoveParticipant(candidate.id)} disabled={busy} className={`${BTN} border border-line text-dim`}>
+                        명단에서 빼기
+                      </button>
+                    )}
                     {other && (
                       <button
                         onClick={() => onReplace(out.slot, candidate.id, other.id)}
@@ -132,6 +148,21 @@ export function TournamentPlayerEditor({
               );
             })}
           </ul>
+          <button onClick={() => setAddOpen(!addOpen)} className={`${BTN} self-start border border-line text-dim`}>
+            대진표에 없는 사람 추가
+          </button>
+          {addOpen && team && (
+            <div className="flex flex-col gap-2 rounded-lg border border-line p-2">
+              <p className="text-caption text-dim">
+                {team === TournamentTeam.BLUE ? '청팀' : '백팀'} 참가자로 추가해요. 추가한 뒤 위 목록에서 "넣기"를 눌러 주세요.
+              </p>
+              <MemberPicker excluded={allMemberIds} guests label="추가" busy={busy} onPick={(memberId) => {
+                  onAddParticipant(memberId, team);
+                  setAddOpen(false);
+                }}
+              />
+            </div>
+          )}
         </>
       )}
       <button onClick={onCancel} className={`${BTN} self-start border border-line text-dim`}>
@@ -141,15 +172,17 @@ export function TournamentPlayerEditor({
   );
 }
 
-// 대신 뛸 회원 고르기 — 모임장과 운영진을 먼저 보여 주고, 이 경기의 선수는 뺀다
-function ProxyPicker({
-  detail,
-  match,
+// 회원 고르기 — 모임장과 운영진을 먼저 보여 주고, excluded(이 경기의 선수나 이미 참가자인 사람)는 뺀다. guests: 게스트도 보여 줄지
+function MemberPicker({
+  excluded,
+  guests = false,
+  label,
   busy,
   onPick,
 }: {
-  detail: ITournamentDetail;
-  match: ITournamentMatch;
+  excluded: Set<string>;
+  guests?: boolean;
+  label: string;
   busy: boolean;
   onPick: (memberId: string) => void;
 }) {
@@ -162,11 +195,9 @@ function ProxyPicker({
       .catch(() => setFailed(true));
   }, []);
 
-  const inMatch = new Set(match.players.map((player) => player.participantId));
-  const playing = new Set(detail.participants.filter((p) => inMatch.has(p.id)).map((p) => p.memberId));
   const isStaff = (member: IMemberSummary) => member.role !== MemberRole.MEMBER;
   const shown = (members ?? [])
-    .filter((m) => m.deletedAt === null && !m.isGuest && !playing.has(m.id) && matchesName(m.name, query.trim()))
+    .filter((m) => m.deletedAt === null && (guests || !m.isGuest) && !excluded.has(m.id) && matchesName(m.name, query.trim()))
     .sort((a, b) => Number(isStaff(b)) - Number(isStaff(a)) || a.name.localeCompare(b.name, 'ko'));
 
   if (failed) return <p className="text-sm text-coral">회원 명단을 불러오지 못했어요. 닫았다가 다시 열어 주세요.</p>;
@@ -185,8 +216,9 @@ function ProxyPicker({
           <li key={member.id} className="flex items-center gap-2 rounded-lg bg-panel px-3 py-2">
             <span className="text-sm font-bold">{member.name}</span>
             {isStaff(member) && <span className="text-caption text-court">{member.role === MemberRole.LEADER ? '모임장' : '운영진'}</span>}
+            {member.isGuest && <span className="text-caption text-faint">게스트</span>}
             <button onClick={() => onPick(member.id)} disabled={busy} className={`${BTN} ml-auto bg-amber text-bg`}>
-              대리로 넣기
+              {label}
             </button>
           </li>
         ))}

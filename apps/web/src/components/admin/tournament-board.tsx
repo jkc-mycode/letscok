@@ -53,7 +53,8 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
   const emptyCourts = courts.filter((no) => !playing.some((m) => m.courtNo === no));
   const base = `/tournaments/${tournament.id}/matches`;
 
-  const run = async (request: () => Promise<ITournamentDetail>, onBusy?: (message: string) => void) => {
+  // keepEditor: 참가자 추가처럼 선수 바꾸기 창을 연 채로 이어서 할 일이 남는 요청
+  const run = async (request: () => Promise<ITournamentDetail>, onBusy?: (message: string) => void, keepEditor = false) => {
     setBusy(true);
     setError(null);
     try {
@@ -61,7 +62,7 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
       setAsk(null);
       setPickingFor(null);
       setScoringFor(null);
-      setEditingFor(null);
+      if (!keepEditor) setEditingFor(null);
     } catch (e) {
       if (onBusy && e instanceof ApiError && e.code === TOURNAMENT_PLAYER_BUSY) onBusy(e.message);
       else setError(e instanceof ApiError ? e.message : '요청에 실패했습니다.');
@@ -103,6 +104,12 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
     setScoringFor(null);
     setPickingFor(null);
   };
+  // 대진표에 없는 회원을 참가자로 올린다(당일 대타) — 잘못 올렸으면 뺀다
+  const tournamentPath = `/tournaments/${detail.tournament.id}/participants`;
+  const addParticipant = (memberId: string, team: TournamentTeam) =>
+    run(() => api<ITournamentDetail>(tournamentPath, { method: 'POST', admin: true, body: { memberId, team } }), undefined, true);
+  const removeParticipant = (participantId: string) =>
+    run(() => api<ITournamentDetail>(`${tournamentPath}/${participantId}`, { method: 'DELETE', admin: true }), undefined, true);
   const playerEditor = (match: ITournamentMatch) =>
     editingFor === match.id && (
       <TournamentPlayerEditor
@@ -111,6 +118,8 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
         busy={busy}
         proxyOnly={match.status === TournamentMatchStatus.FINISHED}
         onProxy={(slot, memberId) => void setProxy(match.id, slot, memberId)}
+        onAddParticipant={(memberId, team) => void addParticipant(memberId, team)}
+        onRemoveParticipant={(participantId) => void removeParticipant(participantId)}
         onReplace={(slot, participantId, swapMatchId) => void replacePlayer(match.id, slot, participantId, swapMatchId)}
         onCancel={() => setEditingFor(null)}
       />
