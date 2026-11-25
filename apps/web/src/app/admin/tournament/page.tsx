@@ -9,6 +9,7 @@ import {
   ITournament,
   ITournamentDetail,
   ITournamentStandings,
+  tournamentOfficialScore,
   TournamentMatchStatus,
   TournamentMatchType,
   TournamentStatus,
@@ -22,6 +23,7 @@ import { TournamentEntry } from '@/components/admin/tournament-entry';
 import { ConfirmButton } from '@/components/confirm-button';
 import { TournamentBracket, TournamentRanking, TournamentScoreboard } from '@/components/tournament-live';
 import { api, ApiError } from '@/lib/api';
+import { useCopy } from '@/lib/use-copy';
 import { useTournamentLive } from '@/lib/use-tournament-live';
 
 // 대회 운영 화면 — 대회를 만들고 시트 대진표를 붙여 넣어 등록한 뒤, 시작하면 경기 진행 화면이 된다
@@ -180,6 +182,37 @@ function CreateForm({ onCreated }: { onCreated: (tournament: ITournament) => voi
   );
 }
 
+// 시트의 스코어 칸(청팀 점수, ":", 백팀 점수)에 그대로 붙여 넣을 글자 — 번호순으로 한 줄씩, 빠진 번호와 아직 안 끝난 경기는 빈 점수
+// 대리 경기는 집계에 들어가는 점수(결원 팀 0:21)로 내보내 시트의 승리 팀 수식이 앱과 같은 결과를 내게 한다
+function sheetScoreText(matches: ITournamentDetail['matches']): string {
+  const byNo = new Map(matches.map((match) => [match.matchNo, match]));
+  const numbers = matches.map((match) => match.matchNo);
+  const lines: string[] = [];
+  for (let no = Math.min(...numbers); no <= Math.max(...numbers); no += 1) {
+    const match = byNo.get(no);
+    const score = match ? tournamentOfficialScore(match) : null;
+    lines.push(score ? `${score.blue}\t:\t${score.white}` : '\t:\t');
+  }
+  return lines.join('\n');
+}
+
+function SheetCopy({ matches }: { matches: ITournamentDetail['matches'] }) {
+  const { copied, copy } = useCopy(useMemo(() => sheetScoreText(matches), [matches]));
+  const first = Math.min(...matches.map((match) => match.matchNo));
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      <button onClick={() => void copy()} className="h-10 rounded-lg border border-line px-4 text-sm font-bold text-dim">
+        {copied === 'done' ? '복사했어요' : '시트용 복사'}
+      </button>
+      <p className="text-caption text-faint">
+        {copied === 'failed'
+          ? '복사하지 못했어요. 주소가 https인지 확인해 주세요.'
+          : `시트에서 ${first}번 경기의 청팀 점수 칸을 누르고 붙여 넣어요`}
+      </p>
+    </div>
+  );
+}
+
 function Summary({ detail, onChange }: { detail: ITournamentDetail; onChange: (next: ITournamentDetail | null) => void }) {
   const { tournament, participants, matches } = detail;
   const [busy, setBusy] = useState(false);
@@ -217,6 +250,7 @@ function Summary({ detail, onChange }: { detail: ITournamentDetail; onChange: (n
           : `경기 ${matches.length}건${tournament.status === TournamentStatus.DRAFT ? '' : ` 중 ${done}건 끝남`}, 참가자 ${participants.length}명 (청팀 ${count(TournamentTeam.BLUE)}명, 백팀 ${count(TournamentTeam.WHITE)}명), 코트 ${tournament.courtCount}개`}
       </p>
       {error && <p className="mt-1 text-sm text-coral">{error}</p>}
+      {tournament.status !== TournamentStatus.DRAFT && done > 0 && <SheetCopy matches={matches} />}
       {tournament.status === TournamentStatus.DRAFT && matches.length > 0 && (
         <ConfirmButton
           label="대회 시작"
