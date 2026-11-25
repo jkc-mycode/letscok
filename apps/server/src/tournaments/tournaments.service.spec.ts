@@ -240,7 +240,7 @@ describe('대회 시작과 경기 진행', () => {
     await expect(service.cancelStart(id, matchId(1))).rejects.toBeInstanceOf(ConflictException);
   });
 
-  it('진행 중인 경기가 있으면 종료할 수 없고, 종료하면 current에서 빠진다', async () => {
+  it('진행 중인 경기가 있으면 종료할 수 없고, 종료하면 결과를 내릴 때까지 최종 결과로 남는다', async () => {
     const { id, matchId } = await ready();
     await service.open(id);
     await service.startMatch(id, matchId(1), {});
@@ -249,8 +249,30 @@ describe('대회 시작과 경기 진행', () => {
     await service.cancelStart(id, matchId(1));
     const closed = await service.close(id);
 
-    expect(closed.status).toBe('CLOSED');
+    expect(closed.tournament.status).toBe('CLOSED');
+    expect((await service.current())!.tournament.id).toBe(id);
+    const live = (await service.live())!;
+    expect([live.tournament.status, live.matches.length]).toEqual(['CLOSED', 3]);
+    // 끝난 대회는 더 고칠 수 없다
+    await expect(service.setScore(id, matchId(1), { blueScore: 21, whiteScore: 10 })).rejects.toBeInstanceOf(ConflictException);
+
+    await service.hideResult(id);
+
     expect(await service.current()).toBeNull();
+    expect(await service.live()).toBeNull();
+    await expect(service.hideResult(id)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('진행 중인 대회의 결과는 내릴 수 없고, 새 대회를 만들면 지난 결과가 내려간다', async () => {
+    const { id } = await ready();
+    await service.open(id);
+    await expect(service.hideResult(id)).rejects.toBeInstanceOf(ConflictException);
+    await service.close(id);
+
+    const next = await service.create({ name: '다음 대회', date: '2027-12-04' });
+
+    expect((await service.current())!.tournament.id).toBe(next.id);
+    expect(await service.live()).toBeNull();
   });
 });
 

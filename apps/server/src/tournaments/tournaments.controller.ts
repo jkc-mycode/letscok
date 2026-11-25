@@ -56,8 +56,15 @@ export class TournamentsController {
   }
 
   @Post(':id/close')
-  async close(@Param('id') id: string): Promise<IApiResponse<ITournament>> {
+  async close(@Param('id') id: string): Promise<IApiResponse<ITournamentDetail>> {
     return { success: true, data: await this.tournamentsService.close(id) };
+  }
+
+  // 끝난 대회의 최종 결과 내리기
+  @Post(':id/hide-result')
+  async hideResult(@Param('id') id: string): Promise<IApiResponse<null>> {
+    await this.tournamentsService.hideResult(id);
+    return { success: true, data: null };
   }
 
   @Post(':id/matches/:matchId/start')

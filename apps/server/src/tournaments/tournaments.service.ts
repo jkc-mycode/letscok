@@ -26,6 +26,8 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { checkBracketPeople, parseBracket } from './bracket-parser';
 
 const ACTIVE = ['DRAFT', 'OPEN'] as const;
+// 끝났지만 최종 결과를 아직 내리지 않은 대회
+const SHOWING_RESULT = { status: 'CLOSED', resultHiddenAt: null } as const;
 const byName = (a: string, b: string) => a.localeCompare(b, 'ko');
 
 const detailInclude = {
@@ -57,6 +59,8 @@ export class TournamentsService {
     if (active) {
       throw new ConflictException('이미 준비 중이거나 진행 중인 대회가 있습니다.');
     }
+    // 지난 대회의 최종 결과가 아직 떠 있으면 내린다 — 새 대회와 겹쳐 보이지 않게
+    await this.prisma.tournament.updateMany({ where: SHOWING_RESULT, data: { resultHiddenAt: new Date() } });
     const tournament = await this.prisma.tournament.create({
       data: { name: dto.name.trim(), date: new Date(dto.date), entryCode: generateCheckInCode() },
     });
@@ -64,18 +68,19 @@ export class TournamentsService {
     return toTournament(tournament);
   }
 
-  // 준비 중이거나 진행 중인 대회 — 없으면 null
+  // 준비 중이거나 진행 중인 대회, 없으면 최종 결과를 아직 내리지 않은 끝난 대회 — 그것도 없으면 null
   async current(): Promise<ITournamentDetail | null> {
-    const tournament = await this.prisma.tournament.findFirst({
-      where: { status: { in: [...ACTIVE] } },
-      include: detailInclude,
-    });
+    const tournament =
+      (await this.prisma.tournament.findFirst({ where: { status: { in: [...ACTIVE] } }, include: detailInclude })) ??
+      (await this.findShowingResult());
     return tournament ? toDetail(tournament) : null;
   }
 
-  // 모임원 화면과 전광판이 로그인 없이 읽는 대회 현황 — 진행 중일 때만 내보내고, 입구 체크인 여부는 뺀다
+  // 모임원 화면과 전광판이 로그인 없이 읽는 대회 현황 — 진행 중이거나 최종 결과를 띄워 둔 동안만 내보내고, 입구 체크인 여부는 뺀다
   async live(): Promise<ITournamentDetail | null> {
-    const tournament = await this.prisma.tournament.findFirst({ where: { status: 'OPEN' }, include: detailInclude });
+    const tournament =
+      (await this.prisma.tournament.findFirst({ where: { status: 'OPEN' }, include: detailInclude })) ??
+      (await this.findShowingResult());
     if (!tournament) return null;
     const detail = toDetail(tournament);
     return { ...detail, participants: detail.participants.map((participant) => ({ ...participant, enteredAt: null })) };
@@ -173,15 +178,27 @@ export class TournamentsService {
   }
 
   // 대회 종료 — 치르지 않은 대기 경기는 남겨 둔 채 끝낼 수 있다. 진행 중인 경기는 먼저 정리해야 한다
-  async close(id: string): Promise<ITournament> {
+  // 끝난 대회는 운영진이 결과를 내릴 때까지 최종 결과로 계속 보인다
+  async close(id: string): Promise<ITournamentDetail> {
     await this.findOpen(id);
     const playing = await this.prisma.tournamentMatch.count({ where: { tournamentId: id, status: 'PLAYING' } });
     if (playing > 0) {
       throw new ConflictException('진행 중인 경기가 있어요. 점수를 넣거나 대기로 돌린 뒤 종료해 주세요.');
     }
-    const closed = await this.prisma.tournament.update({ where: { id }, data: { status: 'CLOSED', closedAt: new Date() } });
+    await this.prisma.tournament.update({ where: { id }, data: { status: 'CLOSED', closedAt: new Date() } });
+    return this.changed();
+  }
+
+  // 최종 결과 내리기 — 모임원 화면과 전광판이 평소 화면으로 돌아간다. 기록은 그대로 남는다
+  async hideResult(id: string): Promise<void> {
+    const hidden = await this.prisma.tournament.updateMany({
+      where: { id, ...SHOWING_RESULT },
+      data: { resultHiddenAt: new Date() },
+    });
+    if (hidden.count === 0) {
+      throw new ConflictException('결과를 띄워 둔 대회가 아닙니다.');
+    }
     this.realtime.notifyTournamentChanged();
-    return toTournament(closed);
   }
 
   // 경기를 코트에 올린다 — 코트가 비어 있어야 하고, 선수가 다른 코트에서 경기 중이면 force 없이는 막는다(경고)
@@ -404,6 +421,10 @@ export class TournamentsService {
   private async changed(): Promise<ITournamentDetail> {
     this.realtime.notifyTournamentChanged();
     return (await this.current())!;
+  }
+
+  private findShowingResult(): Promise<TournamentWithDetail | null> {
+    return this.prisma.tournament.findFirst({ where: SHOWING_RESULT, orderBy: { closedAt: 'desc' }, include: detailInclude });
   }
 
   private async findActive(id: string): Promise<Tournament> {
