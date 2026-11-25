@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put, UseGuards } from '@nestjs/common';
 import { IApiResponse, IBracketPreview, ITournament, ITournamentDetail } from '@letscok/shared-types';
+import { Throttle } from '@nestjs/throttler';
 import { AdminGuard } from '../common/guards/admin.guard';
 import {
   AddTournamentParticipantDto,
@@ -14,9 +15,15 @@ import {
 } from './dto/tournament.dtos';
 import { TournamentsService } from './tournaments.service';
 
+// 대회 당일은 같은 와이파이(같은 IP)의 기기가 대회가 바뀔 때마다 현황을 다시 읽는다 — 전역 한도(분당 60회)로는 체크인이 몰릴 때 조작이 거절된다
+const STAFF_LIMIT = { default: { limit: 600, ttl: 60_000 } };
+// 공개 현황은 모임원 폰 수십 대가 함께 읽는다
+const LIVE_LIMIT = { default: { limit: 3000, ttl: 60_000 } };
+
 // 대회 준비와 진행은 전부 운영진 전용 — 모임원이 보는 대회 현황은 공개 경로를 따로 둔다
 @Controller('tournaments')
 @UseGuards(AdminGuard)
+@Throttle(STAFF_LIMIT)
 export class TournamentsController {
   constructor(private readonly tournamentsService: TournamentsService) {}
 
@@ -155,6 +162,7 @@ export class TournamentsController {
 
 // 로그인 없이 읽는 대회 현황 — 모임원 화면과 운영석 전광판이 쓴다
 @Controller('tournaments')
+@Throttle(LIVE_LIMIT)
 export class TournamentLiveController {
   constructor(private readonly tournamentsService: TournamentsService) {}
 
