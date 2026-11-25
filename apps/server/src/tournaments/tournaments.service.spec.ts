@@ -162,6 +162,26 @@ describe('대진표 붙여 넣기', () => {
     await prisma.tournamentMatch.updateMany({ where: { tournamentId: id }, data: { status: 'PLAYING' } });
     await expect(service.importBracket(id, { text: BRACKET })).rejects.toBeInstanceOf(ConflictException);
   });
+
+  it('다시 붙여 넣어도 입구 체크인 기록은 남고, 팀이 바뀐 사람은 팀만 고친다', async () => {
+    await seedMembers();
+    const { id } = await open();
+    const first = await service.importBracket(id, { text: BRACKET });
+    const byName = (name: string) => first.participants.find((p) => p.name === name)!;
+    await service.setEntry(id, byName('가').id, true);
+    await service.setEntry(id, byName('마').id, true);
+
+    // 가는 청팀에서 백팀으로 옮기고, 마와 바와 사와 아는 새 대진표에서 빠진다
+    const again = await service.importBracket(id, { text: row(1, 1, 1, '남복', '다', '라', '가', '나') });
+    const moved = again.participants.find((p) => p.name === '가')!;
+    expect(moved.id).toBe(byName('가').id);
+    expect(moved.team).toBe(TournamentTeam.WHITE);
+    expect(moved.enteredAt).not.toBeNull();
+    // 체크인한 마는 대진표에 없어도 남고, 체크인하지 않은 나머지는 빠진다
+    expect(again.participants.map((p) => p.name).sort()).toEqual(['가', '나', '다', '라', '마']);
+    expect(again.participants.find((p) => p.name === '마')!.enteredAt).not.toBeNull();
+    expect(again.matches[0].players.map((player) => player.name)).toEqual(['다', '라', '가', '나']);
+  });
 });
 
 describe('대회 시작과 경기 진행', () => {

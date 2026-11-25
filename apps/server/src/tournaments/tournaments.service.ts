@@ -92,7 +92,8 @@ export class TournamentsService {
     return (await this.resolveBracket(dto)).preview;
   }
 
-  // 대진표 등록 — 기존 대진표와 참가자를 지우고 새로 넣는다. 경기가 시작된 뒤에는 막는다
+  // 대진표 등록 — 기존 대진표를 지우고 새로 넣는다. 경기가 시작된 뒤에는 막는다
+  // 참가자는 회원 기준으로 맞춘다: 이미 있는 사람은 팀만 고쳐 입구 체크인 기록을 지키고, 새 대진표에 없는 사람은 체크인하지 않았을 때만 뺀다
   async importBracket(id: string, dto: IImportBracketDto): Promise<ITournamentDetail> {
     await this.findActive(id);
     const { preview, memberIdOf } = await this.resolveBracket(dto);
@@ -113,11 +114,23 @@ export class TournamentsService {
         throw new ConflictException('이미 시작한 경기가 있어 대진표를 다시 넣을 수 없습니다.');
       }
       await tx.tournamentMatch.deleteMany({ where: { tournamentId: id } });
-      await tx.tournamentParticipant.deleteMany({ where: { tournamentId: id } });
-      const participants = await tx.tournamentParticipant.createManyAndReturn({
-        data: [...teamOf].map(([member, team]) => ({ tournamentId: id, memberId: member, team })),
+      await tx.tournamentParticipant.deleteMany({
+        where: { tournamentId: id, enteredAt: null, memberId: { notIn: [...teamOf.keys()] } },
       });
-      const participantIdOf = new Map(participants.map((p) => [p.memberId, p.id]));
+      const kept = await tx.tournamentParticipant.findMany({ where: { tournamentId: id } });
+      const keptMemberIds = new Set(kept.map((p) => p.memberId));
+      for (const team of [TournamentTeam.BLUE, TournamentTeam.WHITE]) {
+        const moved = kept.filter((p) => p.team !== team && teamOf.get(p.memberId) === team).map((p) => p.id);
+        if (moved.length > 0) {
+          await tx.tournamentParticipant.updateMany({ where: { id: { in: moved } }, data: { team } });
+        }
+      }
+      const created = await tx.tournamentParticipant.createManyAndReturn({
+        data: [...teamOf]
+          .filter(([member]) => !keptMemberIds.has(member))
+          .map(([member, team]) => ({ tournamentId: id, memberId: member, team })),
+      });
+      const participantIdOf = new Map([...kept, ...created].map((p) => [p.memberId, p.id]));
       const matches = await tx.tournamentMatch.createManyAndReturn({
         data: preview.rows.map((row) => ({
           tournamentId: id,
