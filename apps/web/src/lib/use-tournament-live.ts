@@ -16,23 +16,37 @@ interface TournamentLiveState {
 }
 
 export function useTournamentLive({ admin = false }: { admin?: boolean } = {}): TournamentLiveState {
-  const [detail, setDetail] = useState<ITournamentDetail | null>(null);
+  const [detail, setShown] = useState<ITournamentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const lastFetchAt = useRef(0);
+  // 가장 나중에 시작한 조회의 응답만 반영한다 — 운영진 둘이 연달아 조작하면 응답이 뒤바뀌어 도착해 옛 현황이 화면에 남을 수 있다
+  const latest = useRef(0);
 
   const load = useCallback(async () => {
     lastFetchAt.current = Date.now();
+    const mine = ++latest.current;
     try {
       const data = await api<ITournamentDetail | null>(admin ? '/tournaments/current' : '/tournaments/live', { admin });
-      setDetail(data ?? null);
+      if (mine !== latest.current) return;
+      setShown(data ?? null);
       setFailed(false);
     } catch {
-      setFailed(true);
+      if (mine === latest.current) setFailed(true);
     } finally {
       setLoading(false);
     }
   }, [admin]);
+
+  // 저장 응답은 바로 보여 주되, 그 사이 다른 기기의 변경이 있었을 수 있어 곧바로 다시 읽어 맞춘다
+  const setDetail = useCallback(
+    (next: ITournamentDetail | null) => {
+      latest.current += 1;
+      setShown(next);
+      void load();
+    },
+    [load],
+  );
 
   useEffect(() => {
     void load();
