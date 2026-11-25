@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put, U
 import { IApiResponse, IBracketPreview, ITournament, ITournamentDetail } from '@letscok/shared-types';
 import { AdminGuard } from '../common/guards/admin.guard';
 import {
+  AddTournamentParticipantDto,
   CreateTournamentDto,
   ImportBracketDto,
   ReorderTournamentMatchesDto,
@@ -38,6 +39,21 @@ export class TournamentsController {
   @Put(':id/bracket')
   async importBracket(@Param('id') id: string, @Body() dto: ImportBracketDto): Promise<IApiResponse<ITournamentDetail>> {
     return { success: true, data: await this.tournamentsService.importBracket(id, dto) };
+  }
+
+  // 대진표에 없는 회원을 참가자로 추가 — 당일 대타용
+  @Post(':id/participants')
+  async addParticipant(@Param('id') id: string, @Body() dto: AddTournamentParticipantDto): Promise<IApiResponse<ITournamentDetail>> {
+    return { success: true, data: await this.tournamentsService.addParticipant(id, dto) };
+  }
+
+  // 잘못 추가한 참가자 빼기 — 경기에 들어가 있지 않을 때만
+  @Delete(':id/participants/:participantId')
+  async removeParticipant(
+    @Param('id') id: string,
+    @Param('participantId') participantId: string,
+  ): Promise<IApiResponse<ITournamentDetail>> {
+    return { success: true, data: await this.tournamentsService.removeParticipant(id, participantId) };
   }
 
   // 입구 체크인과 되돌리기

@@ -5,6 +5,7 @@ import {
   IBracketIssue,
   IBracketNamePick,
   IBracketPreview,
+  IAddTournamentParticipantDto,
   IBracketRow,
   ICreateTournamentDto,
   IImportBracketDto,
@@ -144,6 +145,38 @@ export class TournamentsService {
       });
     });
 
+    return this.changed();
+  }
+
+  // 참가자 추가 — 대진표에 없는 회원을 당일에 대타로 넣을 수 있게 한다. 경기에는 선수 바꾸기로 넣는다
+  async addParticipant(id: string, dto: IAddTournamentParticipantDto): Promise<ITournamentDetail> {
+    await this.findActive(id);
+    const member = await this.prisma.member.findFirst({ where: { id: dto.memberId, deletedAt: null } });
+    if (!member) {
+      throw new NotFoundException('회원을 찾을 수 없습니다.');
+    }
+    const existing = await this.prisma.tournamentParticipant.findFirst({ where: { tournamentId: id, memberId: dto.memberId } });
+    if (existing) {
+      throw new ConflictException(`이미 ${existing.team === TournamentTeam.BLUE ? '청팀' : '백팀'} 참가자입니다.`);
+    }
+    await this.prisma.tournamentParticipant.create({ data: { tournamentId: id, memberId: dto.memberId, team: dto.team } });
+    return this.changed();
+  }
+
+  // 참가자 빼기 — 잘못 추가했을 때. 경기에 들어가 있는 사람은 뺄 수 없다(먼저 선수 바꾸기로 뺀다)
+  async removeParticipant(id: string, participantId: string): Promise<ITournamentDetail> {
+    await this.findActive(id);
+    const participant = await this.prisma.tournamentParticipant.findFirst({
+      where: { id: participantId, tournamentId: id },
+      include: { _count: { select: { matchPlayers: true } } },
+    });
+    if (!participant) {
+      throw new NotFoundException('참가자를 찾을 수 없습니다.');
+    }
+    if (participant._count.matchPlayers > 0) {
+      throw new ConflictException('경기에 들어가 있는 사람은 뺄 수 없습니다.');
+    }
+    await this.prisma.tournamentParticipant.delete({ where: { id: participantId } });
     return this.changed();
   }
 

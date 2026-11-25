@@ -1,4 +1,5 @@
 import {
+  IAddTournamentParticipantDto,
   IBracketNamePick,
   ICreateTournamentDto,
   IImportBracketDto,
@@ -9,6 +10,7 @@ import {
   ISetTournamentScoreDto,
   IStartTournamentMatchDto,
   TOURNAMENT_WIN_SCORE,
+  TournamentTeam,
 } from '@letscok/shared-types';
 import { Type } from 'class-transformer';
 import {
@@ -16,6 +18,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsBoolean,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -110,6 +113,15 @@ export class ReplaceTournamentPlayerDto implements IReplaceTournamentPlayerDto {
   @IsOptional()
   @IsBoolean()
   force?: boolean;
+}
+
+export class AddTournamentParticipantDto implements IAddTournamentParticipantDto {
+  @IsString({ message: '추가할 사람을 골라 주세요.' })
+  @Length(1, 40)
+  memberId: string;
+
+  @IsEnum(TournamentTeam, { message: '팀을 골라 주세요.' })
+  team: TournamentTeam;
 }
 
 export class SetTournamentProxyDto implements ISetTournamentProxyDto {

@@ -751,6 +751,12 @@ export interface IReplaceTournamentPlayerDto {
 }
 
 // 지각 대리 경기 — 그 자리의 선수 대신 뛸 회원을 적는다. 대진표의 선수는 그대로 두고 대리 표시만 붙인다
+// 참가자 추가 — 대진표에 없는 회원을 당일에 대타로 넣을 수 있게 팀을 정해 참가자로 올린다
+export interface IAddTournamentParticipantDto {
+  memberId: string;
+  team: TournamentTeam;
+}
+
 export interface ISetTournamentProxyDto {
   memberId: string;
 }

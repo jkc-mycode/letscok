@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { BracketIssueCode, computeTournamentStandings } from '@letscok/shared-types';
+import { BracketIssueCode, computeTournamentStandings, TournamentTeam } from '@letscok/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { TournamentsService } from './tournaments.service';
@@ -563,6 +563,48 @@ describe('대기 경기 순서 바꾸기와 선수 바꾸기', () => {
     await expect(service.replacePlayer(id, matchId(3), 1, { participantId: who('나') })).rejects.toMatchObject({
       response: { error: 'PLAYER_BUSY', message: '나 님이 1코트에서 경기 중이에요.' },
     });
+  });
+});
+
+describe('참가자 추가', () => {
+  async function ready() {
+    await seedMembers([...NAMES, '대타']);
+    const { id } = await open();
+    const detail = await service.importBracket(id, { text: BRACKET });
+    const matchId = (matchNo: number) => detail.matches.find((m) => m.matchNo === matchNo)!.id;
+    const memberId = async (name: string) => (await prisma.member.findFirstOrThrow({ where: { name } })).id;
+    return { id, matchId, memberId };
+  }
+
+  it('대진표에 없는 회원을 팀을 정해 추가하면 선수 바꾸기로 경기에 넣을 수 있다', async () => {
+    const { id, matchId, memberId } = await ready();
+
+    const added = await service.addParticipant(id, { memberId: await memberId('대타'), team: TournamentTeam.BLUE });
+    const sub = added.participants.find((p) => p.name === '대타')!;
+    const detail = await service.replacePlayer(id, matchId(1), 0, { participantId: sub.id });
+
+    expect(sub.team).toBe('BLUE');
+    expect(detail.matches[0].players.map((p) => p.name)).toEqual(['대타', '나', '다', '라']);
+  });
+
+  it('이미 참가자인 사람과 없는 회원은 추가할 수 없다', async () => {
+    const { id, memberId } = await ready();
+
+    await expect(service.addParticipant(id, { memberId: await memberId('가'), team: TournamentTeam.WHITE })).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    await expect(service.addParticipant(id, { memberId: 'none', team: TournamentTeam.BLUE })).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('경기에 없는 참가자만 뺄 수 있다', async () => {
+    const { id, memberId } = await ready();
+    const added = await service.addParticipant(id, { memberId: await memberId('대타'), team: TournamentTeam.WHITE });
+    const idOf = (name: string) => added.participants.find((p) => p.name === name)!.id;
+
+    await expect(service.removeParticipant(id, idOf('가'))).rejects.toBeInstanceOf(ConflictException);
+    const detail = await service.removeParticipant(id, idOf('대타'));
+
+    expect(detail.participants.map((p) => p.name)).not.toContain('대타');
   });
 });
 
