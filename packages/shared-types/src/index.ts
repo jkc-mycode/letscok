@@ -695,6 +695,17 @@ export interface ITournamentParticipant {
   gender: Gender | null;
   team: TournamentTeam;
   enteredAt: string | null; // 입구 체크인 시각 — null = 아직 안 옴
+  raffleNo: number | null; // 추첨권 번호 — 체크인하면 순서대로 매긴다. 운영진 전용 응답에만
+}
+
+// 추첨 상품 — 운영진 전용. 당첨 전에는 raffleNo와 당첨자가 비어 있다
+export interface ITournamentPrize {
+  id: string;
+  name: string;
+  raffleNo: number | null; // 당첨 번호
+  participantId: string | null;
+  winnerName: string | null;
+  drawnAt: string | null;
 }
 
 export interface ITournamentMatchPlayer {
@@ -723,6 +734,7 @@ export interface ITournamentDetail {
   tournament: ITournament;
   participants: ITournamentParticipant[]; // 이름순
   matches: ITournamentMatch[]; // 번호순
+  prizes: ITournamentPrize[]; // 등록한 순서 — 공개 현황에는 빈 배열
 }
 
 export interface ICreateTournamentDto {
@@ -764,6 +776,15 @@ export interface ISetTournamentProxyDto {
 // 입구 체크인 — 입장과 웰컴 키트·타월·추첨권 지급을 한 번에 기록한다. false로 보내면 잘못 누른 것을 되돌린다
 export interface ISetTournamentEntryDto {
   entered: boolean;
+}
+
+// 추첨 번호 고치기와 당첨 기록 — 고칠 번호를 다른 사람이 갖고 있으면 두 사람의 번호를 맞바꾼다
+export interface ISetTournamentRaffleNoDto {
+  raffleNo: number;
+}
+export const TOURNAMENT_PRIZE_NAME_MAX = 40;
+export interface IAddTournamentPrizesDto {
+  names: string[];
 }
 
 // 점수 입력·수정 — 21점 단판, 듀스 없음: 이긴 팀은 정확히 21점, 진 팀은 0~20점

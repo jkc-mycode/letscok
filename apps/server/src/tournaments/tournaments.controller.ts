@@ -4,12 +4,14 @@ import { Throttle } from '@nestjs/throttler';
 import { AdminGuard } from '../common/guards/admin.guard';
 import {
   AddTournamentParticipantDto,
+  AddTournamentPrizesDto,
   CreateTournamentDto,
   ImportBracketDto,
   ReorderTournamentMatchesDto,
   ReplaceTournamentPlayerDto,
   SetTournamentEntryDto,
   SetTournamentProxyDto,
+  SetTournamentRaffleNoDto,
   SetTournamentScoreDto,
   StartTournamentMatchDto,
 } from './dto/tournament.dtos';
@@ -71,6 +73,41 @@ export class TournamentsController {
     @Body() dto: SetTournamentEntryDto,
   ): Promise<IApiResponse<ITournamentDetail>> {
     return { success: true, data: await this.tournamentsService.setEntry(id, participantId, dto.entered) };
+  }
+
+  // 추첨 번호 고치기 — 그 번호를 가진 사람이 있으면 서로 맞바꾼다
+  @Patch(':id/participants/:participantId/raffle')
+  async setRaffleNo(
+    @Param('id') id: string,
+    @Param('participantId') participantId: string,
+    @Body() dto: SetTournamentRaffleNoDto,
+  ): Promise<IApiResponse<ITournamentDetail>> {
+    return { success: true, data: await this.tournamentsService.setRaffleNo(id, participantId, dto.raffleNo) };
+  }
+
+  @Post(':id/prizes')
+  async addPrizes(@Param('id') id: string, @Body() dto: AddTournamentPrizesDto): Promise<IApiResponse<ITournamentDetail>> {
+    return { success: true, data: await this.tournamentsService.addPrizes(id, dto) };
+  }
+
+  @Delete(':id/prizes/:prizeId')
+  async removePrize(@Param('id') id: string, @Param('prizeId') prizeId: string): Promise<IApiResponse<ITournamentDetail>> {
+    return { success: true, data: await this.tournamentsService.removePrize(id, prizeId) };
+  }
+
+  // 당첨 기록과 지우기 — 뽑힌 추첨 번호를 적는다
+  @Put(':id/prizes/:prizeId/winner')
+  async setPrizeWinner(
+    @Param('id') id: string,
+    @Param('prizeId') prizeId: string,
+    @Body() dto: SetTournamentRaffleNoDto,
+  ): Promise<IApiResponse<ITournamentDetail>> {
+    return { success: true, data: await this.tournamentsService.setPrizeWinner(id, prizeId, dto.raffleNo) };
+  }
+
+  @Delete(':id/prizes/:prizeId/winner')
+  async clearPrizeWinner(@Param('id') id: string, @Param('prizeId') prizeId: string): Promise<IApiResponse<ITournamentDetail>> {
+    return { success: true, data: await this.tournamentsService.clearPrizeWinner(id, prizeId) };
   }
 
   @Post(':id/open')

@@ -77,7 +77,7 @@ function TournamentHome() {
         </p>
       )}
       {loading && <p className="py-10 text-center text-sm text-dim">불러오는 중...</p>}
-      {!loading && !failed && !detail && <CreateForm onCreated={(tournament) => setDetail({ tournament, participants: [], matches: [] })} />}
+      {!loading && !failed && !detail && <CreateForm onCreated={(tournament) => setDetail({ tournament, participants: [], matches: [], prizes: [] })} />}
       {detail && (
         <>
           <Summary detail={detail} onChange={setDetail} />

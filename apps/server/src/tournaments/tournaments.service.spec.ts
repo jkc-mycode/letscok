@@ -495,6 +495,81 @@ describe('입구 체크인', () => {
   });
 });
 
+describe('추첨 번호와 상품', () => {
+  async function ready() {
+    await seedMembers();
+    const { id } = await open();
+    const detail = await service.importBracket(id, { text: BRACKET });
+    const who = (name: string) => detail.participants.find((p) => p.name === name)!.id;
+    return { id, who };
+  }
+  const numbers = (detail: Awaited<ReturnType<typeof service.current>>) =>
+    Object.fromEntries(detail!.participants.filter((p) => p.raffleNo !== null).map((p) => [p.name, p.raffleNo]));
+
+  it('체크인한 순서대로 번호를 매기고, 되돌리면 비우고, 다음 사람은 가장 큰 번호의 다음을 받는다', async () => {
+    const { id, who } = await ready();
+
+    await service.setEntry(id, who('다'), true);
+    await service.setEntry(id, who('가'), true);
+    await service.setEntry(id, who('나'), true);
+    expect(numbers(await service.setEntry(id, who('가'), false))).toEqual({ 다: 1, 나: 3 });
+    expect(numbers(await service.setEntry(id, who('가'), true))).toEqual({ 다: 1, 나: 3, 가: 4 });
+  });
+
+  it('번호를 고치면 그 번호를 가진 사람과 맞바꾸고, 체크인하지 않은 사람은 번호를 가질 수 없다', async () => {
+    const { id, who } = await ready();
+    await service.setEntry(id, who('가'), true);
+    await service.setEntry(id, who('나'), true);
+
+    expect(numbers(await service.setRaffleNo(id, who('가'), 2))).toEqual({ 가: 2, 나: 1 });
+    expect(numbers(await service.setRaffleNo(id, who('가'), 30))).toEqual({ 가: 30, 나: 1 });
+    await expect(service.setRaffleNo(id, who('다'), 5)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('상품을 등록하고 당첨 번호를 적으면 그 번호의 참가자가 당첨자로 남는다', async () => {
+    const { id, who } = await ready();
+    await service.setEntry(id, who('가'), true);
+    await service.setEntry(id, who('나'), true);
+
+    const added = await service.addPrizes(id, { names: [' 라켓 ', '', '셔틀콕 한 통'] });
+    expect(added.prizes.map((p) => [p.name, p.winnerName])).toEqual([
+      ['라켓', null],
+      ['셔틀콕 한 통', null],
+    ]);
+    const [racket, shuttle] = added.prizes;
+
+    const drawn = await service.setPrizeWinner(id, racket.id, 2);
+    expect(drawn.prizes[0]).toMatchObject({ raffleNo: 2, winnerName: '나', participantId: who('나') });
+    await expect(service.setPrizeWinner(id, shuttle.id, 9)).rejects.toBeInstanceOf(NotFoundException);
+
+    // 당첨을 기록한 뒤 번호를 고쳐도 당첨자는 그대로
+    const swapped = await service.setRaffleNo(id, who('가'), 2);
+    expect(swapped.prizes[0]).toMatchObject({ raffleNo: 2, winnerName: '나' });
+
+    await expect(service.removePrize(id, racket.id)).rejects.toBeInstanceOf(ConflictException);
+    const cleared = await service.clearPrizeWinner(id, racket.id);
+    expect(cleared.prizes[0]).toMatchObject({ raffleNo: null, winnerName: null });
+    expect((await service.removePrize(id, racket.id)).prizes.map((p) => p.name)).toEqual(['셔틀콕 한 통']);
+  });
+
+  it('끝난 대회도 결과를 띄워 둔 동안은 당첨을 기록할 수 있고, 공개 현황에는 추첨 기록이 실리지 않는다', async () => {
+    const { id, who } = await ready();
+    await service.open(id);
+    await service.setEntry(id, who('가'), true);
+    const [prize] = (await service.addPrizes(id, { names: ['라켓'] })).prizes;
+    await service.close(id);
+
+    const drawn = await service.setPrizeWinner(id, prize.id, 1);
+    expect(drawn.prizes[0].winnerName).toBe('가');
+    const live = await service.live();
+    expect(live!.prizes).toEqual([]);
+    expect(live!.participants.every((p) => p.raffleNo === null)).toBe(true);
+
+    await service.hideResult(id);
+    await expect(service.clearPrizeWinner(id, prize.id)).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+
 describe('대기 경기 순서 바꾸기와 선수 바꾸기', () => {
   // 1라운드: 1번(가 나 : 다 라) 2번(마 바 : 사 아) / 2라운드: 3번(가 마 : 다 사)
   async function ready() {

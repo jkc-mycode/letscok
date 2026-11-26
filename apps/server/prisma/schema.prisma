@@ -269,6 +269,7 @@ model Tournament {
 
   participants TournamentParticipant[]
   matches      TournamentMatch[]
+  prizes       TournamentPrize[]
 
   @@index([status])
   @@map("tournaments")
@@ -281,15 +282,37 @@ model TournamentParticipant {
   memberId     String
   team         TournamentTeam
   enteredAt    DateTime? // 입구 체크인 시각 — 입장과 웰컴 키트·타월·추첨권 지급을 한 번에 기록. null = 아직 안 옴
+  raffleNo     Int? // 추첨권 번호 — 체크인 순서로 매기고 운영진이 고칠 수 있다. 체크인을 되돌리면 비운다
   createdAt    DateTime       @default(now())
 
   tournament   Tournament              @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   member       Member                  @relation(fields: [memberId], references: [id])
   matchPlayers TournamentMatchPlayer[]
+  prizes       TournamentPrize[]
 
   @@unique([tournamentId, memberId]) // 한 대회에 한 사람은 한 팀
+  @@unique([tournamentId, raffleNo]) // 한 대회에 같은 추첨 번호는 한 사람
   @@index([memberId])
   @@map("tournament_participants")
+}
+
+// 추첨 상품 1개 — 미리 등록해 두고, 추첨한 뒤 당첨 번호를 적으면 그 번호의 참가자와 이어진다
+model TournamentPrize {
+  id            String    @id @default(cuid())
+  tournamentId  String
+  name          String
+  sortOrder     Int // 등록한 순서
+  raffleNo      Int? // 당첨 번호 — 기록할 때의 번호를 남긴다(뒤에 참가자의 번호를 고쳐도 당첨자는 그대로)
+  participantId String? // 당첨자 — null = 아직 추첨 전
+  drawnAt       DateTime?
+  createdAt     DateTime  @default(now())
+
+  tournament  Tournament             @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  participant TournamentParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+
+  @@index([tournamentId])
+  @@index([participantId])
+  @@map("tournament_prizes")
 }
 
 // 대진 경기 1건 — 21점 단판, 듀스 없음

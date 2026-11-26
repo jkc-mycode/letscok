@@ -6,6 +6,7 @@ import {
   IBracketNamePick,
   IBracketPreview,
   IAddTournamentParticipantDto,
+  IAddTournamentPrizesDto,
   IBracketRow,
   ICreateTournamentDto,
   IImportBracketDto,
@@ -33,6 +34,7 @@ const byName = (a: string, b: string) => a.localeCompare(b, 'ko');
 
 const detailInclude = {
   participants: { include: { member: true } },
+  prizes: { orderBy: { sortOrder: 'asc' }, include: { participant: { include: { member: true } } } },
   matches: {
     orderBy: { matchNo: 'asc' },
     include: {
@@ -87,14 +89,18 @@ export class TournamentsService {
     return tournament ? toDetail(tournament) : null;
   }
 
-  // 모임원 화면과 전광판이 로그인 없이 읽는 대회 현황 — 진행 중이거나 최종 결과를 띄워 둔 동안만 내보내고, 입구 체크인 여부는 뺀다
+  // 모임원 화면과 전광판이 로그인 없이 읽는 대회 현황 — 진행 중이거나 최종 결과를 띄워 둔 동안만 내보내고, 입구 체크인 여부와 추첨 기록은 뺀다
   async live(): Promise<ITournamentDetail | null> {
     const tournament =
       (await this.prisma.tournament.findFirst({ where: { status: 'OPEN' }, include: detailInclude })) ??
       (await this.findShowingResult());
     if (!tournament) return null;
     const detail = toDetail(tournament);
-    return { ...detail, participants: detail.participants.map((participant) => ({ ...participant, enteredAt: null })) };
+    return {
+      ...detail,
+      participants: detail.participants.map((participant) => ({ ...participant, enteredAt: null, raffleNo: null })),
+      prizes: [],
+    };
   }
 
   async previewBracket(id: string, dto: IImportBracketDto): Promise<IBracketPreview> {
@@ -208,13 +214,87 @@ export class TournamentsService {
       if (!participant) {
         throw new NotFoundException('참가자를 찾을 수 없습니다.');
       }
-      if (entered !== (participant.enteredAt !== null)) {
-        await tx.tournamentParticipant.update({
-          where: { id: participantId },
-          data: { enteredAt: entered ? new Date() : null },
-        });
+      if (entered === (participant.enteredAt !== null)) return;
+      // 추첨 번호는 체크인 순서 — 지금까지 나간 가장 큰 번호의 다음. 되돌리면 번호를 비운다
+      const last = await tx.tournamentParticipant.aggregate({ where: { tournamentId: id }, _max: { raffleNo: true } });
+      await tx.tournamentParticipant.update({
+        where: { id: participantId },
+        data: entered ? { enteredAt: new Date(), raffleNo: (last._max.raffleNo ?? 0) + 1 } : { enteredAt: null, raffleNo: null },
+      });
+    });
+  }
+
+  // 추첨 번호 고치기 — 추첨권을 서로 바꿨거나 순서가 꼬였을 때. 그 번호를 가진 사람이 있으면 두 사람의 번호를 맞바꾼다
+  async setRaffleNo(id: string, participantId: string, raffleNo: number): Promise<ITournamentDetail> {
+    return this.mutate(id, 'SHOWN', async (tx) => {
+      const participant = await tx.tournamentParticipant.findFirst({ where: { id: participantId, tournamentId: id } });
+      if (!participant) {
+        throw new NotFoundException('참가자를 찾을 수 없습니다.');
+      }
+      if (participant.enteredAt === null) {
+        throw new ConflictException('체크인한 사람만 추첨 번호를 가질 수 있습니다.');
+      }
+      if (participant.raffleNo === raffleNo) return;
+      const holder = await tx.tournamentParticipant.findFirst({ where: { tournamentId: id, raffleNo } });
+      if (holder) {
+        await tx.tournamentParticipant.update({ where: { id: holder.id }, data: { raffleNo: null } });
+      }
+      await tx.tournamentParticipant.update({ where: { id: participantId }, data: { raffleNo } });
+      if (holder) {
+        await tx.tournamentParticipant.update({ where: { id: holder.id }, data: { raffleNo: participant.raffleNo } });
       }
     });
+  }
+
+  // 추첨 상품 등록 — 대회 전에 미리 넣어 둔다. 이름 하나가 상품 하나
+  async addPrizes(id: string, dto: IAddTournamentPrizesDto): Promise<ITournamentDetail> {
+    const names = dto.names.map((name) => name.trim()).filter((name) => name.length > 0);
+    if (names.length === 0) {
+      throw new BadRequestException('등록할 상품 이름을 적어 주세요.');
+    }
+    return this.mutate(id, 'SHOWN', async (tx) => {
+      const last = await tx.tournamentPrize.aggregate({ where: { tournamentId: id }, _max: { sortOrder: true } });
+      const from = (last._max.sortOrder ?? 0) + 1;
+      await tx.tournamentPrize.createMany({ data: names.map((name, index) => ({ tournamentId: id, name, sortOrder: from + index })) });
+    });
+  }
+
+  // 당첨 기록이 있는 상품은 기록을 먼저 지워야 뺄 수 있다 — 잘못 눌러 당첨 기록이 사라지지 않게
+  async removePrize(id: string, prizeId: string): Promise<ITournamentDetail> {
+    return this.mutate(id, 'SHOWN', async (tx) => {
+      const prize = await this.findPrize(tx, id, prizeId);
+      if (prize.participantId !== null) {
+        throw new ConflictException('당첨 기록이 있는 상품입니다. 당첨 기록을 먼저 지워 주세요.');
+      }
+      await tx.tournamentPrize.delete({ where: { id: prizeId } });
+    });
+  }
+
+  // 당첨 기록 — 뽑힌 추첨 번호를 적으면 그 번호의 참가자가 당첨자로 남는다. 다시 적으면 덮어쓴다
+  async setPrizeWinner(id: string, prizeId: string, raffleNo: number): Promise<ITournamentDetail> {
+    return this.mutate(id, 'SHOWN', async (tx) => {
+      await this.findPrize(tx, id, prizeId);
+      const winner = await tx.tournamentParticipant.findFirst({ where: { tournamentId: id, raffleNo } });
+      if (!winner) {
+        throw new NotFoundException(`${raffleNo}번 추첨권을 받은 사람이 없습니다.`);
+      }
+      await tx.tournamentPrize.update({ where: { id: prizeId }, data: { raffleNo, participantId: winner.id, drawnAt: new Date() } });
+    });
+  }
+
+  async clearPrizeWinner(id: string, prizeId: string): Promise<ITournamentDetail> {
+    return this.mutate(id, 'SHOWN', async (tx) => {
+      await this.findPrize(tx, id, prizeId);
+      await tx.tournamentPrize.update({ where: { id: prizeId }, data: { raffleNo: null, participantId: null, drawnAt: null } });
+    });
+  }
+
+  private async findPrize(tx: Prisma.TransactionClient, id: string, prizeId: string) {
+    const prize = await tx.tournamentPrize.findFirst({ where: { id: prizeId, tournamentId: id } });
+    if (!prize) {
+      throw new NotFoundException('상품을 찾을 수 없습니다.');
+    }
+    return prize;
   }
 
   // 대회 시작 — 이때부터 모임원 링크가 대회 현황으로 바뀐다
@@ -459,14 +539,16 @@ export class TournamentsService {
 
   // 대회를 바꾸는 요청은 대회 줄을 잠그고 하나씩 처리한다 — 운영진 둘이 동시에 눌러도 서로 옛 상태를 보고 검사를 통과하지 않게
   // need가 OPEN이면 진행 중인 대회만, ACTIVE면 준비 중인 대회도 받는다
+  // need 'SHOWN': 끝났어도 최종 결과를 띄워 둔 동안은 허용 — 추첨은 경기를 다 마친 뒤에 하기도 한다
   private async mutate(
     id: string,
-    need: 'ACTIVE' | 'OPEN',
+    need: 'ACTIVE' | 'OPEN' | 'SHOWN',
     work: (tx: Prisma.TransactionClient, tournament: Tournament) => Promise<void>,
   ): Promise<ITournamentDetail> {
     await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM tournaments WHERE id = ${id} FOR UPDATE`;
-      const tournament = assertActive(await tx.tournament.findUnique({ where: { id } }));
+      const found = await tx.tournament.findUnique({ where: { id } });
+      const tournament = need === 'SHOWN' && found?.status === 'CLOSED' && found.resultHiddenAt === null ? found : assertActive(found);
       if (need === 'OPEN' && tournament.status !== 'OPEN') {
         throw new ConflictException('대회를 먼저 시작해 주세요.');
       }
@@ -586,6 +668,7 @@ function toDetail(tournament: TournamentWithDetail): ITournamentDetail {
         gender: participant.member.gender,
         team: participant.team,
         enteredAt: participant.enteredAt?.toISOString() ?? null,
+        raffleNo: participant.raffleNo,
       }))
       .sort((a, b) => byName(a.name, b.name)),
     matches: tournament.matches.map((match) => ({
@@ -606,6 +689,14 @@ function toDetail(tournament: TournamentWithDetail): ITournamentDetail {
         name: player.participant.member.name,
         proxyName: player.proxyMember?.name ?? null,
       })),
+    })),
+    prizes: tournament.prizes.map((prize) => ({
+      id: prize.id,
+      name: prize.name,
+      raffleNo: prize.raffleNo,
+      participantId: prize.participantId,
+      winnerName: prize.participant?.member.name ?? null,
+      drawnAt: prize.drawnAt?.toISOString() ?? null,
     })),
   };
 }

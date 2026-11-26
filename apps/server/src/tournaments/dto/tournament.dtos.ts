@@ -1,5 +1,6 @@
 import {
   IAddTournamentParticipantDto,
+  IAddTournamentPrizesDto,
   IBracketNamePick,
   ICreateTournamentDto,
   IImportBracketDto,
@@ -7,8 +8,10 @@ import {
   IReplaceTournamentPlayerDto,
   ISetTournamentEntryDto,
   ISetTournamentProxyDto,
+  ISetTournamentRaffleNoDto,
   ISetTournamentScoreDto,
   IStartTournamentMatchDto,
+  TOURNAMENT_PRIZE_NAME_MAX,
   TOURNAMENT_WIN_SCORE,
   TournamentTeam,
 } from '@letscok/shared-types';
@@ -90,6 +93,23 @@ export class SetTournamentScoreDto implements ISetTournamentScoreDto {
 export class SetTournamentEntryDto implements ISetTournamentEntryDto {
   @IsBoolean({ message: '입장 여부를 보내 주세요.' })
   entered: boolean;
+}
+
+export class SetTournamentRaffleNoDto implements ISetTournamentRaffleNoDto {
+  @Type(() => Number)
+  @IsInt({ message: '추첨 번호는 숫자로 적어 주세요.' })
+  @Min(1, { message: '추첨 번호는 1부터입니다.' })
+  @Max(9999, { message: '추첨 번호가 너무 큽니다.' })
+  raffleNo: number;
+}
+
+export class AddTournamentPrizesDto implements IAddTournamentPrizesDto {
+  @IsArray()
+  @ArrayMinSize(1, { message: '등록할 상품 이름을 적어 주세요.' })
+  @ArrayMaxSize(100, { message: '상품은 한 번에 100개까지 등록할 수 있습니다.' })
+  @IsString({ each: true })
+  @Length(1, TOURNAMENT_PRIZE_NAME_MAX, { each: true, message: `상품 이름은 ${TOURNAMENT_PRIZE_NAME_MAX}자까지입니다.` })
+  names: string[];
 }
 
 export class ReorderTournamentMatchesDto implements IReorderTournamentMatchesDto {
