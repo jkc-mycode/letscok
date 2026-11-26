@@ -356,6 +356,16 @@ function ScoreForm({
   );
   const loserScore = loser === '' ? NaN : Number(loser);
   const valid = winner !== null && Number.isInteger(loserScore) && loserScore >= 0 && loserScore < TOURNAMENT_WIN_SCORE;
+  // 저장 버튼이 흐려져 있는 이유 — 아직 아무것도 하지 않았을 때는 재촉하지 않는다
+  const reason =
+    loser !== '' && loserScore >= TOURNAMENT_WIN_SCORE
+      ? `진 팀 점수는 0부터 ${TOURNAMENT_WIN_SCORE - 1}까지예요`
+      : winner === null && loser !== ''
+        ? '이긴 팀을 골라 주세요'
+        : winner !== null && loser === ''
+          ? '진 팀 점수를 적어 주세요'
+          : null;
+  const loserLabel = winner === null ? '진 팀 점수' : `${winner === TournamentTeam.BLUE ? '백팀' : '청팀'} 점수 (진 팀)`;
   const submit = () => {
     if (busy || !valid) return;
     if (winner === TournamentTeam.BLUE) onSubmit(TOURNAMENT_WIN_SCORE, loserScore);
@@ -398,21 +408,26 @@ function ScoreForm({
       }
     >
       {notice}
-      <p className="text-caption text-dim">이긴 팀을 고르고 진 팀 점수를 넣어 주세요</p>
+      <p className="text-sm text-dim">
+        이긴 팀은 <span className="font-bold text-ink">{TOURNAMENT_WIN_SCORE}점</span>으로 저장돼요. 이긴 팀을 고르고 진 팀 점수만 적어 주세요.
+      </p>
       <div className="flex gap-2">
         {teamBtn(TournamentTeam.BLUE, '청팀 승', tournamentBlueNames(match))}
         {teamBtn(TournamentTeam.WHITE, '백팀 승', tournamentWhiteNames(match))}
       </div>
-      <div className="flex items-center gap-3">
+      <label htmlFor="tournament-loser-score" className="text-sm font-bold text-dim">
+        {loserLabel}
+      </label>
+      <div className="-mt-1 flex items-center gap-3">
         <input
+          id="tournament-loser-score"
           value={loser}
           onChange={(e) => setLoser(e.target.value.replace(/\D/g, '').slice(0, 2))}
           onKeyDown={(e) => {
             if (e.key === 'Enter') submit();
           }}
           inputMode="numeric"
-          placeholder="진 팀 점수 (0~20)"
-          aria-label="진 팀 점수"
+          placeholder="0~20"
           className="h-12 min-w-0 flex-1 rounded-xl border border-line bg-panel2 px-4 text-body outline-none focus:border-court"
         />
         <span className="shrink-0 text-body font-bold tabular-nums text-dim">
@@ -423,6 +438,7 @@ function ScoreForm({
               : `청 ${loserScore} : ${TOURNAMENT_WIN_SCORE} 백`}
         </span>
       </div>
+      {reason && <p className="text-sm text-amber">{reason}</p>}
     </Sheet>
   );
 }
