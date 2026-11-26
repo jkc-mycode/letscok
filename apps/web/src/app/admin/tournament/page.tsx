@@ -20,6 +20,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AdminGate } from '@/components/admin-gate';
 import { TOURNAMENT_TYPE_LABEL as TYPE_LABEL, TournamentBoard } from '@/components/admin/tournament-board';
 import { TournamentEntry } from '@/components/admin/tournament-entry';
+import { TournamentRaffle } from '@/components/admin/tournament-raffle';
 import { ConfirmButton } from '@/components/confirm-button';
 import { TournamentBracket, TournamentRanking, TournamentScoreboard } from '@/components/tournament-live';
 import { api, ApiError } from '@/lib/api';
@@ -55,8 +56,9 @@ function TournamentHome() {
   // 다른 운영진 기기에서 바꾼 내용도 신호를 받아 다시 읽는다
   const { detail, loading, failed, stale, setDetail } = useTournamentLive({ admin: true });
   const standings = useMemo(() => (detail ? computeTournamentStandings(detail) : null), [detail]);
+  // 추첨은 경기를 다 마친 뒤에 하기도 해서, 끝난 대회에도 추첨 탭을 둔다
   // 입구 담당은 체크인 탭만 띄워 둔다. 대진표와 개인 순위는 모임원이 보는 현황과 같은 부품이다
-  const [view, setView] = useState<'main' | 'bracket' | 'ranking' | 'entry'>('main');
+  const [view, setView] = useState<'main' | 'bracket' | 'ranking' | 'entry' | 'raffle'>('main');
   const open = detail?.tournament.status === TournamentStatus.OPEN;
   const closed = detail?.tournament.status === TournamentStatus.CLOSED;
 
@@ -81,21 +83,25 @@ function TournamentHome() {
       {detail && (
         <>
           <Summary detail={detail} onChange={setDetail} />
-          {closed && standings && <FinalResult detail={detail} standings={standings} />}
-          {!closed && detail.participants.length > 0 && (
+          {(closed || detail.participants.length > 0) && (
             <nav className="flex gap-2">
-              {(
-                [
-                  ['main', open ? '경기 진행' : '대진표'],
-                  ...(open ? ([['bracket', '대진표'], ['ranking', '개인 순위']] as const) : []),
-                  ['entry', `입구 체크인 ${detail.participants.filter((p) => p.enteredAt !== null).length}/${detail.participants.length}`],
-                ] as const
+              {(closed
+                ? ([
+                    ['main', '최종 결과'],
+                    ['raffle', '추첨'],
+                  ] as const)
+                : ([
+                    ['main', open ? '경기 진행' : '대진표'],
+                    ...(open ? ([['bracket', '대진표'], ['ranking', '개인 순위']] as const) : []),
+                    ['entry', `입구 체크인 ${detail.participants.filter((p) => p.enteredAt !== null).length}/${detail.participants.length}`],
+                    ['raffle', '추첨'],
+                  ] as const)
               ).map(([key, label]) => (
                 <button
                   key={key}
                   onClick={() => setView(key)}
                   className={`h-10 flex-1 rounded-lg border text-sm font-bold ${
-                    view === key ? 'border-court bg-court/10 text-court' : 'border-line text-dim'
+                    (closed && view !== 'raffle' ? 'main' : view) === key ? 'border-court bg-court/10 text-court' : 'border-line text-dim'
                   }`}
                 >
                   {label}
@@ -103,7 +109,13 @@ function TournamentHome() {
               ))}
             </nav>
           )}
-          {closed ? null : view === 'entry' && detail.participants.length > 0 ? (
+          {view === 'raffle' && (closed || detail.participants.length > 0) ? (
+            <div className="mx-auto w-full max-w-2xl">
+              <TournamentRaffle detail={detail} onChange={setDetail} />
+            </div>
+          ) : closed ? (
+            standings && <FinalResult detail={detail} standings={standings} />
+          ) : view === 'entry' && detail.participants.length > 0 ? (
             <div className="mx-auto w-full max-w-2xl">
               <TournamentEntry detail={detail} onChange={setDetail} />
             </div>
