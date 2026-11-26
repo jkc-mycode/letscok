@@ -110,20 +110,6 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
     run(() => api<ITournamentDetail>(tournamentPath, { method: 'POST', admin: true, body: { memberId, team } }), undefined, true);
   const removeParticipant = (participantId: string) =>
     run(() => api<ITournamentDetail>(`${tournamentPath}/${participantId}`, { method: 'DELETE', admin: true }), undefined, true);
-  const playerEditor = (match: ITournamentMatch) =>
-    editingFor === match.id && (
-      <TournamentPlayerEditor
-        detail={detail}
-        match={match}
-        busy={busy}
-        proxyOnly={match.status === TournamentMatchStatus.FINISHED}
-        onProxy={(slot, memberId) => void setProxy(match.id, slot, memberId)}
-        onAddParticipant={(memberId, team) => void addParticipant(memberId, team)}
-        onRemoveParticipant={(participantId) => void removeParticipant(participantId)}
-        onReplace={(slot, participantId, swapMatchId) => void replacePlayer(match.id, slot, participantId, swapMatchId)}
-        onCancel={() => setEditingFor(null)}
-      />
-    );
   const cancelStart = (matchId: string) =>
     run(() => api<ITournamentDetail>(`${base}/${matchId}/cancel-start`, { method: 'POST', admin: true }));
   const setScore = (matchId: string, blueScore: number, whiteScore: number) =>
@@ -145,9 +131,9 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
       />
     );
 
-  return (
-    <section className="flex flex-col gap-4">
-      <div ref={noticeRef} />
+  // 오류와 겹침 경고 — 선수 바꾸기 팝업이 열려 있으면 가려지므로 팝업 안에 보여 준다
+  const notice = (
+    <>
       {error && <p className="rounded-xl bg-coral/10 p-3 text-sm text-coral">{error}</p>}
       {ask && (
         <div className="flex flex-col gap-2 rounded-xl border border-amber/50 bg-amber/10 p-3 text-sm text-amber">
@@ -164,6 +150,14 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
           </div>
         </div>
       )}
+    </>
+  );
+  const editing = matches.find((m) => m.id === editingFor) ?? null;
+
+  return (
+    <section className="flex flex-col gap-4">
+      <div ref={noticeRef} />
+      {!editing && notice}
 
       <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {courts.map((courtNo) => {
@@ -197,7 +191,6 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
                     </button>
                   </div>
                   {scoreForm(current)}
-                  {playerEditor(current)}
                 </>
               ) : next ? (
                 <>
@@ -261,7 +254,6 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
                 </button>
               </div>
               {scoreForm(match)}
-              {playerEditor(match)}
               {pickingFor === match.id && (
                 <div className="flex flex-wrap gap-2">
                   {emptyCourts.map((courtNo) => (
@@ -310,12 +302,30 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
                 </button>
               </div>
               {scoreForm(match)}
-              {playerEditor(match)}
             </li>
           ))}
         </ul>
       </div>
       </div>
+      {editing && (
+        <TournamentPlayerEditor
+          key={editing.id}
+          detail={detail}
+          match={editing}
+          busy={busy}
+          proxyOnly={editing.status === TournamentMatchStatus.FINISHED}
+          notice={notice}
+          onProxy={(slot, memberId) => void setProxy(editing.id, slot, memberId)}
+          onAddParticipant={(memberId, team) => void addParticipant(memberId, team)}
+          onRemoveParticipant={(participantId) => void removeParticipant(participantId)}
+          onReplace={(slot, participantId, swapMatchId) => void replacePlayer(editing.id, slot, participantId, swapMatchId)}
+          onCancel={() => {
+            setEditingFor(null);
+            setAsk(null);
+            setError(null);
+          }}
+        />
+      )}
     </section>
   );
 }

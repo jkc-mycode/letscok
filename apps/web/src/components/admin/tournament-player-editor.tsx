@@ -10,12 +10,15 @@ import {
   TournamentTeam,
 } from '@letscok/shared-types';
 import { useEffect, useState } from 'react';
+import { Sheet } from '@/components/sheet';
+import { TOURNAMENT_TYPE_LABEL } from '@/components/tournament-live';
 import { api } from '@/lib/api';
 
-// 선수 바꾸기 — 바꿀 자리를 고르고, 같은 팀 참가자 가운데 넣을 사람을 고른다
+// 선수 바꾸기 팝업 — 바꿀 자리를 고르고, 같은 팀 참가자 가운데 넣을 사람을 고른다
 // 넣을 사람이 같은 라운드의 다른 경기에 있으면 그 경기와 맞바꿀 수 있다(둘 다 그 라운드에 한 번씩만 뛰게)
 // 대진표에 없는 사람은 먼저 참가자로 추가한 뒤 넣는다(당일 대타)
 // 지각이면 선수는 그대로 두고 대신 뛸 사람(대리)만 적는다. 끝난 경기는 대리 표시만 고친다(proxyOnly)
+// notice: 요청이 거절됐을 때의 오류와 겹침 경고 — 팝업에 가려지지 않게 팝업 안 맨 위에 보여 준다
 
 const BTN = 'h-9 rounded-lg px-3 text-sm font-bold transition-opacity disabled:opacity-40';
 
@@ -24,6 +27,7 @@ export function TournamentPlayerEditor({
   match,
   busy,
   proxyOnly = false,
+  notice,
   onReplace,
   onProxy,
   onAddParticipant,
@@ -34,6 +38,7 @@ export function TournamentPlayerEditor({
   match: ITournamentMatch;
   busy: boolean;
   proxyOnly?: boolean;
+  notice?: React.ReactNode;
   onReplace: (slot: number, participantId: string, swapMatchId?: string) => void;
   onProxy: (slot: number, memberId: string | null) => void;
   onAddParticipant: (memberId: string, team: TournamentTeam) => void;
@@ -62,7 +67,20 @@ export function TournamentPlayerEditor({
     );
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-line bg-panel2 p-3">
+    <Sheet
+      ariaLabel="선수 바꾸기"
+      width="sm:max-w-lg"
+      onClose={onCancel}
+      header={
+        <div className="min-w-0">
+          <h2 className="text-body font-bold">{proxyOnly ? '대리 표시 고치기' : '선수 바꾸기'}</h2>
+          <p className="text-caption text-dim">
+            {match.matchNo}번, {match.round}라운드, {match.courtNo}코트, {TOURNAMENT_TYPE_LABEL[match.type]}
+          </p>
+        </div>
+      }
+    >
+      {notice}
       <p className="text-caption text-dim">{proxyOnly ? '대리가 뛴 자리를 고르세요' : '바꿀 사람을 고르세요'}</p>
       <div className="grid grid-cols-2 gap-2">
         {match.players.map((player) => (
@@ -113,7 +131,7 @@ export function TournamentPlayerEditor({
             {candidates.map((candidate) => {
               const other = sameRoundMatch(candidate.id);
               return (
-                <li key={candidate.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-panel px-3 py-2">
+                <li key={candidate.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-panel2 px-3 py-2">
                   <span className="text-sm font-bold">{candidate.name}</span>
                   {other && (
                     <span className="text-caption text-amber">
@@ -165,10 +183,7 @@ export function TournamentPlayerEditor({
           )}
         </>
       )}
-      <button onClick={onCancel} className={`${BTN} self-start border border-line text-dim`}>
-        닫기
-      </button>
-    </div>
+    </Sheet>
   );
 }
 
@@ -208,12 +223,12 @@ function MemberPicker({
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="이름이나 초성으로 찾기"
-        className="h-10 rounded-lg border border-line bg-panel px-3 text-body outline-none focus:border-court"
+        className="h-10 shrink-0 rounded-lg border border-line bg-panel2 px-3 text-body outline-none focus:border-court"
       />
       {shown.length === 0 && <p className="text-sm text-faint">찾는 사람이 없어요</p>}
       <ul className="flex max-h-72 flex-col gap-1.5 overflow-y-auto">
         {shown.map((member) => (
-          <li key={member.id} className="flex items-center gap-2 rounded-lg bg-panel px-3 py-2">
+          <li key={member.id} className="flex items-center gap-2 rounded-lg bg-panel2 px-3 py-2">
             <span className="text-sm font-bold">{member.name}</span>
             {isStaff(member) && <span className="text-caption text-court">{member.role === MemberRole.LEADER ? '모임장' : '운영진'}</span>}
             {member.isGuest && <span className="text-caption text-faint">게스트</span>}
