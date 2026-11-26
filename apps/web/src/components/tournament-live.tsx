@@ -48,7 +48,16 @@ export function tournamentRankRows(standings: ITournamentStandings) {
 }
 
 // 청백 승수 — 이긴 경기 수가 기준이고, 같으면 득실점 차이로 앞선 팀을 가린다. final: 끝난 대회의 최종 결과
-export function TournamentScoreboard({ standings, final = false }: { standings: ITournamentStandings; final?: boolean }) {
+// showTotal: 전체 경기 수까지 보여 줄지 — 대진표는 넉넉하게 짜서 뒤쪽 경기를 건너뛸 수 있어, 모임원에게는 끝난 수만 보여 준다
+export function TournamentScoreboard({
+  standings,
+  final = false,
+  showTotal = false,
+}: {
+  standings: ITournamentStandings;
+  final?: boolean;
+  showTotal?: boolean;
+}) {
   const { blue, white, leader, finished, total } = standings;
   const winner = tournamentWinnerText(standings);
   const leadText = final
@@ -79,7 +88,7 @@ export function TournamentScoreboard({ standings, final = false }: { standings: 
         {side('백팀', white.wins, white.pointsFor - white.pointsAgainst, 'text-ink')}
       </div>
       <p className="text-center text-sm text-dim">
-        {leadText} <span className="text-faint">({total}경기 중 {finished}경기{final ? ' 치름' : ' 끝남'})</span>
+        {leadText} <span className="text-faint">({showTotal ? `${total}경기 중 ` : ''}{finished}경기{final ? ' 치름' : ' 끝남'})</span>
       </p>
     </section>
   );
@@ -128,6 +137,22 @@ export function TournamentCourts({ detail }: { detail: ITournamentDetail }) {
   );
 }
 
+// 경기 한 줄 — 대진표와 경기 기록이 같이 쓴다
+function MatchRow({ match, mineId }: { match: ITournamentMatch; mineId?: string }) {
+  return (
+    <li className="flex items-center gap-3 border-t border-line py-2 first:border-t-0">
+      <div className="min-w-0 flex-1">
+        <p className="text-caption text-dim">
+          {match.matchNo}번, {match.courtNo}코트, {TOURNAMENT_TYPE_LABEL[match.type]}
+          {mineId && match.players.some((p) => p.participantId === mineId) && <span className="ml-1.5 font-bold text-court">내 경기</span>}
+        </p>
+        <TournamentMatchNames match={match} />
+      </div>
+      <MatchResult match={match} />
+    </li>
+  );
+}
+
 // 라운드별 대진표 — 끝난 경기는 점수, 아니면 상태. wide: 운영 화면처럼 넓은 곳에서는 라운드를 두 줄로 나란히
 // mineId: 내 경기를 고른 참가자 — 그 사람이 뛰는 경기 줄에 표시를 붙인다
 export function TournamentBracket({ detail, wide = false, mineId }: { detail: ITournamentDetail; wide?: boolean; mineId?: string }) {
@@ -141,19 +166,41 @@ export function TournamentBracket({ detail, wide = false, mineId }: { detail: IT
             {detail.matches
               .filter((m) => m.round === round)
               .map((match) => (
-                <li key={match.id} className="flex items-center gap-3 border-t border-line py-2 first:border-t-0">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-caption text-dim">
-                      {match.matchNo}번, {match.courtNo}코트, {TOURNAMENT_TYPE_LABEL[match.type]}
-                      {mineId && match.players.some((p) => p.participantId === mineId) && (
-                        <span className="ml-1.5 font-bold text-court">내 경기</span>
-                      )}
-                    </p>
-                    <TournamentMatchNames match={match} />
-                  </div>
-                  <MatchResult match={match} />
-                </li>
+                <MatchRow key={match.id} match={match} mineId={mineId} />
               ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// 모임원이 보는 경기 기록 — 지금 하는 경기와 코트별 다음 경기, 끝난 경기(최근 순)만. 그 뒤의 대기 경기는 건너뛸 수 있어 보여 주지 않는다
+export function TournamentRecord({ detail, mineId }: { detail: ITournamentDetail; mineId?: string }) {
+  const playing = detail.matches.filter((m) => m.status === TournamentMatchStatus.PLAYING).sort((a, b) => a.courtNo - b.courtNo);
+  const queued = detail.matches
+    .filter((m) => m.status === TournamentMatchStatus.QUEUED)
+    .sort((a, b) => a.queueOrder - b.queueOrder);
+  const next = queued.filter((m, index) => queued.findIndex((other) => other.courtNo === m.courtNo) === index).sort((a, b) => a.courtNo - b.courtNo);
+  const finished = detail.matches
+    .filter((m) => m.status === TournamentMatchStatus.FINISHED)
+    .sort((a, b) => (b.endedAt ?? '').localeCompare(a.endedAt ?? '') || b.matchNo - a.matchNo);
+  const closed = detail.tournament.status === TournamentStatus.CLOSED;
+  const groups = [
+    { title: '경기 중', matches: closed ? [] : playing },
+    { title: '다음 경기', matches: closed ? [] : next },
+    { title: '끝난 경기', matches: finished },
+  ].filter((group) => group.matches.length > 0);
+  if (groups.length === 0) return <p className="rounded-xl bg-panel p-3 text-sm text-faint">아직 경기가 없어요</p>;
+  return (
+    <div className="flex flex-col gap-3">
+      {groups.map(({ title, matches }) => (
+        <div key={title} className="rounded-xl bg-panel p-3">
+          <p className="text-caption font-bold text-dim">{title}</p>
+          <ul className="mt-1 flex flex-col">
+            {matches.map((match) => (
+              <MatchRow key={match.id} match={match} mineId={mineId} />
+            ))}
           </ul>
         </div>
       ))}
@@ -342,7 +389,6 @@ function MyMatches({
       {mine.length === 0 && <p className="text-sm text-faint">대진표에 들어 있는 경기가 없어요</p>}
       {playing && card(playing, '경기 중', 'text-court', '지금 경기 중이에요')}
       {!closed && next && card(next, '다음 경기', 'text-amber', playing ? '' : ahead === 0 ? '곧 시작해요' : `앞에 ${ahead}경기`)}
-      {!closed && queued.length > 1 && <p className="text-caption text-dim">그 뒤로 {queued.length - 1}경기가 더 남았어요</p>}
       {!closed && mine.length > 0 && !playing && !next && <p className="text-sm text-dim">남은 경기가 없어요. 수고하셨어요!</p>}
       {done.length > 0 && (
         <ul className="flex flex-col">
@@ -367,7 +413,7 @@ function MyMatches({
 
 const TABS = [
   { key: 'courts', label: '코트 현황' },
-  { key: 'bracket', label: '대진표' },
+  { key: 'record', label: '경기 기록' },
   { key: 'ranking', label: '개인 순위' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
@@ -402,7 +448,7 @@ export function TournamentLiveView({ detail }: { detail: ITournamentDetail }) {
         ))}
       </nav>
       {tab === 'courts' && <TournamentCourts detail={detail} />}
-      {tab === 'bracket' && <TournamentBracket detail={detail} mineId={me?.id} />}
+      {tab === 'record' && <TournamentRecord detail={detail} mineId={me?.id} />}
       {tab === 'ranking' && <TournamentRanking standings={standings} />}
     </>
   );

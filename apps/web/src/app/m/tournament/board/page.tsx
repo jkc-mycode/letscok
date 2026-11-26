@@ -47,7 +47,7 @@ export default function TournamentBoardPage() {
 const FINAL_RANK_ROWS = 8;
 function FinalBoard({ detail }: { detail: ITournamentDetail }) {
   const standings = useMemo(() => computeTournamentStandings(detail), [detail]);
-  const { blue, white, finished, total } = standings;
+  const { blue, white, finished } = standings;
   const winner = tournamentWinnerText(standings);
   // 한 경기도 뛰지 않은 사람(불참)은 순위에서 뺀다
   const rows = tournamentRankRows(standings)
@@ -67,7 +67,7 @@ function FinalBoard({ detail }: { detail: ITournamentDetail }) {
         </div>
         <span className="text-[2.2vh] text-faint">
           {winner.note ? `${winner.note}, ` : ''}
-          {total}경기 중 {finished}경기 치름
+          {finished}경기 치름
         </span>
       </section>
       <section className="flex min-h-0 flex-1 flex-col gap-[1.5vh] rounded-[3vh] bg-panel px-[4vh] py-[2.5vh]">
@@ -96,7 +96,7 @@ function FinalBoard({ detail }: { detail: ITournamentDetail }) {
 
 function Board({ detail }: { detail: ITournamentDetail }) {
   const standings = useMemo(() => computeTournamentStandings(detail), [detail]);
-  const { blue, white, leader, finished, total } = standings;
+  const { blue, white, leader, finished } = standings;
   const courts = Array.from({ length: detail.tournament.courtCount }, (_, i) => i + 1);
   const queued = detail.matches
     .filter((m) => m.status === TournamentMatchStatus.QUEUED)
@@ -118,7 +118,7 @@ function Board({ detail }: { detail: ITournamentDetail }) {
           <span className="text-[3.5vh] font-bold">{detail.tournament.name}</span>
           <span className="text-[2.5vh] text-dim">{leadText}</span>
           <span className="text-[2vh] text-faint">
-            {total}경기 중 {finished}경기 끝남
+            {finished}경기 끝남
           </span>
         </div>
         <TeamScore label="백팀" wins={white.wins} diff={white.pointsFor - white.pointsAgainst} cls="text-ink" />

@@ -109,7 +109,7 @@ function TournamentHome() {
             </div>
           ) : open && standings && view !== 'main' ? (
             <>
-              <TournamentScoreboard standings={standings} />
+              <TournamentScoreboard standings={standings} showTotal />
               {view === 'bracket' ? (
                 <TournamentBracket detail={detail} wide />
               ) : (
@@ -120,7 +120,7 @@ function TournamentHome() {
             </>
           ) : (
             <>
-            {open && standings && <TournamentScoreboard standings={standings} />}
+            {open && standings && <TournamentScoreboard standings={standings} showTotal />}
             {open && <TournamentBoard detail={detail} onChange={setDetail} />}
             {/* 시작한 경기가 생기면 서버가 다시 넣기를 막는다 — 그때부터는 버튼도 숨긴다 */}
             {detail.matches.every((match) => match.status === TournamentMatchStatus.QUEUED) && (
@@ -306,7 +306,7 @@ function Summary({ detail, onChange }: { detail: ITournamentDetail; onChange: (n
 function FinalResult({ detail, standings }: { detail: ITournamentDetail; standings: ITournamentStandings }) {
   return (
     <>
-      <TournamentScoreboard standings={standings} final />
+      <TournamentScoreboard standings={standings} final showTotal />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
         <section className="flex flex-col gap-2">
           <h2 className="text-body-sm font-bold text-dim">개인 순위</h2>
