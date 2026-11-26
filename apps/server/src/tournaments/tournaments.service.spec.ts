@@ -51,6 +51,53 @@ describe('대회 만들기', () => {
   });
 });
 
+describe('대회 이름과 날짜 고치기, 지우기', () => {
+  it('준비 중에도 진행 중에도 이름과 날짜를 고칠 수 있고, 끝난 대회는 고칠 수 없다', async () => {
+    await seedMembers();
+    const { id } = await open();
+    await service.importBracket(id, { text: BRACKET });
+
+    const renamed = await service.update(id, { name: ' 연말 청백전 ', date: '2026-12-06' });
+    expect(renamed.tournament).toMatchObject({ name: '연말 청백전', date: '2026-12-06', status: 'DRAFT' });
+    expect(renamed.matches).toHaveLength(3);
+
+    await service.open(id);
+    expect((await service.update(id, { name: '송년회', date: '2026-12-06' })).tournament.name).toBe('송년회');
+
+    await service.close(id);
+    await expect(service.update(id, { name: '다시', date: '2026-12-06' })).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('준비 중인 대회를 지우면 대진표도 함께 사라지고 새 대회를 만들 수 있다', async () => {
+    await seedMembers();
+    const { id } = await open();
+    const detail = await service.importBracket(id, { text: BRACKET });
+    await service.setEntry(id, detail.participants[0].id, true);
+    notified = 0;
+
+    await service.remove(id);
+
+    expect(await service.current()).toBeNull();
+    expect(await prisma.tournamentMatch.count()).toBe(0);
+    expect(await prisma.tournamentParticipant.count()).toBe(0);
+    expect(notified).toBe(1);
+    expect((await open()).status).toBe('DRAFT');
+  });
+
+  it('시작한 대회와 없는 대회는 지울 수 없다', async () => {
+    await seedMembers();
+    const { id } = await open();
+    await service.importBracket(id, { text: BRACKET });
+    await service.open(id);
+
+    await expect(service.remove(id)).rejects.toBeInstanceOf(ConflictException);
+    await service.close(id);
+    await expect(service.remove(id)).rejects.toBeInstanceOf(ConflictException);
+    await expect(service.remove('none')).rejects.toBeInstanceOf(NotFoundException);
+    expect((await service.current())!.tournament.id).toBe(id);
+  });
+});
+
 describe('대진표 붙여 넣기', () => {
   it('미리 보기는 저장하지 않고 팀과 경고를 돌려준다', async () => {
     await seedMembers();

@@ -81,6 +81,29 @@ export class TournamentsService {
     return toTournament(tournament);
   }
 
+  // 이름과 날짜 고치기 — 경기 기록과 무관해서 진행 중에도 받는다
+  async update(id: string, dto: ICreateTournamentDto): Promise<ITournamentDetail> {
+    return this.mutate(id, 'ACTIVE', async (tx) => {
+      await tx.tournament.update({ where: { id }, data: { name: dto.name.trim(), date: new Date(dto.date) } });
+    });
+  }
+
+  // 잘못 만든 대회 지우기 — 시작하면 점수와 추첨 기록이 쌓이므로 준비 중일 때만. 대진표와 체크인 기록도 함께 지워진다
+  async remove(id: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM tournaments WHERE id = ${id} FOR UPDATE`;
+      const tournament = await tx.tournament.findUnique({ where: { id } });
+      if (!tournament) {
+        throw new NotFoundException('대회를 찾을 수 없습니다.');
+      }
+      if (tournament.status !== 'DRAFT') {
+        throw new ConflictException('시작한 대회는 지울 수 없어요. 종료한 뒤 결과를 내려 주세요.');
+      }
+      await tx.tournament.delete({ where: { id } });
+    });
+    this.realtime.notifyTournamentChanged();
+  }
+
   // 준비 중이거나 진행 중인 대회, 없으면 최종 결과를 아직 내리지 않은 끝난 대회 — 그것도 없으면 null
   async current(): Promise<ITournamentDetail | null> {
     const tournament =

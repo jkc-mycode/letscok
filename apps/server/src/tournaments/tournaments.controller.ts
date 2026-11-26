@@ -39,6 +39,18 @@ export class TournamentsController {
     return { success: true, data: await this.tournamentsService.current() };
   }
 
+  @Patch(':id')
+  async update(@Param('id') id: string, @Body() dto: CreateTournamentDto): Promise<IApiResponse<ITournamentDetail>> {
+    return { success: true, data: await this.tournamentsService.update(id, dto) };
+  }
+
+  // 준비 중인 대회만 지운다
+  @Delete(':id')
+  async remove(@Param('id') id: string): Promise<IApiResponse<null>> {
+    await this.tournamentsService.remove(id);
+    return { success: true, data: null };
+  }
+
   // 등록하지 않고 읽은 결과와 경고만 돌려준다
   @Post(':id/bracket/preview')
   async previewBracket(@Param('id') id: string, @Body() dto: ImportBracketDto): Promise<IApiResponse<IBracketPreview>> {
