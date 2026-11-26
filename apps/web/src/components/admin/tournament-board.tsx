@@ -11,6 +11,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { TournamentPlayerEditor } from '@/components/admin/tournament-player-editor';
 import { ConfirmButton } from '@/components/confirm-button';
+import { Sheet } from '@/components/sheet';
 import { TOURNAMENT_TYPE_LABEL, tournamentBlueNames, tournamentWhiteNames, TournamentScoreText } from '@/components/tournament-live';
 import { api, ApiError } from '@/lib/api';
 
@@ -121,17 +122,7 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
     setPickingFor(null);
     setEditingFor(null);
   };
-  const scoreForm = (match: ITournamentMatch) =>
-    scoringFor === match.id && (
-      <ScoreForm
-        match={match}
-        busy={busy}
-        onSubmit={(blueScore, whiteScore) => void setScore(match.id, blueScore, whiteScore)}
-        onCancel={() => setScoringFor(null)}
-      />
-    );
-
-  // 오류와 겹침 경고 — 선수 바꾸기 팝업이 열려 있으면 가려지므로 팝업 안에 보여 준다
+  // 오류와 겹침 경고 — 점수 입력이나 선수 바꾸기 팝업이 열려 있으면 가려지므로 팝업 안에 보여 준다
   const notice = (
     <>
       {error && <p className="rounded-xl bg-coral/10 p-3 text-sm text-coral">{error}</p>}
@@ -153,11 +144,12 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
     </>
   );
   const editing = matches.find((m) => m.id === editingFor) ?? null;
+  const scoring = matches.find((m) => m.id === scoringFor) ?? null;
 
   return (
     <section className="flex flex-col gap-4">
       <div ref={noticeRef} />
-      {!editing && notice}
+      {!editing && !scoring && notice}
 
       <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {courts.map((courtNo) => {
@@ -190,7 +182,6 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
                       선수 바꾸기
                     </button>
                   </div>
-                  {scoreForm(current)}
                 </>
               ) : next ? (
                 <>
@@ -253,7 +244,6 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
                   선수 바꾸기
                 </button>
               </div>
-              {scoreForm(match)}
               {pickingFor === match.id && (
                 <div className="flex flex-wrap gap-2">
                   {emptyCourts.map((courtNo) => (
@@ -301,12 +291,24 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
                   대리 표시
                 </button>
               </div>
-              {scoreForm(match)}
             </li>
           ))}
         </ul>
       </div>
       </div>
+      {scoring && (
+        <ScoreForm
+          key={scoring.id}
+          match={scoring}
+          busy={busy}
+          notice={notice}
+          onSubmit={(blueScore, whiteScore) => void setScore(scoring.id, blueScore, whiteScore)}
+          onCancel={() => {
+            setScoringFor(null);
+            setError(null);
+          }}
+        />
+      )}
       {editing && (
         <TournamentPlayerEditor
           key={editing.id}
@@ -330,15 +332,18 @@ export function TournamentBoard({ detail, onChange }: { detail: ITournamentDetai
   );
 }
 
-// 21점 단판이라 이긴 팀은 늘 21점 — 이긴 팀을 고르고 진 팀 점수만 넣는다
+// 점수 입력 팝업 — 21점 단판이라 이긴 팀은 늘 21점이므로, 이긴 팀을 고르고 진 팀 점수만 넣는다. 어느 경기인지 제목과 팀 버튼의 이름으로 확인한다
+// 바깥을 스치듯 눌러 닫히지 않게 한다(dismissible=false) — 닫기는 [닫기]와 [취소]로
 function ScoreForm({
   match,
   busy,
+  notice,
   onSubmit,
   onCancel,
 }: {
   match: ITournamentMatch;
   busy: boolean;
+  notice: React.ReactNode;
   onSubmit: (blueScore: number, whiteScore: number) => void;
   onCancel: () => void;
 }) {
@@ -351,31 +356,66 @@ function ScoreForm({
   );
   const loserScore = loser === '' ? NaN : Number(loser);
   const valid = winner !== null && Number.isInteger(loserScore) && loserScore >= 0 && loserScore < TOURNAMENT_WIN_SCORE;
-  const teamBtn = (team: TournamentTeam, label: string) => (
+  const submit = () => {
+    if (busy || !valid) return;
+    if (winner === TournamentTeam.BLUE) onSubmit(TOURNAMENT_WIN_SCORE, loserScore);
+    else onSubmit(loserScore, TOURNAMENT_WIN_SCORE);
+  };
+  const teamBtn = (team: TournamentTeam, label: string, names: string[]) => (
     <button
       onClick={() => setWinner(team)}
-      className={`${SMALL_BTN} flex-1 border ${winner === team ? 'border-court bg-court/15 text-court' : 'border-line text-dim'}`}
+      className={`flex min-h-16 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl border px-2 py-2 transition-colors ${
+        winner === team ? 'border-court bg-court/15' : 'border-line'
+      }`}
     >
-      {label}
+      <span className={`text-body font-bold ${winner === team ? 'text-court' : 'text-dim'}`}>{label}</span>
+      <span className={`text-sm font-bold ${team === TournamentTeam.BLUE ? 'text-sky' : 'text-ink'}`}>{names.join(', ')}</span>
     </button>
   );
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-line bg-panel2 p-3">
+    <Sheet
+      ariaLabel="점수 입력"
+      dismissible={false}
+      onClose={onCancel}
+      header={
+        <div className="min-w-0">
+          <h2 className="text-body font-bold">{scored ? '점수 고치기' : '점수 입력'}</h2>
+          <p className="text-caption text-dim">
+            {match.matchNo}번, {match.round}라운드, {match.courtNo}코트, {TOURNAMENT_TYPE_LABEL[match.type]}
+          </p>
+        </div>
+      }
+      footer={
+        <div className="flex gap-2">
+          <button onClick={submit} disabled={busy || !valid} className="h-12 flex-1 rounded-xl bg-court text-body font-bold text-bg transition-opacity disabled:opacity-40">
+            {scored ? '점수 고치기' : '점수 저장'}
+          </button>
+          <button onClick={onCancel} className="h-12 rounded-xl border border-line px-5 text-sm font-bold text-dim">
+            취소
+          </button>
+        </div>
+      }
+    >
+      {notice}
       <p className="text-caption text-dim">이긴 팀을 고르고 진 팀 점수를 넣어 주세요</p>
       <div className="flex gap-2">
-        {teamBtn(TournamentTeam.BLUE, '청팀 승')}
-        {teamBtn(TournamentTeam.WHITE, '백팀 승')}
+        {teamBtn(TournamentTeam.BLUE, '청팀 승', tournamentBlueNames(match))}
+        {teamBtn(TournamentTeam.WHITE, '백팀 승', tournamentWhiteNames(match))}
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
         <input
           value={loser}
           onChange={(e) => setLoser(e.target.value.replace(/\D/g, '').slice(0, 2))}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') submit();
+          }}
           inputMode="numeric"
           placeholder="진 팀 점수 (0~20)"
-          className="h-10 min-w-0 flex-1 rounded-lg border border-line bg-panel px-3 text-body outline-none focus:border-court"
+          aria-label="진 팀 점수"
+          className="h-12 min-w-0 flex-1 rounded-xl border border-line bg-panel2 px-4 text-body outline-none focus:border-court"
         />
-        <span className="shrink-0 text-sm tabular-nums text-dim">
+        <span className="shrink-0 text-body font-bold tabular-nums text-dim">
           {winner === null || !valid
             ? '청 - : - 백'
             : winner === TournamentTeam.BLUE
@@ -383,21 +423,7 @@ function ScoreForm({
               : `청 ${loserScore} : ${TOURNAMENT_WIN_SCORE} 백`}
         </span>
       </div>
-      <div className="flex gap-2">
-        <button
-          onClick={() =>
-            winner === TournamentTeam.BLUE ? onSubmit(TOURNAMENT_WIN_SCORE, loserScore) : onSubmit(loserScore, TOURNAMENT_WIN_SCORE)
-          }
-          disabled={busy || !valid}
-          className={`${SMALL_BTN} bg-court text-bg`}
-        >
-          {scored ? '점수 고치기' : '점수 저장'}
-        </button>
-        <button onClick={onCancel} className={`${SMALL_BTN} border border-line text-dim`}>
-          취소
-        </button>
-      </div>
-    </div>
+    </Sheet>
   );
 }
 
