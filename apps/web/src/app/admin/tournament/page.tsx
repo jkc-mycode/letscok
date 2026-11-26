@@ -22,6 +22,7 @@ import { TOURNAMENT_TYPE_LABEL as TYPE_LABEL, TournamentBoard } from '@/componen
 import { TournamentEntry } from '@/components/admin/tournament-entry';
 import { TournamentRaffle } from '@/components/admin/tournament-raffle';
 import { ConfirmButton } from '@/components/confirm-button';
+import { Sheet } from '@/components/sheet';
 import { TournamentBracket, TournamentRanking, TournamentScoreboard } from '@/components/tournament-live';
 import { api, ApiError } from '@/lib/api';
 import { useCopy } from '@/lib/use-copy';
@@ -234,6 +235,7 @@ function Summary({ detail, onChange }: { detail: ITournamentDetail; onChange: (n
   const { tournament, participants, matches } = detail;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
   // 경기 상태가 바뀌면 앞서 띄운 안내("진행 중인 경기가 있어요")는 더 맞지 않는다
   useEffect(() => setError(null), [detail]);
   const count = (team: TournamentTeam) => participants.filter((p) => p.team === team).length;
@@ -259,6 +261,11 @@ function Summary({ detail, onChange }: { detail: ITournamentDetail; onChange: (n
         <span className="rounded-md bg-court/10 px-2 py-0.5 text-caption font-bold text-court">
           {STATUS_LABEL[tournament.status]}
         </span>
+        {tournament.status !== TournamentStatus.CLOSED && (
+          <button onClick={() => setEditing(true)} className="ml-auto h-9 shrink-0 rounded-lg border border-line px-3 text-sm font-bold text-dim">
+            고치기
+          </button>
+        )}
       </div>
       <p className="text-sm text-dim">{tournament.date}</p>
       <p className="mt-1 text-sm">
@@ -310,7 +317,104 @@ function Summary({ detail, onChange }: { detail: ITournamentDetail; onChange: (n
           />
         </>
       )}
+      {editing && (
+        <TournamentEditor
+          tournament={tournament}
+          onSaved={(next) => {
+            setEditing(false);
+            onChange(next);
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      )}
     </section>
+  );
+}
+
+// 대회 이름과 날짜 고치기 — 준비 중일 때는 잘못 만든 대회를 지울 수도 있다
+function TournamentEditor({
+  tournament,
+  onSaved,
+  onCancel,
+}: {
+  tournament: ITournament;
+  onSaved: (next: ITournamentDetail | null) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(tournament.name);
+  const [date, setDate] = useState(tournament.date);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const draft = tournament.status === TournamentStatus.DRAFT;
+  const same = name.trim() === tournament.name && date === tournament.date;
+
+  const run = async (request: () => Promise<ITournamentDetail | null>, fallback: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      onSaved(await request());
+    } catch (e) {
+      setError(failText(e, fallback));
+      setBusy(false);
+    }
+  };
+  const path = `/tournaments/${tournament.id}`;
+  const save = () =>
+    void run(() => api<ITournamentDetail>(path, { method: 'PATCH', admin: true, body: { name: name.trim(), date } }), '저장하지 못했습니다.');
+
+  return (
+    <Sheet
+      ariaLabel="대회 고치기"
+      dismissible={false}
+      onClose={onCancel}
+      header={<h3 className="text-body font-bold">대회 고치기</h3>}
+      footer={
+        <div className="flex gap-2">
+          <button onClick={save} disabled={busy || same || !name.trim() || !date} className={`${PRIMARY_CLS} flex-1`}>
+            {busy ? '저장 중...' : '저장'}
+          </button>
+          <button onClick={onCancel} disabled={busy} className="h-12 rounded-xl border border-line px-5 font-bold text-dim">
+            취소
+          </button>
+        </div>
+      }
+    >
+      <label htmlFor="tournament-name" className="text-sm font-bold text-dim">
+        대회 이름
+      </label>
+      <input
+        id="tournament-name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        maxLength={30}
+        className={`${INPUT_CLS} bg-panel2`}
+      />
+      <label htmlFor="tournament-date" className="text-sm font-bold text-dim">
+        대회 날짜
+      </label>
+      <input id="tournament-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className={`${INPUT_CLS} bg-panel2`} />
+      {error && <p className="text-sm text-coral">{error}</p>}
+      {draft ? (
+        <div className="mt-2 flex flex-col gap-2 border-t border-line pt-4">
+          <p className="text-sm text-dim">잘못 만든 대회라면 지울 수 있어요. 넣어 둔 대진표와 입구 체크인 기록도 함께 지워져요.</p>
+          <ConfirmButton
+            label="대회 지우기"
+            confirmLabel="지우면 되돌릴 수 없어요. 한 번 더 누르면 지우기"
+            className="min-h-10 self-start rounded-lg px-4 py-2 text-sm font-bold"
+            idleCls="border border-line text-dim"
+            disabled={busy}
+            onConfirm={() =>
+              void run(async () => {
+                await api<null>(path, { method: 'DELETE', admin: true });
+                return null;
+              }, '지우지 못했습니다.')
+            }
+          />
+        </div>
+      ) : (
+        <p className="text-caption text-faint">시작한 대회는 지울 수 없어요. 종료한 뒤 결과를 내리면 화면에서 사라져요.</p>
+      )}
+    </Sheet>
   );
 }
 
