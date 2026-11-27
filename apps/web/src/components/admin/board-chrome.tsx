@@ -80,7 +80,7 @@ export type MoreAction = {
 // 묶음 — 자주 쓰는 것 위, 관리 기능 아래(잠금·모임 종료는 시트 맨 아래 따로)
 const MORE_GROUPS: { title: string; keys: string[] }[] = [
   { title: '모임 중', keys: ['code', 'log', 'entryFee', 'courts', 'display', 'another'] },
-  { title: '관리', keys: ['members', 'history', 'birthday', 'settlement', 'help'] },
+  { title: '관리', keys: ['members', 'history', 'tournament', 'birthday', 'settlement', 'help'] },
 ];
 
 // 햄버거가 보드를 밀어내던 격자 대신 아래에서 올라오는 목록. 위험한 항목은 맨 아래 따로
