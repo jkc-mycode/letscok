@@ -517,6 +517,13 @@ function BoardBody({
       onClick: () => router.push('/admin/history'),
     },
     {
+      key: 'tournament',
+      label: '자체 대회',
+      // 모임 전 화면에만 있던 메뉴 — 모임 중에도 대회 화면으로 갈 수 있게 둔다(지난 기록처럼 시트를 닫지 않고 이동)
+      keepMenuOpen: true,
+      onClick: () => router.push('/admin/tournament'),
+    },
+    {
       key: 'members',
       label: '모임원 관리',
       onClick: () => setMembersOpen(true),
